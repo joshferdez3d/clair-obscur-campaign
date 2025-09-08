@@ -1,4 +1,4 @@
-// src/components/BattleMap/Token.tsx - Updated with coordinate offset support
+// src/components/BattleMap/Token.tsx - Updated with coordinate offset support and no name tags
 import React from 'react';
 import { User, Heart } from 'lucide-react';
 import type { BattleToken, Position } from '../../types';
@@ -178,12 +178,14 @@ export function Token({
         </div>
       )}
 
-      {/* Name Label */}
+      {/* Name Label - REMOVED to save screen space */}
+      {/* 
       <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
         <div className="bg-gray-900 bg-opacity-80 text-white text-xs px-2 py-1 rounded border border-gray-600">
           {token.name}
         </div>
       </div>
+      */}
 
       {/* Targeting Indicator */}
       {isValidTarget && (
