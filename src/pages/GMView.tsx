@@ -18,11 +18,16 @@ import { FirestoreService } from '../services/firestoreService';
 import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import type { GMCombatAction as ServiceGMCombatAction } from '../services/firestoreService';
+import { EnemySelectionModal } from '../components/Combat/EnemySelectionModal';
+import type { EnemyData } from '../types';
+import { X } from 'lucide-react';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [showAddToken, setShowAddToken] = useState(false);
-
+  // NEW: Enemy selection state
+  const [showEnemyModal, setShowEnemyModal] = useState(false);
+  const [selectedEnemyType, setSelectedEnemyType] = useState<EnemyData | null>(null);
+  const [isPlacingEnemy, setIsPlacingEnemy] = useState(false);
   // IMPORTANT: All hooks must be called at the top level, before any early returns
   const {
     session,
@@ -139,12 +144,63 @@ export function GMView() {
     await addToken(tok);
   };
 
-  const handleGridClick = (pos: Position) => {
-    if (showAddToken) {
-      handleAddEnemy(pos);
-      setShowAddToken(false);
-    }
+  const handleEnemySelected = (enemyData: EnemyData) => {
+    setSelectedEnemyType(enemyData);
+    setIsPlacingEnemy(true);
+    setShowEnemyModal(false);
   };
+  const handleCancelEnemyPlacement = () => {
+    setSelectedEnemyType(null);
+    setIsPlacingEnemy(false);
+  };
+
+
+// REPLACE: Handle battle map click for enemy placement
+const handleGridClick = async (position: Position) => {
+  if (isPlacingEnemy && selectedEnemyType && session && sessionId) {
+    // Create a new enemy token with full stat block
+    const enemyId = `enemy-${selectedEnemyType.id}-${Date.now()}`;
+    const newEnemy: BattleToken = {
+      id: enemyId,
+      name: selectedEnemyType.name,
+      position,
+      type: 'enemy',
+      hp: selectedEnemyType.hp,
+      maxHp: selectedEnemyType.maxHp,
+      ac: selectedEnemyType.ac,
+      size: selectedEnemyType.size || 1,
+      color: selectedEnemyType.color || '#dc2626'
+    };
+
+    try {
+      // Add to session tokens
+      const updatedTokens = { ...session.tokens, [enemyId]: newEnemy };
+      
+      // Store full enemy data for reference
+      const updatedEnemyData = { 
+        ...session.enemyData, 
+        [enemyId]: selectedEnemyType 
+      };
+
+      // Update the session
+      await import('../services/firestoreService').then(({ FirestoreService }) =>
+        FirestoreService.updateBattleSession(sessionId, {
+          tokens: updatedTokens,
+          enemyData: updatedEnemyData,
+          updatedAt: new Date()
+        })
+      );
+
+      console.log(`Added ${selectedEnemyType.name} at position ${position.x}, ${position.y}`);
+    } catch (error) {
+      console.error('Failed to add enemy:', error);
+    }
+
+    // Reset enemy placement state
+    setSelectedEnemyType(null);
+    setIsPlacingEnemy(false);
+  }
+};
 
   const handleStartCombat = async (order: InitiativeEntry[]) => {
     try {
@@ -271,6 +327,13 @@ export function GMView() {
         <GMCombatPopup actions={gmActions} onApplyDamage={handleApplyDamage} onDismissMiss={handleDismissMiss} />
       )}
 
+          {/* ADD THIS HERE - Enemy Selection Modal */}
+      <EnemySelectionModal
+        isOpen={showEnemyModal}
+        onClose={() => setShowEnemyModal(false)}
+        onSelectEnemy={handleEnemySelected}
+      />
+
       {/* Left Panel - GM Controls (NO Character Health) */}
       <div className="w-80 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
         <div className="mb-6">
@@ -302,11 +365,11 @@ export function GMView() {
         )}
 
         {/* Combat Status */}
-        <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow mt-4">
-          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3 flex items-center">
-            <Map className="w-5 h-5 mr-2" />
-            Combat Status
-          </h3>
+      <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow mt-4">
+        <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3 flex items-center">
+          <Map className="w-5 h-5 mr-2" />
+          Battle Management
+        </h3>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-clair-gold-300">Combat:</span>
@@ -451,38 +514,54 @@ export function GMView() {
               )}
             </h3>
             
-            <div className="flex items-center justify-between">
-              <button
-                onClick={() => setShowAddToken(!showAddToken)}
-                className={`flex items-center justify-center px-4 py-2 rounded-lg font-bold transition-colors ${
-                  showAddToken ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-green-500 hover:bg-green-600 text-white'
-                }`}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                {showAddToken ? 'Cancel' : 'Add Enemy'}
-              </button>
-              
-              <div className="flex items-center space-x-6 text-sm text-clair-gold-300">
+           {/* NEW: Enemy placement status */}
+          {isPlacingEnemy && selectedEnemyType && (
+            <div className="mb-4 p-3 bg-clair-warning text-clair-shadow-900 rounded-lg">
+              <div className="flex justify-between items-center">
                 <div>
-                  <span className="font-bold">Players:</span> {tokens.filter((t) => t.type === 'player').length}
+                  <p className="font-bold text-sm">Placing: {selectedEnemyType.name}</p>
+                  <p className="text-xs">Click on battle map to place enemy</p>
                 </div>
-                <div>
-                  <span className="font-bold">Enemies:</span> {tokens.filter((t) => t.type === 'enemy').length}
-                </div>
-                <div>
-                  <span className="font-bold">Turrets:</span> {activeTurrets.length}
-                </div>
-                <div>
-                  <span className="font-bold">Total:</span> {tokens.length}
-                </div>
+                <button
+                  onClick={handleCancelEnemyPlacement}
+                  className="text-clair-shadow-900 hover:text-red-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
+          )}
+
+          <div className="flex items-center justify-between">
+            {/* NEW: Enhanced Add Enemy Button */}
+            <button
+              onClick={() => setShowEnemyModal(true)}
+              disabled={isPlacingEnemy}
+              className={`flex items-center justify-center px-4 py-2 rounded-lg font-bold transition-colors ${
+                isPlacingEnemy
+                  ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600 text-white'
+              }`}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              {isPlacingEnemy ? 'Placing Enemy...' : 'Add Enemy'}
+            </button>
             
-            {showAddToken && (
-              <div className="bg-clair-warning text-clair-shadow-900 p-3 rounded-lg mt-3">
-                <p className="font-bold text-sm">Click on battle map to add enemy</p>
+            <div className="flex items-center space-x-6 text-sm text-clair-gold-300">
+              <div>
+                <span className="font-bold">Players:</span> {tokens.filter((t) => t.type === 'player').length}
               </div>
-            )}
+              <div>
+                <span className="font-bold">Enemies:</span> {tokens.filter((t) => t.type === 'enemy').length}
+              </div>
+              <div>
+                <span className="font-bold">Turrets:</span> {activeTurrets.length}
+              </div>
+              <div>
+                <span className="font-bold">Total:</span> {tokens.length}
+              </div>
+            </div>
+          </div>
             
             {/* Show active turrets if any */}
             {activeTurrets.length > 0 && (

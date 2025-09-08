@@ -9,7 +9,7 @@ export interface BattleToken {
   maxHp?: number;
   size?: number;
   color?: string;
-  ac?: number; // NEW: Armor Class for enemies
+  ac?: number; // Make sure this exists for enemy tokens
 }
 
 // Enhanced enemy data interface
@@ -36,6 +36,17 @@ export interface EnemyData {
   }>;
   size?: number;
   color?: string;
+}
+
+export interface EnemyCategory {
+  name: string;
+  description: string;
+  enemies: string[];
+}
+
+export interface EnemyTemplate extends EnemyData {
+  category: string;
+  difficulty: 'Basic' | 'Tough' | 'Elite' | 'Boss';
 }
 
 // Combat targeting interface
@@ -166,7 +177,7 @@ export interface BattleSession {
   combatState?: CombatState;
   pendingActions?: CombatAction[];
   enemyHP?: { [enemyId: string]: { current: number, max: number } };
-  enemyData?: { [enemyId: string]: EnemyData }; // NEW: Store enemy stat blocks
+  enemyData?: { [enemyId: string]: EnemyData }; // Store full enemy stat blocks
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
@@ -216,7 +227,7 @@ export interface BattleSessionDoc {
   combatState?: CombatState;
   pendingActions?: CombatAction[];
   enemyHP?: { [enemyId: string]: { current: number, max: number } };
-  enemyData?: { [enemyId: string]: EnemyData };
+  enemyData?: { [enemyId: string]: EnemyData }; // Store full enemy stat blocks
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
