@@ -1,4 +1,4 @@
-// src/pages/BattleMapView.tsx - Fixed Player-facing TV display
+// src/pages/BattleMapView.tsx - Fixed duplicate variable declaration
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { BattleMap } from '../components/BattleMap/BattleMap';
@@ -7,6 +7,7 @@ import { useCombat } from '../hooks/useCombat';
 import { useStormSystem } from '../hooks/useStormSystem';
 import { useBattleSession } from '../hooks/useBattleSession';
 import type { BattleToken } from '../types';
+import { EnemyPanel } from '../components/Combat/EnemyPanel';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -17,7 +18,6 @@ export function BattleMapView() {
     session,
     loading,
     error,
-    isCombatActive,
   } = useCombat(sessionId || '');
 
   // Real-time session updates (replace useRealtimeSession with useBattleSession)
@@ -35,6 +35,22 @@ export function BattleMapView() {
   const isConnected = !sessionLoading && !sessionError && !!currentSession;
   const isLoading = loading || sessionLoading;
   const currentError = error || sessionError;
+  const tokens = currentSession ? Object.values(currentSession.tokens) : [];
+  const combatActive = currentSession?.combatState?.isActive || false;
+  const combatState = currentSession?.combatState || {
+    isActive: false,
+    currentTurn: '',
+    turnOrder: [],
+    round: 1,
+    phase: 'setup' as const,
+    initiativeOrder: [],
+  };
+
+  const characterNames: Record<string, string> = {};
+  tokens.forEach((t) => {
+    if (t.characterId) characterNames[t.characterId] = t.name;
+    characterNames[t.id] = t.name;
+  });
 
   // Auto-refresh every 10 seconds as fallback (increased from 5s)
   useEffect(() => {
@@ -92,144 +108,184 @@ export function BattleMapView() {
 
   // Get current turn information
   const currentTurn = currentSession.combatState?.currentTurn;
-  const combatActive = currentSession.combatState?.isActive || false;
+  // REMOVED: Duplicate combatActive declaration - already declared above
 
   return (
-    <div className="fixed inset-0 bg-clair-shadow-900">
-      {/* Status Bar - Fixed positioning to avoid overlap */}
-      <div className="absolute top-0 left-0 right-0 z-50 bg-black bg-opacity-50 backdrop-blur-sm">
-        <div className="flex items-center justify-between p-2">
-          {/* Left side - Session info */}
-          <div className="flex items-center space-x-4">
-            <div className="text-clair-gold-300 text-sm font-bold">
-              The Docks of Lumière
-            </div>
-            {combatActive && currentTurn && (
-              <div className="text-green-400 text-sm">
-                <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></span>
-                {currentTurn} is acting
-              </div>
-            )}
-          </div>
+    <div className="fixed inset-0 bg-clair-shadow-900 flex">
+      {/* Left Panel - Enemy Status (for players) */}
+      <div className="w-72 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
+        <div className="mb-4">
+          <h1 className="font-display text-xl font-bold text-clair-gold-400 mb-2">
+            Battle Status
+          </h1>
+          <p className="font-sans text-sm text-clair-gold-300">Session: {sessionId}</p>
+        </div>
 
-          {/* Center - Storm status */}
-          {isStormActive && stormState && (
-            <div className="text-center">
-              <div className="text-purple-300 text-sm font-bold">
-                ⚡ Crescendo of Fate - Turn {stormState.currentTurn}/5
-              </div>
-              <div className="w-32 bg-purple-800 rounded-full h-1 mt-1">
-                <div 
-                  className="bg-gradient-to-r from-yellow-400 to-purple-400 h-1 rounded-full transition-all duration-500"
-                  style={{ 
-                    width: `${((stormState.totalTurns - stormState.turnsRemaining) / stormState.totalTurns) * 100}%` 
-                  }}
-                />
+        {/* Enemy Panel for Players - Enhanced for debugging */}
+        <div className="mb-4">
+          <EnemyPanel
+            enemies={tokens.filter(t => t.type === 'enemy')}
+            isGMView={false}
+          />
+          
+          {/* Debug info for enemy panel */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-2 p-2 bg-yellow-900/20 border border-yellow-500 rounded text-xs">
+              <div className="text-yellow-200 font-bold">Enemy Panel Debug:</div>
+              <div className="text-yellow-300">
+                Total tokens: {tokens.length}<br/>
+                Enemy tokens: {tokens.filter(t => t.type === 'enemy').length}<br/>
+                Enemy names: {tokens.filter(t => t.type === 'enemy').map(e => e.name).join(', ') || 'None'}
               </div>
             </div>
           )}
+        </div>
 
-          {/* Right side - Connection and controls */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`px-2 py-1 rounded text-xs font-bold border ${
-                autoRefresh 
-                  ? 'bg-blue-500 bg-opacity-20 text-blue-400 border-blue-500' 
-                  : 'bg-gray-500 bg-opacity-20 text-gray-400 border-gray-500'
-              }`}
-            >
-              {autoRefresh ? 'AUTO' : 'MANUAL'}
-            </button>
-            
-            <div className={`px-2 py-1 rounded text-xs font-bold border ${
-              isConnected 
-                ? 'bg-green-500 bg-opacity-20 text-green-400 border-green-500' 
-                : 'bg-red-500 bg-opacity-20 text-red-400 border-red-500'
-            }`}>
-              {isConnected ? 'LIVE' : 'OFFLINE'}
+        {/* Combat Status */}
+        {combatActive && (
+          <div className="mt-4 bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-3">
+            <h3 className="font-display text-sm font-bold text-clair-gold-400 mb-2">
+              Combat Status
+            </h3>
+            <div className="text-xs text-clair-gold-300 space-y-1">
+              <div>Round: {combatState.round}</div>
+              <div>Current Turn: {characterNames[combatState.currentTurn] || 'None'}</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Main Battle Map Content */}
+      <div className="flex-1 relative">
+        {/* Status Bar - Fixed positioning to avoid overlap */}
+        <div className="absolute top-0 left-0 right-0 z-50 bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="flex items-center justify-between p-2">
+            {/* Left side - Session info */}
+            <div className="flex items-center space-x-4">
+              <div className="text-clair-gold-300 text-sm font-bold">
+                The Docks of Lumière
+              </div>
+              {combatActive && currentTurn && (
+                <div className="text-green-400 text-sm">
+                  <span className="inline-block w-2 h-2 bg-green-400 rounded-full animate-pulse mr-2"></span>
+                  {currentTurn} is acting
+                </div>
+              )}
+            </div>
+
+            {/* Center - Storm status */}
+            {isStormActive && stormState && (
+              <div className="text-center">
+                <div className="text-purple-300 text-sm font-bold">
+                  ⚡ Crescendo of Fate - Turn {stormState.currentTurn}/5
+                </div>
+                <div className="w-32 bg-purple-800 rounded-full h-1 mt-1">
+                  <div 
+                    className="bg-gradient-to-r from-yellow-400 to-purple-400 h-1 rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${((stormState.totalTurns - stormState.turnsRemaining) / stormState.totalTurns) * 100}%` 
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Right side - Connection and controls */}
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`px-2 py-1 rounded text-xs font-bold border ${
+                  autoRefresh 
+                    ? 'bg-blue-500 bg-opacity-20 text-blue-400 border-blue-500' 
+                    : 'bg-gray-500 bg-opacity-20 text-gray-400 border-gray-500'
+                }`}
+              >
+                {autoRefresh ? 'AUTO' : 'MANUAL'}
+              </button>
+              
+              <div className={`px-2 py-1 rounded text-xs font-bold border ${
+                isConnected 
+                  ? 'bg-green-500 bg-opacity-20 text-green-400 border-green-500' 
+                  : 'bg-red-500 bg-opacity-20 text-red-400 border-red-500'
+              }`}>
+                {isConnected ? 'LIVE' : 'OFFLINE'}
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Storm Effects Overlay */}
-      {isStormActive && (
-        <div className="absolute inset-0 z-10 pointer-events-none">
-          {/* Storm background effect */}
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-indigo-500/10 animate-pulse" />
-          
-          {/* Lightning effects */}
-          <div className="absolute inset-0">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div
-                key={i}
-                className="absolute bg-yellow-300 opacity-40 animate-ping"
-                style={{
-                  left: `${10 + i * 20}%`,
-                  top: `${5 + i * 15}%`,
-                  width: '2px',
-                  height: '30px',
-                  animationDelay: `${i * 0.7}s`,
-                  animationDuration: '3s'
-                }}
-              />
-            ))}
+        {/* Storm Effects Overlay */}
+        {isStormActive && (
+          <div className="absolute inset-0 z-10 pointer-events-none">
+            {/* Storm background effect */}
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-indigo-500/10 animate-pulse" />
+            
+            {/* Lightning effects */}
+            <div className="absolute inset-0">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute bg-yellow-300 opacity-40 animate-ping"
+                  style={{
+                    left: `${10 + i * 20}%`,
+                    top: `${5 + i * 15}%`,
+                    width: '2px',
+                    height: '30px',
+                    animationDelay: `${i * 0.7}s`,
+                    animationDuration: '3s'
+                  }}
+                />
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Battle Map Component - Adjusted for status bar */}
-      <div className="absolute inset-0 pt-12 z-0">
-        <BattleMap
-          mode="player"
-          map={{
-            id: currentSession.id,
-            name: "The Docks of Lumière",
-            backgroundImage: "/maps/BattleMap_Landing.jpg",
-            gridSize: { width: 20, height: 15 },
-            gridVisible: true
-          }}
-          tokens={battleTokens}
-          isGM={false}
-          currentTurn={currentTurn}
-          combatActive={combatActive}
-          // Players can't move tokens directly - only DM can
-          onTokenMove={undefined}
-          onTokenSelect={undefined}
-          onGridClick={(position) => {
-            // Log for players to reference
-            const letter = String.fromCharCode(65 + position.x);
-            const number = position.y + 1;
-            console.log(`Grid position: ${letter}${number}`);
-          }}
-          targetingMode={undefined}
-          maxMovementRange={30}
-        />
+        {/* Battle Map Component - Adjusted for status bar */}
+        <div className="absolute inset-0 pt-12 z-0">
+          <BattleMap
+            mode="player"
+            map={{
+              id: currentSession.id,
+              name: "The Docks of Lumière",
+              backgroundImage: "/maps/BattleMap_Landing.jpg",
+              gridSize: { width: 20, height: 15 },
+              gridVisible: true
+            }}
+            tokens={battleTokens}
+            isGM={false}
+            currentTurn={currentTurn}
+            combatActive={combatActive}
+            // Players can't move tokens directly - only DM can
+            onTokenMove={undefined}
+            onTokenSelect={undefined}
+            onGridClick={(position) => {
+              // Log for players to reference
+              const letter = String.fromCharCode(65 + position.x);
+              const number = position.y + 1;
+              console.log(`Grid position: ${letter}${number}`);
+            }}
+            targetingMode={undefined}
+            maxMovementRange={30}
+          />
+        </div>
+
+        {/* REMOVED: Grid Reference Helper - Bottom overlay */}
+        {/* Chess notation helper removed per user request */}
+
+        {/* Debug Info (only in development) - Fixed positioning */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="absolute bottom-16 left-2 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50 max-w-xs">
+            <div className="font-bold mb-1">Debug Info:</div>
+            <div>Session: {sessionId}</div>
+            <div>Tokens: {battleTokens.length}</div>
+            <div>Combat: {combatActive ? 'Active' : 'Inactive'}</div>
+            <div>Turn: {currentTurn || 'None'}</div>
+            <div>Connected: {isConnected ? 'Yes' : 'No'}</div>
+            <div>Storm: {isStormActive ? `Active (${stormState?.currentTurn}/5)` : 'Inactive'}</div>
+            <div>Last Render: {new Date().toLocaleTimeString()}</div>
+          </div>
+        )}
       </div>
-
-      {/* Grid Reference Helper - Bottom overlay */}
-      <div className="absolute bottom-0 left-0 right-0 z-40 bg-black bg-opacity-50 backdrop-blur-sm">
-        <div className="text-center py-2">
-          <p className="text-clair-gold-300 text-sm">
-            Use chess notation to call out positions • e.g. "Move to C4" or "Attack enemy at F7"
-          </p>
-        </div>
-      </div>
-
-      {/* Debug Info (only in development) - Fixed positioning */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="absolute bottom-16 left-2 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50 max-w-xs">
-          <div className="font-bold mb-1">Debug Info:</div>
-          <div>Session: {sessionId}</div>
-          <div>Tokens: {battleTokens.length}</div>
-          <div>Combat: {combatActive ? 'Active' : 'Inactive'}</div>
-          <div>Turn: {currentTurn || 'None'}</div>
-          <div>Connected: {isConnected ? 'Yes' : 'No'}</div>
-          <div>Storm: {isStormActive ? `Active (${stormState?.currentTurn}/5)` : 'Inactive'}</div>
-          <div>Last Render: {new Date().toLocaleTimeString()}</div>
-        </div>
-      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// src/services/firestoreService.ts (REPLACE FILE)
+// src/services/firestoreService.ts - CORRECTED VERSION
 
 import {
   doc,
@@ -44,6 +44,59 @@ export interface GMCombatAction extends CombatAction {
 }
 
 export class FirestoreService {
+  // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
+  static async resetBattleSession(sessionId: string) {
+    console.log('🔄 Starting battle session reset with sample data initialization...');
+    
+    try {
+      const session = await this.getBattleSession(sessionId);
+      if (!session) {
+        throw new Error('Session not found');
+      }
+
+      console.log('🗑️ Clearing battle session...');
+
+      // 1. Clear the session completely first
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: {},
+        combatState: {
+          isActive: false,
+          currentTurn: '',
+          turnOrder: [],
+          round: 1,
+          phase: 'setup',
+          initiativeOrder: [],
+        },
+        pendingActions: [],
+        enemyData: {},
+        stormState: {
+          isActive: false,
+          currentTurn: 0,
+          totalTurns: 0,
+          pendingRolls: [],
+        },
+        updatedAt: serverTimestamp(),
+      });
+
+      console.log('📊 Reinitializing sample data...');
+
+      // 2. Reinitialize sample data to recreate characters and proper battle session
+      await this.initializeSampleData();
+
+      console.log('✅ Battle session reset complete with sample data');
+      console.log('- Cleared all tokens, combat state, and pending actions');
+      console.log('- Recreated character documents with full stats');
+      console.log('- Restored proper initiative order with characterIds');
+      console.log('- Reset player HP to maximum values');
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to reset battle session:', error);
+      throw error;
+    }
+  }
+
   // ========== Characters ==========
   static async getCharacter(characterId: string): Promise<Character | null> {
     try {
@@ -345,7 +398,6 @@ export class FirestoreService {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, { pendingActions: updatedActions, updatedAt: serverTimestamp() });
   }
-
 
   static async updateEnemyHP(sessionId: string, enemyId: string, currentHP: number) {
     const ref = doc(db, 'battleSessions', sessionId);

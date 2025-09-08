@@ -24,6 +24,8 @@ import { X } from 'lucide-react';
 import { HPSyncService } from '../services/HPSyncService';
 import { SimpleCharacterDisplay } from '../components/GM/SimpleCharacterDisplay';
 import { HPSettingsModal } from '../components/GM/HPSettingsModal';
+import { ResetButton } from '../components/GM/ResetButton';
+import { EnemyPanel } from '../components/Combat/EnemyPanel';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -32,6 +34,8 @@ export function GMView() {
   const [selectedEnemyType, setSelectedEnemyType] = useState<EnemyData | null>(null);
   const [isPlacingEnemy, setIsPlacingEnemy] = useState(false);
   const [openHPModal, setOpenHPModal] = useState<string | null>(null);
+  const [turretAttacksTriggered, setTurretAttacksTriggered] = useState<Set<string>>(new Set());
+
 
   // IMPORTANT: All hooks must be called at the top level, before any early returns
   const {
@@ -58,11 +62,23 @@ export function GMView() {
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * 5;
 
   // Auto turret attacks
-  const handleTurretAutoAttacks = useCallback(async () => {
+   const handleTurretAutoAttacks = useCallback(async () => {
     if (!session?.combatState?.isActive) return;
+
+    const currentTurnKey = `${session.combatState.currentTurn}-${session.combatState.round}`;
+    
+    // Prevent duplicate attacks for the same turn/round
+    if (turretAttacksTriggered.has(currentTurnKey)) {
+      return;
+    }
 
     const tokens = Object.values(session.tokens);
     const turrets = tokens.filter((t) => t.name.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
+
+    if (turrets.length === 0) return;
+
+    // Mark this turn as having triggered turret attacks
+    setTurretAttacksTriggered(prev => new Set(prev).add(currentTurnKey));
 
     for (const turret of turrets) {
       const enemies = tokens.filter((t) => t.type === 'enemy' && (t.hp ?? 0) > 0);
@@ -79,7 +95,7 @@ export function GMView() {
       const hit = roll >= enemyAC;
 
       const action: ServiceGMCombatAction = {
-        id: `turret-attack-${Date.now()}`,
+        id: `turret-attack-${turret.id}-${Date.now()}-${Math.random()}`, // More unique ID
         type: 'attack',
         playerId: 'gustave',
         targetId: enemy.id,
@@ -99,14 +115,23 @@ export function GMView() {
       const ref = doc(db, 'battleSessions', sessionId || 'test-session');
       await updateDoc(ref, { pendingActions: arrayUnion(action), updatedAt: serverTimestamp() });
     }
-  }, [session, sessionId]);
+  }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
+
 
   useEffect(() => {
     if (session?.combatState?.currentTurn === 'gustave' && session?.combatState?.isActive) {
       const t = setTimeout(() => handleTurretAutoAttacks(), 800);
       return () => clearTimeout(t);
     }
-  }, [session?.combatState?.currentTurn, session?.combatState?.isActive, handleTurretAutoAttacks]);
+  }, [session?.combatState?.currentTurn, session?.combatState?.isActive, session?.combatState?.round]);
+
+
+  // ===== ADD THIS NEW CLEANUP useEffect =====
+  useEffect(() => {
+    if (!session?.combatState?.isActive) {
+      setTurretAttacksTriggered(new Set());
+    }
+  }, [session?.combatState?.isActive]);
 
   // Damage routing (AoE vs single)
   const handleApplyDamage = async (actionId: string, damage: number) => {
@@ -125,6 +150,26 @@ export function GMView() {
     }
   };
 
+  const handleRemoveEnemy = async (enemyId: string) => {
+    try {
+      await removeToken(enemyId);
+    } catch (e) {
+      console.error('Error removing enemy:', e);
+    }
+  };
+
+  const handleEditEnemyHP = async (enemyId: string, newHP: number) => {
+    try {
+      const ref = doc(db, 'battleSessions', sessionId || 'test-session');
+      await updateDoc(ref, {
+        [`tokens.${enemyId}.hp`]: newHP,
+        updatedAt: serverTimestamp()
+      });
+    } catch (e) {
+      console.error('Error updating enemy HP:', e);
+    }
+  };
+
   const handleDismissMiss = async (actionId: string) => {
     try {
       await FirestoreService.dismissMissAction(sessionId || 'test-session', actionId);
@@ -132,6 +177,24 @@ export function GMView() {
       console.error('Error dismissing miss:', e);
     }
   };
+
+  // Add this function inside your GMView component
+const handleResetSession = async () => {
+  try {
+    await FirestoreService.resetBattleSession(sessionId || 'test-session');
+    
+    // Also reset any local state that might be needed
+    setTurretAttacksTriggered(new Set());
+    setShowEnemyModal(false);
+    setSelectedEnemyType(null);
+    setIsPlacingEnemy(false);
+    
+    console.log('✅ Session reset complete');
+  } catch (error) {
+    console.error('❌ Reset failed:', error);
+    alert('Failed to reset session. Please try again.');
+  }
+};
 
   const handleTokenMove = async (id: string, pos: Position) => await attemptMove(id, pos);
 
@@ -362,12 +425,42 @@ const handleGridClick = async (position: Position) => {
           characterNames={characterNames}
         />
 
+        <div className="mt-4">
+        <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4">
+          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3 flex items-center">
+            <Wrench className="w-5 h-5 mr-2" />
+            Session Management
+          </h3>
+          
+          <div className="space-y-3">
+            {/* Reset Button */}
+            <ResetButton 
+              onReset={handleResetSession}
+              disabled={loading}
+            />
+            
+            {/* Session Info */}
+            <div className="text-xs text-clair-gold-300 bg-clair-shadow-800 rounded p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>Players: {tokens.filter(t => t.type === 'player').length}</div>
+                <div>Enemies: {tokens.filter(t => t.type === 'enemy').length}</div>
+                <div>NPCs: {tokens.filter(t => t.type === 'npc').length}</div>
+                <div>Total: {tokens.length}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
         {/* Storm Status - Show prominently in combat status */}
         {stormState && stormState.isActive && (
           <div className="mt-4">
             <StormIndicator stormState={stormState} />
           </div>
         )}
+
+        {/* ADD THIS: Enemy Panel for GM */}
+
 
         {/* Combat Status */}
       <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow mt-4">
@@ -534,6 +627,12 @@ const handleGridClick = async (position: Position) => {
             </div>
           )}
         </div>
+          <EnemyPanel
+            enemies={tokens.filter(t => t.type === 'enemy')}
+            isGMView={true}
+            onRemoveEnemy={handleRemoveEnemy}
+            onEditHP={handleEditEnemyHP}
+          />
       </div>
 
       {/* Right Panel - Token Management + Battle Map */}
