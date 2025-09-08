@@ -1,4 +1,4 @@
-// HPSyncService.ts
+// HPSyncService.ts - Enhanced with Max HP Management
 
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -21,11 +21,14 @@ export class HPSyncService {
     const clampedHP = this.clamp(newHP, 0, maxHP);
 
     try {
+      // IMPORTANT: Only update currentHP, never touch maxHP
       await updateDoc(characterRef, {
         currentHP: clampedHP,
         updatedAt: serverTimestamp(),
       });
-    } catch {
+      console.log(`💚 setHP: Updated ${characterId} current HP to ${clampedHP}, max HP remains ${maxHP}`);
+    } catch (error) {
+      console.error(`❌ setHP: Failed to update character document for ${characterId}:`, error);
       // character doc may not exist yet; continue
     }
 
@@ -44,14 +47,81 @@ export class HPSyncService {
 
       if (playerTokens.length > 0) {
         const [tokenId] = playerTokens[0];
+        try {
+          // IMPORTANT: Only update token HP, never touch maxHp
+          await updateDoc(sessionRef, {
+            [`tokens.${tokenId}.hp`]: clampedHP,
+            updatedAt: serverTimestamp(),
+          });
+          console.log(`💚 setHP: Updated token ${tokenId} HP to ${clampedHP}, maxHp unchanged`);
+        } catch (error) {
+          console.error(`❌ setHP: Failed to update token HP for ${tokenId}:`, error);
+        }
+      }
+    }
+
+    return clampedHP;
+  }
+
+  // NEW: Set Max HP for a character and sync to tokens
+  static async setMaxHP(characterId: string, sessionId: string, newMaxHP: number): Promise<number> {
+    if (newMaxHP <= 0) {
+      throw new Error('Max HP must be greater than 0');
+    }
+
+    const characterRef = doc(db, 'characters', characterId);
+    const characterSnap = await getDoc(characterRef);
+    const cdata = (characterSnap.exists() ? (characterSnap.data() as AnyRecord) : {}) || {};
+    const currentHP = (cdata.currentHP ?? cdata.hp ?? 0) as number;
+
+    // If current HP is higher than new max HP, adjust current HP down
+    const adjustedCurrentHP = Math.min(currentHP, newMaxHP);
+
+    try {
+      await updateDoc(characterRef, {
+        maxHP: newMaxHP,
+        currentHP: adjustedCurrentHP, // Ensure current HP doesn't exceed new max
+        updatedAt: serverTimestamp(),
+      });
+    } catch {
+      // character doc may not exist yet; continue
+    }
+
+    // Update token maxHp and hp in battle session
+    const sessionRef = doc(db, 'battleSessions', sessionId);
+    const sessionSnap = await getDoc(sessionRef);
+    if (sessionSnap.exists()) {
+      const sdata = (sessionSnap.data() as AnyRecord) || {};
+      const tokensObj: AnyRecord = sdata.tokens ?? {};
+
+      const playerTokens = Object.entries(tokensObj).filter(
+        (entry): entry is [string, BattleToken] => {
+          const [, t] = entry as [string, any];
+          return t?.type === 'player' && typeof t?.characterId === 'string' && t.characterId === characterId;
+        }
+      );
+
+      if (playerTokens.length > 0) {
+        const [tokenId] = playerTokens[0];
         await updateDoc(sessionRef, {
-          [`tokens.${tokenId}.hp`]: clampedHP,
+          [`tokens.${tokenId}.maxHp`]: newMaxHP,
+          [`tokens.${tokenId}.hp`]: adjustedCurrentHP,
           updatedAt: serverTimestamp(),
         });
       }
     }
 
-    return clampedHP;
+    console.log(`⚡ Set ${characterId} Max HP to ${newMaxHP}, adjusted current HP to ${adjustedCurrentHP}`);
+    return newMaxHP;
+  }
+
+  // NEW: Get Max HP for a character
+  static async getMaxHP(characterId: string): Promise<number> {
+    const characterRef = doc(db, 'characters', characterId);
+    const snap = await getDoc(characterRef);
+    if (!snap.exists()) return 0;
+    const data = snap.data() as AnyRecord;
+    return (data.maxHP ?? data.maxHp ?? 0) as number;
   }
 
   static async damage(characterId: string, sessionId: string, amount: number): Promise<number> {
@@ -91,13 +161,15 @@ export class HPSyncService {
 
         const cdata = characterSnap.data() as AnyRecord;
         const hp = (cdata.currentHP ?? cdata.hp ?? 0) as number;
+        const maxHp = (cdata.maxHP ?? cdata.maxHp ?? 100) as number;
 
         await updateDoc(sessionRef, {
           [`tokens.${tokenId}.hp`]: hp,
+          [`tokens.${tokenId}.maxHp`]: maxHp,
           updatedAt: serverTimestamp(),
         });
       }
-      console.log('✅ All character HPs synced to tokens');
+      console.log('✅ All character HPs and Max HPs synced to tokens');
     } catch (error) {
       console.error('❌ Error syncing HPs:', error);
       throw error;
@@ -137,18 +209,14 @@ export class HPSyncService {
     const normalized = updates.map((u: any) => ({
       characterId: u.characterId as string,
       sessionId: u.sessionId as string,
-      newHP: (u.newHP ?? u.hp ?? u.updatedHP) as number,
+      newHP: (u.newHP ?? u.hp ?? 0) as number,
     }));
 
-    await Promise.all(
-      normalized.map(({ characterId, sessionId, newHP }) =>
-        this.setHP(characterId, sessionId, Number(newHP))
-      )
-    );
-  }
+    const promises = normalized.map(async ({ characterId, sessionId, newHP }) => {
+      return this.setHP(characterId, sessionId, newHP);
+    });
 
-  /** Alias with pluralized name expected by the hook. */
-  static async syncAllCharacterHPsToTokens(sessionId: string): Promise<void> {
-    return this.syncAllCharacterHPToTokens(sessionId);
+    await Promise.all(promises);
+    console.log(`✅ Batch updated HP for ${normalized.length} characters`);
   }
 }

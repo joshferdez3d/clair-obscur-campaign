@@ -21,6 +21,9 @@ import type { GMCombatAction as ServiceGMCombatAction } from '../services/firest
 import { EnemySelectionModal } from '../components/Combat/EnemySelectionModal';
 import type { EnemyData } from '../types';
 import { X } from 'lucide-react';
+import { HPSyncService } from '../services/HPSyncService';
+import { SimpleCharacterDisplay } from '../components/GM/SimpleCharacterDisplay';
+import { HPSettingsModal } from '../components/GM/HPSettingsModal';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -28,6 +31,8 @@ export function GMView() {
   const [showEnemyModal, setShowEnemyModal] = useState(false);
   const [selectedEnemyType, setSelectedEnemyType] = useState<EnemyData | null>(null);
   const [isPlacingEnemy, setIsPlacingEnemy] = useState(false);
+  const [openHPModal, setOpenHPModal] = useState<string | null>(null);
+
   // IMPORTANT: All hooks must be called at the top level, before any early returns
   const {
     session,
@@ -447,7 +452,7 @@ const handleGridClick = async (position: Position) => {
         </div>
       </div>
 
-      {/* Middle Panel - Character Health Management */}
+      {/* Middle Panel - Character Health Management - SIMPLIFIED */}
       <div className="w-96 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
         <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow">
           <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-4 flex items-center">
@@ -459,7 +464,7 @@ const handleGridClick = async (position: Position) => {
             <div className="mb-4 p-3 bg-red-900 border border-red-500 rounded-lg">
               <p className="text-red-200 text-sm">{gmHPControl.error}</p>
               <button 
-                onClick={gmHPControl.clearError}
+                onClick={() => gmHPControl.setError(null)}
                 className="mt-2 text-red-300 hover:text-red-100 text-xs underline"
               >
                 Dismiss
@@ -467,22 +472,54 @@ const handleGridClick = async (position: Position) => {
             </div>
           )}
 
-          {/* Single column layout (one below the other) */}
-          <div className="space-y-4">
+          {/* Simplified Character Displays */}
+          <div className="space-y-3">
             {players.map((player) => (
-              <GMHPController
+              <SimpleCharacterDisplay
                 key={player.id}
                 characterId={player.characterId || player.id}
                 characterName={player.name}
                 currentHP={player.hp || 0}
                 maxHP={player.maxHp || 100}
-                characterColor={player.color}
-                onHPChange={async (newHP) => {
-                  await gmHPControl.setHP(player.characterId || player.id, newHP);
-                }}
-                isLoading={gmHPControl.isLoading(player.characterId || player.id)}
+                isLoading={gmHPControl.isCharacterLoading(player.characterId || player.id)}
+                onOpenHPSettings={() => setOpenHPModal(player.characterId || player.id)}
               />
             ))}
+          </div>
+
+          {/* Utility Actions - Simplified */}
+          <div className="mt-6 pt-4 border-t border-clair-shadow-600">
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  try {
+                    await HPSyncService.syncAllCharacterHPToTokens(sessionId || 'test-session');
+                    console.log('✅ All HPs synchronized');
+                  } catch (err) {
+                    console.error('❌ Error syncing HPs:', err);
+                    gmHPControl.setError('Failed to sync HPs');
+                  }
+                }}
+                className="w-full px-3 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded text-sm font-medium transition-colors"
+              >
+                Sync All HP to Tokens
+              </button>
+              
+              <button
+                onClick={async () => {
+                  const playerIds = players.map(p => p.characterId || p.id);
+                  for (const playerId of playerIds) {
+                    const maxHP = await gmHPControl.getMaxHP(playerId);
+                    if (maxHP) {
+                      await gmHPControl.setHP(playerId, maxHP);
+                    }
+                  }
+                }}
+                className="w-full px-3 py-2 bg-green-700 hover:bg-green-800 text-white rounded text-sm font-medium transition-colors"
+              >
+                Full Heal All Players
+              </button>
+            </div>
           </div>
 
           {/* Storm warning if active */}
@@ -603,6 +640,25 @@ const handleGridClick = async (position: Position) => {
           </div>
         </div>
       </div>
+      {/* HP Settings Modals */}
+      {players.map((player) => (
+        <HPSettingsModal
+          key={`modal-${player.id}`}
+          isOpen={openHPModal === (player.characterId || player.id)}
+          characterId={player.characterId || player.id}
+          characterName={player.name}
+          currentHP={player.hp || 0}
+          maxHP={player.maxHp || 100}
+          isLoading={gmHPControl.isCharacterLoading(player.characterId || player.id)}
+          onClose={() => setOpenHPModal(null)}
+          onHPChange={async (newHP) => {
+            await gmHPControl.setHP(player.characterId || player.id, newHP);
+          }}
+          onMaxHPChange={async (newMaxHP) => {
+            await gmHPControl.setMaxHP(player.characterId || player.id, newMaxHP);
+          }}
+        />
+      ))}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-// useGMHPControl.ts - Custom hook for GM HP management with sync
+// useGMHPControl.ts - Enhanced with Max HP Management
 
 import { useState, useCallback } from 'react';
 import { HPSyncService } from '../services/HPSyncService';
@@ -9,7 +9,7 @@ interface UseGMHPControlProps {
 
 interface HPOperation {
   characterId: string;
-  type: 'damage' | 'heal' | 'set';
+  type: 'damage' | 'heal' | 'set' | 'setMax';
   amount: number;
   timestamp: Date;
 }
@@ -133,6 +133,38 @@ export function useGMHPControl({ sessionId }: UseGMHPControlProps) {
     }
   }, [sessionId, setCharacterLoading, addRecentOperation]);
 
+  // NEW: Set Max HP to a specific value
+  const setMaxHP = useCallback(async (characterId: string, targetMaxHP: number): Promise<number | null> => {
+    if (targetMaxHP <= 0) {
+      setError('Max HP must be greater than 0');
+      return null;
+    }
+
+    setCharacterLoading(characterId, true);
+    setError(null);
+
+    try {
+      const newMaxHP = await HPSyncService.setMaxHP(characterId, sessionId, targetMaxHP);
+      
+      addRecentOperation({
+        characterId,
+        type: 'setMax',
+        amount: targetMaxHP,
+        timestamp: new Date()
+      });
+
+      console.log(`🔧 Set ${characterId} Max HP to ${newMaxHP}`);
+      return newMaxHP;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to set Max HP';
+      setError(errorMessage);
+      console.error('Error setting Max HP:', err);
+      return null;
+    } finally {
+      setCharacterLoading(characterId, false);
+    }
+  }, [sessionId, setCharacterLoading, addRecentOperation]);
+
   // Get current HP for a character
   const getCurrentHP = useCallback(async (characterId: string) => {
     try {
@@ -141,6 +173,18 @@ export function useGMHPControl({ sessionId }: UseGMHPControlProps) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to get current HP';
       setError(errorMessage);
       console.error('Error getting current HP:', err);
+      return null;
+    }
+  }, []);
+
+  // NEW: Get Max HP for a character
+  const getMaxHP = useCallback(async (characterId: string) => {
+    try {
+      return await HPSyncService.getMaxHP(characterId);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to get Max HP';
+      setError(errorMessage);
+      console.error('Error getting Max HP:', err);
       return null;
     }
   }, []);
@@ -170,15 +214,14 @@ export function useGMHPControl({ sessionId }: UseGMHPControlProps) {
     characters.forEach(({ characterId }) => setCharacterLoading(characterId, true));
 
     try {
-    const promises = characters.map(async ({ characterId, damageAmount }) => {
-      const currentHP = await HPSyncService.getCurrentHP(characterId);
-      return {
-        characterId,
-        sessionId,
-        newHP: Math.max(0, currentHP - damageAmount) // ⬅️ was currentHP.current
-      };
-    });
-
+      const promises = characters.map(async ({ characterId, damageAmount }) => {
+        const currentHP = await HPSyncService.getCurrentHP(characterId);
+        return {
+          characterId,
+          sessionId,
+          newHP: Math.max(0, currentHP - damageAmount)
+        };
+      });
 
       const updates = await Promise.all(promises);
       await HPSyncService.batchUpdateHP(updates);
@@ -204,47 +247,77 @@ export function useGMHPControl({ sessionId }: UseGMHPControlProps) {
     }
   }, [sessionId, setCharacterLoading, addRecentOperation]);
 
-  // Emergency sync function
-  const syncAllHPs = useCallback(async (): Promise<void> => {
+  // Batch operations for AoE healing
+  const batchApplyHealing = useCallback(async (
+    characters: Array<{ characterId: string; healAmount: number }>
+  ): Promise<void> => {
     setError(null);
     
-    try {
-      await HPSyncService.syncAllCharacterHPsToTokens(sessionId);
-      console.log('✅ All HPs synchronized');
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to sync HPs';
-      setError(errorMessage);
-      console.error('Error syncing HPs:', err);
-    }
-  }, [sessionId]);
+    // Set loading for all characters
+    characters.forEach(({ characterId }) => setCharacterLoading(characterId, true));
 
-  // Clear error
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+    try {
+      const promises = characters.map(async ({ characterId, healAmount }) => {
+        const currentHP = await HPSyncService.getCurrentHP(characterId);
+        const maxHP = await HPSyncService.getMaxHP(characterId);
+        return {
+          characterId,
+          sessionId,
+          newHP: Math.min(maxHP, currentHP + healAmount)
+        };
+      });
+
+      const updates = await Promise.all(promises);
+      await HPSyncService.batchUpdateHP(updates);
+
+      // Add to recent operations
+      characters.forEach(({ characterId, healAmount }) => {
+        addRecentOperation({
+          characterId,
+          type: 'heal',
+          amount: healAmount,
+          timestamp: new Date()
+        });
+      });
+
+      console.log(`💚 Applied batch healing to ${characters.length} characters`);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to apply batch healing';
+      setError(errorMessage);
+      console.error('Error applying batch healing:', err);
+    } finally {
+      // Clear loading for all characters
+      characters.forEach(({ characterId }) => setCharacterLoading(characterId, false));
+    }
+  }, [sessionId, setCharacterLoading, addRecentOperation]);
 
   return {
-    // Core HP operations
+    // State
+    isLoading,
+    recentOperations,
+    error,
+    setError,
+
+    // HP Operations
     applyDamage,
     applyHealing,
     setHP,
     getCurrentHP,
-    
-    // Quick actions
+
+    // NEW: Max HP Operations
+    setMaxHP,
+    getMaxHP,
+
+    // Quick Actions
     fullHeal,
     halfHP,
     setUnconscious,
-    
-    // Batch operations
+
+    // Batch Operations
     batchApplyDamage,
-    
+    batchApplyHealing,
+
     // Utility
-    syncAllHPs,
-    clearError,
-    
-    // State
-    isLoading: (characterId: string) => isLoading.has(characterId),
-    recentOperations,
-    error
+    isCharacterLoading: (characterId: string) => isLoading.has(characterId),
   };
 }
