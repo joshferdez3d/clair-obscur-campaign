@@ -590,7 +590,7 @@ export class FirestoreService {
           }
         ],
         portraitUrl: '/tokens/maelle.png',
-        backgroundColor: '#4f46e5'
+        backgroundColor: '#3B82F6' // NEW: Royal blue (was '#6B46C1' purple)
       },
       {
         id: 'gustave',
@@ -660,7 +660,7 @@ export class FirestoreService {
       pendingActions: [],
       enemyHP: {},
       tokens: {
-        'token-maelle': { id: 'token-maelle', characterId: 'maelle', name: 'Maelle', position: { x: 2, y: 2 }, type: 'player', hp: 25, maxHp: 25, color: '#4f46e5' },
+        'token-maelle': { id: 'token-maelle', characterId: 'maelle', name: 'Maelle', position: { x: 2, y: 2 }, type: 'player', hp: 25, maxHp: 25, color: '#3B82F6'},
         'token-gustave': { id: 'token-gustave', characterId: 'gustave', name: 'Gustave', position: { x: 4, y: 2 }, type: 'player', hp: 30, maxHp: 30, color: '#dc2626' },
         'token-lune': { id: 'token-lune', characterId: 'lune', name: 'Lune', position: { x: 6, y: 2 }, type: 'player', hp: 22, maxHp: 22, color: '#7c3aed' },
         'token-sciel': { id: 'token-sciel', characterId: 'sciel', name: 'Sciel', position: { x: 8, y: 2 }, type: 'player', hp: 24, maxHp: 24, color: '#059669' }

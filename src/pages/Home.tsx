@@ -13,11 +13,11 @@ export function Home() {
   const getCharacterGradient = (id: string) => {
     switch (id) {
       case 'maelle':
-        return 'bg-gradient-to-br from-clair-mystical-500 to-clair-mystical-700 hover:from-clair-mystical-400 hover:to-clair-mystical-600';
+        return 'bg-gradient-to-br from-clair-royal-500 to-clair-royal-700 hover:from-clair-royal-400 hover:to-clair-royal-600'; // NEW: Royal blue
       case 'gustave':
         return 'bg-gradient-to-br from-red-700 to-red-900 hover:from-red-600 hover:to-red-800';
       case 'lune':
-        return 'bg-gradient-to-br from-clair-mystical-700 to-clair-mystical-900 hover:from-clair-mystical-600 hover:to-clair-mystical-800';
+        return 'bg-gradient-to-br from-clair-mystical-700 to-clair-mystical-900 hover:from-clair-mystical-600 hover:to-clair-mystical-800'; // Unchanged - keeping purple
       case 'sciel':
         return 'bg-gradient-to-br from-green-700 to-green-900 hover:from-green-600 hover:to-green-800';
       default:

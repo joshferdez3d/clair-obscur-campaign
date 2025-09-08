@@ -47,11 +47,11 @@ export function Token({
     
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
-        return '#6B46C1'; // Clair mystical purple
+        return '#3B82F6'; // NEW: Royal blue (was #6B46C1 purple)
       case 'gustave':
         return '#800020'; // Burgundy
       case 'lune':
-        return '#581C87'; // Deep purple
+        return '#581C87'; // Deep purple (unchanged)
       case 'sciel':
         return '#355E3B'; // Forest green
       default:
@@ -71,17 +71,18 @@ export function Token({
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
-        return 'border-clair-mystical-400';
+        return 'border-clair-royal-400'; // NEW: Royal blue border (was clair-mystical-400)
       case 'gustave':
         return 'border-red-500';
       case 'lune':
-        return 'border-clair-mystical-500';
+        return 'border-clair-mystical-500'; // Unchanged - keeping purple
       case 'sciel':
         return 'border-green-500';
       default:
         return 'border-clair-gold-400';
     }
   };
+
 
   const getHPPercentage = () => {
     if (!token.hp || !token.maxHp) return 100;

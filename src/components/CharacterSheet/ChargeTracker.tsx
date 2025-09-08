@@ -55,6 +55,13 @@ export function ChargeTracker({
           button: 'bg-clair-warning hover:bg-yellow-600',
           border: 'border-yellow-500'
         };
+      case 'royal':
+        return {
+          bg: 'bg-clair-royal-500',
+          text: 'text-clair-royal-500',
+          button: 'bg-clair-royal-500 hover:bg-clair-royal-600',
+          border: 'border-clair-royal-500'
+        };
       default:
         return {
           bg: 'bg-blue-500',

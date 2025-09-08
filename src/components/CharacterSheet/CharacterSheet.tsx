@@ -70,37 +70,42 @@ export function CharacterSheet({
     return portraitMap[name.toLowerCase()] || null;
   };
 
-  const getCharacterTheme = () => {
+    const getCharacterTheme = () => {
     switch (character.name.toLowerCase()) {
       case 'maelle':
         return {
-          gradient: 'bg-gradient-to-br from-clair-mystical-500 to-clair-mystical-700',
-          accent: 'clair-mystical-500',
-          ring: 'ring-clair-mystical-400'
+          gradient: 'bg-gradient-to-br from-clair-royal-500 to-clair-royal-700', // NEW: Royal blue
+          accent: 'clair-royal-400', // NEW: Royal blue accent
+          border: 'border-clair-royal-400', // NEW: Royal blue border
+          text: 'text-clair-royal-400' // NEW: Royal blue text
         };
       case 'gustave':
         return {
           gradient: 'bg-gradient-to-br from-red-700 to-red-900',
-          accent: 'red-700',
-          ring: 'ring-red-400'
+          accent: 'red-500',
+          border: 'border-red-500',
+          text: 'text-red-400'
         };
       case 'lune':
         return {
-          gradient: 'bg-gradient-to-br from-clair-mystical-700 to-clair-mystical-900',
-          accent: 'clair-mystical-700',
-          ring: 'ring-clair-mystical-400'
+          gradient: 'bg-gradient-to-br from-clair-mystical-700 to-clair-mystical-900', // Unchanged - keeping purple
+          accent: 'clair-mystical-400',
+          border: 'border-clair-mystical-500',
+          text: 'text-clair-mystical-400'
         };
       case 'sciel':
         return {
           gradient: 'bg-gradient-to-br from-green-700 to-green-900',
-          accent: 'green-700',
-          ring: 'ring-green-400'
+          accent: 'green-500',
+          border: 'border-green-500',
+          text: 'text-green-400'
         };
       default:
         return {
           gradient: 'bg-clair-gradient',
-          accent: 'clair-gold-500',
-          ring: 'ring-clair-gold-400'
+          accent: 'clair-gold-400',
+          border: 'border-clair-gold-600',
+          text: 'text-clair-gold-400'
         };
     }
   };

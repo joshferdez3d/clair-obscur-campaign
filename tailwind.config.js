@@ -1,3 +1,7 @@
+// ============================================================================
+// 1. TAILWIND CONFIG UPDATE (tailwind.config.js)
+// ============================================================================
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
@@ -32,7 +36,7 @@ export default {
             800: '#0F0F10',   // Near black
             900: '#000000',   // Pure black
           },
-          // Purple Accents (Magic/Mysticism)
+          // Purple Accents (Magic/Mysticism) - NOW FOR LUNE ONLY
           mystical: {
             50: '#F3E8FF',    // Very light purple
             100: '#E9D5FF',   // Light lavender
@@ -45,16 +49,29 @@ export default {
             800: '#3B1A78',   // Dark purple
             900: '#2E1065',   // Very dark purple
           },
-          // Character Colors
-          maelle: '#6B46C1',     // Royal Purple
+          // NEW: Royal Blue Theme (For Maelle)
+          royal: {
+            50: '#EFF6FF',    // Very light blue
+            100: '#DBEAFE',   // Light blue
+            200: '#BFDBFE',   // Light royal blue
+            300: '#93C5FD',   // Medium blue
+            400: '#60A5FA',   // Royal blue
+            500: '#3B82F6',   // Primary royal blue
+            600: '#2563EB',   // Deep royal blue
+            700: '#1D4ED8',   // Darker royal blue
+            800: '#1E40AF',   // Navy royal blue
+            900: '#1E3A8A',   // Very dark royal blue
+          },
+          // Character Colors - UPDATED MAELLE
+          maelle: '#3B82F6',     // Royal Blue (was purple)
           gustave: '#800020',    // Burgundy
-          lune: '#581C87',       // Plum
+          lune: '#581C87',       // Plum (keeping purple)
           sciel: '#355E3B',      // Forest Green
           // Status Colors
           danger: '#800020',     // Burgundy
           warning: '#B8860B',    // Antique Gold
           success: '#355E3B',    // Forest Green
-          info: '#6B46C1',       // Royal Purple
+          info: '#3B82F6',       // Royal Blue (was purple)
         }
       },
       fontFamily: {
@@ -66,17 +83,20 @@ export default {
       backgroundImage: {
         'clair-gradient': 'linear-gradient(135deg, #1C1C1E 0%, #2C2C2E 50%, #3A3A3C 100%)',
         'gold-gradient': 'linear-gradient(135deg, #D4AF37 0%, #B8860B 100%)',
-        'mystical-gradient': 'linear-gradient(135deg, #6B46C1 0%, #581C87 100%)',
+        'mystical-gradient': 'linear-gradient(135deg, #6B46C1 0%, #581C87 100%)', // Keeping for Lune
+        'royal-gradient': 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',    // NEW: For Maelle
         'shadow-gradient': 'linear-gradient(180deg, #000000 0%, #1C1C1E 100%)',
       },
       boxShadow: {
         'clair': '0 4px 20px rgba(212, 175, 55, 0.2)',
-        'mystical': '0 4px 20px rgba(107, 70, 193, 0.3)',
+        'mystical': '0 4px 20px rgba(107, 70, 193, 0.3)',     // Keeping for Lune
+        'royal': '0 4px 20px rgba(59, 130, 246, 0.3)',        // NEW: For Maelle
         'shadow': '0 8px 32px rgba(0, 0, 0, 0.6)',
       },
       borderColor: {
         'clair-gold': '#D4AF37',
-        'clair-mystical': '#6B46C1',
+        'clair-mystical': '#6B46C1',  // Keeping for Lune
+        'clair-royal': '#3B82F6',     // NEW: For Maelle
       }
     },
   },
