@@ -5,6 +5,7 @@ import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import type { Character, Ability, Position, BattleToken } from '../../types';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 
 interface GustaveCharacterSheetProps {
   character: Character;
@@ -58,6 +59,8 @@ export function GustaveCharacterSheet({
 }: GustaveCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = React.useState<string>('');
   const [acRoll, setACRoll] = React.useState<string>('');
+  const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
+
   const [selectedAction, setSelectedAction] = React.useState<{
     type: 'melee' | 'ranged' | 'ability';
     id: string;
@@ -136,6 +139,14 @@ export function GustaveCharacterSheet({
     // 2) Overcharge Burst -> create ONE AoE GM action
     if (selectedAction.id === 'overcharge_burst') {
         console.log('🚀 Starting Overcharge Burst handling...');
+
+        try {
+          // Trigger the ultimate video
+          await triggerUltimate('gustave', 'Overcharge Burst');
+        } catch (error) {
+          console.error('Failed to trigger ultimate video:', error);
+          // Continue with ultimate anyway
+        }
 
       // Build affected list: within 30 ft of Gustave OR within 5 ft of any turret
       const enemies = allTokens.filter((t) => t.type === 'enemy' && (t.hp || 0) > 0);

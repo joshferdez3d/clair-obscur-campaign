@@ -3,6 +3,7 @@ import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } 
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import type { Character } from '../../types/character';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 
 interface MaelleCharacterSheetProps {
   character: Character;
@@ -29,6 +30,8 @@ interface MaelleCharacterSheetProps {
   onAfterimageChange?: (stacks: number) => void;
   phantomStrikeAvailable?: boolean;
   onPhantomStrikeUse?: () => void;
+  sessionId?: string; // Add this line
+
 }
 
 export function MaelleCharacterSheet({
@@ -47,7 +50,9 @@ export function MaelleCharacterSheet({
   afterimageStacks = 0,
   onAfterimageChange,
   phantomStrikeAvailable = true,
-  onPhantomStrikeUse
+  onPhantomStrikeUse,
+  sessionId, // Add this line
+
 }: MaelleCharacterSheetProps) {
   
   const [selectedAction, setSelectedAction] = useState<{
@@ -61,6 +66,7 @@ export function MaelleCharacterSheet({
   } | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
+  const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
 
   // Calculate distance for range validation
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -105,7 +111,7 @@ export function MaelleCharacterSheet({
   };
 
   // Handle confirming action
-  const handleConfirmAction = () => {
+  const handleConfirmAction = async () => {  // Add async here
     if (!selectedAction) return;
 
     // Handle Phantom Strike (no targeting needed)
@@ -119,7 +125,19 @@ export function MaelleCharacterSheet({
         alert('No enemies within 50ft for Phantom Strike!');
         return;
       }
-
+    // ADD THIS SECTION HERE:
+      try {
+        // Trigger the ultimate video
+        await triggerUltimate('maelle', 'Phantom Strike');
+      } catch (error) {
+        console.error('Failed to trigger ultimate video:', error);
+        // Continue with ultimate anyway
+        // Use the ultimate
+        onPhantomStrikeUse?.();
+        
+        // Reset afterimage stacks (consumed by ultimate)
+        onAfterimageChange?.(0);
+      }
       // Use the ultimate
       onPhantomStrikeUse?.();
       

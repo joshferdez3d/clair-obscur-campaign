@@ -5,6 +5,7 @@ import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import type { Character, Position, BattleToken } from '../../types';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 
 interface LuneCharacterSheetProps {
   character: Character;
@@ -93,6 +94,8 @@ export function LuneCharacterSheet({
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [acRoll, setACRoll] = useState<string>('');
   const [elementRoll, setElementRoll] = useState<string>('');
+  const { triggerUltimate } = useUltimateVideo(sessionId);
+
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability';
     id: string;

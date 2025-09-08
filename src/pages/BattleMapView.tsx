@@ -1,5 +1,5 @@
 // src/pages/BattleMapView.tsx - Fixed duplicate variable declaration
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { BattleMap } from '../components/BattleMap/BattleMap';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
@@ -9,10 +9,13 @@ import { useBattleSession } from '../hooks/useBattleSession';
 import type { BattleToken } from '../types';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
 import { AVAILABLE_MAPS } from '../components/GM/MapSelector';
+import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
+import { useUltimateVideo } from '../hooks/useUltimateVideo';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const { currentEvent, clearUltimate, hasActiveUltimate } = useUltimateVideo(sessionId || 'test-session');
 
   // Use the combat hook to get real-time session data
   const {
@@ -52,6 +55,10 @@ export function BattleMapView() {
     if (t.characterId) characterNames[t.characterId] = t.name;
     characterNames[t.id] = t.name;
   });
+
+  const handleVideoClose = useCallback(() => {
+    clearUltimate();
+  }, [clearUltimate]);
 
   // Auto-refresh every 10 seconds as fallback (increased from 5s)
   useEffect(() => {
@@ -124,6 +131,15 @@ export function BattleMapView() {
 
   return (
     <div className="fixed inset-0 bg-clair-shadow-900 flex">
+      {/* Ultimate Video Popup - Highest Z-Index */}
+      {hasActiveUltimate && currentEvent && (
+        <UltimateVideoPopup
+          isOpen={true}
+          characterName={currentEvent.characterName}
+          onClose={handleVideoClose}
+          autoClose={true}
+        />
+      )}
       {/* Left Panel - Enemy Status (for players) */}
       <div className="w-72 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
         <div className="mb-4">

@@ -345,6 +345,8 @@ export function PlayerView() {
         onAfterimageChange={handleAfterimageChange}
         phantomStrikeAvailable={maelleAfterimage.afterimageState.phantomStrikeAvailable}
         onPhantomStrikeUse={handlePhantomStrikeUse}
+        sessionId={sessionId || 'test-session'}
+
       />
     );
   }

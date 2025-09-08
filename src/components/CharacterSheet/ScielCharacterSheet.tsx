@@ -8,6 +8,7 @@ import { useStormSystem } from '../../hooks/useStormSystem';
 import { StormService } from '../../services/StormService';
 import { StormIndicator } from '../Combat/StormIndicator';
 import type { Character, Position, BattleToken } from '../../types';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 
 interface ScielCharacterSheetProps {
   character: Character;
@@ -67,6 +68,8 @@ export function ScielCharacterSheet({
 }: ScielCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
+  const { triggerUltimate } = useUltimateVideo(sessionId);
+
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'bonus';
     id: string;
@@ -161,6 +164,8 @@ export function ScielCharacterSheet({
     }
 
     try {
+      await triggerUltimate('sciel', 'Crescendo of Fate');
+
       // Activate the storm system
       await StormService.activateStorm(sessionId, totalStacks);
       
