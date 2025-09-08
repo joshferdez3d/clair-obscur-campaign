@@ -2,15 +2,14 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getAuth, connectAuthEmulator } from 'firebase/auth';
 
-// Replace with your Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyC6ik2ATqgJA9lKRVaRdtnjYRbjhZvG_2w",
-  authDomain: "clair-obscur-campaign.firebaseapp.com",
-  projectId: "clair-obscur-campaign",
-  storageBucket: "clair-obscur-campaign.firebasestorage.app",
-  messagingSenderId: "947015340920",
-  appId: "1:947015340920:web:0102550b94effca5906e8d",
-  measurementId: "G-DQ5Z54NDPQ"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
