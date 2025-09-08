@@ -1,50 +1,68 @@
 // src/pages/PlayerView.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { CharacterSheet } from '../components/CharacterSheet/CharacterSheet';
 import { GustaveCharacterSheet } from '../components/CharacterSheet/GustaveCharacterSheet';
 import { LuneCharacterSheet } from '../components/CharacterSheet/LuneCharacterSheet';
 import { ScielCharacterSheet } from '../components/CharacterSheet/ScielCharacterSheet';
+import { MaelleCharacterSheet } from '../components/CharacterSheet/MaelleCharacterSheet';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { useCharacter } from '../hooks/useCharacter';
 import { useCombat } from '../hooks/useCombat';
-import type { Stance } from '../types';
+import type { Stance, BattleToken } from '../types';
+import { useMaelleAfterimage } from '../services/maelleAfterimageService';
+import { useFirestoreListener } from '../hooks/useFirestoreListener';
+import { FirestoreService } from '../services/firestoreService';
+
+// Add proper interface for session tokens
+interface SessionToken extends BattleToken {
+  characterId?: string;
+  position: { x: number; y: number };
+  type: 'player' | 'enemy' | 'npc';
+  hp: number;
+  maxHp: number;
+  ac?: number;
+}
 
 export function PlayerView() {
   const { characterId } = useParams<{ characterId: string }>();
+  const sessionId = 'test-session';
   const [hasActedThisTurn, setHasActedThisTurn] = useState(false);
-  const [hasChangedStance, setHasChangedStance] = useState(false);
   
   // Character-specific state
-  const [overchargePoints, setOverchargePoints] = useState(0); // Gustave-specific
-  const [elementalStains, setElementalStains] = useState<Array<'fire' | 'ice' | 'nature' | 'light'>>([]); // Lune-specific
-  const [foretellStacks, setForetellStacks] = useState<Record<string, number>>({}); // Sciel-specific
-  const [foretellChainCharged, setForetellChainCharged] = useState(false); // Sciel-specific
-  const [bonusActionCooldown, setBonusActionCooldown] = useState(0); // Sciel-specific
+  const [overchargePoints, setOverchargePoints] = useState(0);
+  const [elementalStains, setElementalStains] = useState<Array<'fire' | 'ice' | 'nature' | 'light'>>([]);
+  const [foretellStacks, setForetellStacks] = useState<Record<string, number>>({});
+  const [foretellChainCharged, setForetellChainCharged] = useState(false);
+  const [bonusActionCooldown, setBonusActionCooldown] = useState(0);
   
   const currentTurnRef = useRef<string>('');
+
+  // Use different session sources for different characters
+  const { session: firestoreSession } = useFirestoreListener(sessionId);
+  const maelleAfterimage = useMaelleAfterimage(sessionId);
 
   const {
     character,
     loading: characterLoading,
     error: characterError,
-    // REMOVED: changeHP - players can no longer modify their HP
     updateStance,
     changeCharges,
   } = useCharacter(characterId || '');
 
   const {
-    session,
+    session: combatSession,
     loading: combatLoading,
     error: combatError,
-    targetingMode,
     cancelTargeting,
     nextTurn,
     isPlayerTurn,
     isCombatActive,
     createAttackAction,
-    addToken, // for turret deployment
-  } = useCombat('test-session');
+    addToken,
+  } = useCombat(sessionId);
+
+  // Use the appropriate session based on character
+  const session = character?.name.toLowerCase() === 'maelle' ? firestoreSession : combatSession;
 
   // Reset turn flags when the turn changes TO this player
   useEffect(() => {
@@ -52,14 +70,11 @@ export function PlayerView() {
       const currentTurn = session.combatState.currentTurn;
       const myTurn = isPlayerTurn(characterId || '');
 
-      // Only reset if the actual turn changed (not just any combatState change)
       if (currentTurn !== currentTurnRef.current) {
         if (myTurn && currentTurn === characterId) {
           console.log('Turn changed TO this player, resetting flags');
           setHasActedThisTurn(false);
-          setHasChangedStance(false);
           
-          // Reduce Sciel's bonus action cooldown
           if (characterId === 'sciel' && bonusActionCooldown > 0) {
             setBonusActionCooldown(prev => Math.max(0, prev - 1));
           }
@@ -70,10 +85,64 @@ export function PlayerView() {
   }, [session?.combatState?.currentTurn, characterId, isPlayerTurn, bonusActionCooldown]);
 
   // ----- Handlers -----
-  const handleStanceChange = async (stance: Stance | 'stanceless') => {
-    // Your UX wants "stanceless" tap to toggle to 'offensive'
-    await updateStance(stance === 'stanceless' ? 'offensive' : stance);
-    setHasChangedStance(true);
+  const handleAfterimageChange = async (newStacks: number) => {
+    await maelleAfterimage.updateStacks(newStacks);
+  };
+
+  const handlePhantomStrikeUse = async () => {
+    // Get available enemies for Maelle
+    const tokensArray: SessionToken[] = session?.tokens ? Object.values(session.tokens) as SessionToken[] : [];
+    const playerToken = tokensArray.find(t => t.characterId === characterId);
+    const playerPosition = playerToken?.position || { x: 0, y: 0 };
+    
+    const availableEnemies = tokensArray
+      .filter(t => t.type === 'enemy')
+      .map(t => ({
+        id: t.id,
+        name: t.name,
+        position: t.position,
+        hp: t.hp || 20,
+        maxHp: t.maxHp || 20,
+        ac: t.ac || 13,
+      }));
+
+    const enemiesInRange = availableEnemies.filter(enemy => {
+      const dx = Math.abs(playerPosition.x - enemy.position.x);
+      const dy = Math.abs(playerPosition.y - enemy.position.y);
+      const distance = Math.max(dx, dy) * 5;
+      return distance <= 50;
+    });
+    
+    if (enemiesInRange.length === 0) {
+      alert('No enemies within 50ft for Phantom Strike!');
+      return;
+    }
+
+    // Create AoE action using your existing FirestoreService method
+    try {
+      const targetIds = enemiesInRange.map(e => e.id);
+      const targetNames = enemiesInRange.map(e => e.name);
+      
+      await FirestoreService.createAoEAction(sessionId, {
+        playerId: characterId!,
+        abilityName: 'Phantom Strike',
+        targetIds,
+        targetNames,
+        center: playerPosition,
+        radius: 50,
+        acRoll: 999 // Auto-hit ultimate
+      });
+      
+      // Mark as used and update afterimage stacks
+      await maelleAfterimage.usePhantomStrike(enemiesInRange.length);
+      
+      // Mark as acted
+      setHasActedThisTurn(true);
+      
+      console.log(`Phantom Strike will hit ${enemiesInRange.length} enemies:`, targetNames);
+    } catch (error) {
+      console.error('Error creating Phantom Strike AoE action:', error);
+    }
   };
 
   const handleAbilityPointsChange = async (delta: number) => {
@@ -85,9 +154,7 @@ export function PlayerView() {
     setOverchargePoints(prev => Math.min(Math.max(0, prev + delta), 3));
   };
 
-  // No-op HP change handler - players cannot modify HP
   const handleHPChange = async (delta: number) => {
-    // Players cannot modify their HP - this is handled by the DM
     console.log(`Player attempted to change HP by ${delta}, but this is disabled`);
     return;
   };
@@ -141,25 +208,24 @@ export function PlayerView() {
     );
   }
 
-  // ----- Derived session data (component scope, NOT inside a handler) -----
-  const tokensArray = session ? Object.values(session.tokens) : [];
+  // ----- Derived session data with proper typing -----
+  const tokensArray: SessionToken[] = session?.tokens ? Object.values(session.tokens) as SessionToken[] : [];
   const playerToken = tokensArray.find(t => t.characterId === characterId);
-  const allTokens = tokensArray;
+  const allTokens = tokensArray as BattleToken[]; // Cast for existing components
 
   const myTurn = isPlayerTurn(characterId || '');
   const combatActive = isCombatActive();
 
-  const availableEnemies =
-    tokensArray
-      .filter(t => t.type === 'enemy')
-      .map(t => ({
-        id: t.id,
-        name: t.name,
-        position: t.position,
-        hp: t.hp || 20,
-        maxHp: t.maxHp || 20,
-        ac: t.ac || 13,
-      }));
+  const availableEnemies = tokensArray
+    .filter(t => t.type === 'enemy')
+    .map(t => ({
+      id: t.id,
+      name: t.name,
+      position: t.position,
+      hp: t.hp || 20,
+      maxHp: t.maxHp || 20,
+      ac: t.ac || 13,
+    }));
 
   // Create attack (and manage points) from PlayerView
   const handleTargetSelect = async (
@@ -187,16 +253,13 @@ export function PlayerView() {
       return;
     }
 
-    // Handle bonus action for Sciel
     if (targetId === 'bonus_action_used') {
-      setHasActedThisTurn(true); // Mark that we've used our bonus action
+      setHasActedThisTurn(true);
       return;
     }
 
-    // Handle heal notification for Crescendo of Fate
     if (targetId === 'crescendo_heal') {
       console.log('Heal action detected - sending to GM popup');
-      // This will create a GM popup for healing
       try {
         await createAttackAction(characterId, 'crescendo_heal', playerToken.position, acRoll, 0);
       } catch (error) {
@@ -205,7 +268,6 @@ export function PlayerView() {
       return;
     }
 
-    // AoE ultimate trigger (used by your UI shortcut)
     if (targetId === 'aoe_ultimate') {
       try {
         await createAttackAction(characterId, 'aoe_ultimate', playerToken.position, 999, 30);
@@ -214,6 +276,17 @@ export function PlayerView() {
         console.error('Error creating AoE action:', error);
       }
       return;
+    }
+
+    // Handle Maelle's Afterimage system
+    if (character.name.toLowerCase() === 'maelle' && attackType === 'basic') {
+      const enemy = availableEnemies.find(e => e.id === targetId);
+      const hit = acRoll >= (enemy?.ac || 10);
+      
+      if (hit) {
+        const wasCritical = acRoll === 20;
+        await maelleAfterimage.onBasicAttackHit(wasCritical);
+      }
     }
 
     const targetEnemy = availableEnemies.find(e => e.id === targetId);
@@ -239,8 +312,11 @@ export function PlayerView() {
 
   const handleEndTurn = async () => {
     setHasActedThisTurn(false);
-    setHasChangedStance(false);
     await nextTurn();
+  };
+
+  const handleCancelTargeting = () => {
+    cancelTargeting();
   };
 
   // Debug trace
@@ -248,12 +324,36 @@ export function PlayerView() {
     `PlayerView ${characterId}: myTurn=${myTurn}, hasActed=${hasActedThisTurn}, overcharge=${overchargePoints}, stains=${elementalStains.length}, stacks=${Object.keys(foretellStacks).length}, bonusCD=${bonusActionCooldown}, currentTurn=${session?.combatState?.currentTurn}`
   );
 
-  // ----- Render Character Sheets (WITH no-op HP controls) -----
+  // ----- Render Character Sheets -----
+  
+  // Maelle gets special treatment with the new system
+  if (character.name.toLowerCase() === 'maelle') {
+    return (
+      <MaelleCharacterSheet
+        character={character}
+        onHPChange={handleHPChange}
+        onAbilityPointsChange={handleAbilityPointsChange}
+        isMyTurn={myTurn}
+        combatActive={combatActive}
+        availableEnemies={availableEnemies}
+        playerPosition={playerToken?.position || { x: 0, y: 0 }}
+        onTargetSelect={handleTargetSelect}
+        onEndTurn={handleEndTurn}
+        onCancelTargeting={handleCancelTargeting}
+        hasActedThisTurn={hasActedThisTurn}
+        afterimageStacks={maelleAfterimage.afterimageState.afterimageStacks}
+        onAfterimageChange={handleAfterimageChange}
+        phantomStrikeAvailable={maelleAfterimage.afterimageState.phantomStrikeAvailable}
+        onPhantomStrikeUse={handlePhantomStrikeUse}
+      />
+    );
+  }
+
   if (character.name.toLowerCase() === 'gustave') {
     return (
       <GustaveCharacterSheet
         character={character}
-        onHPChange={handleHPChange} // No-op function - players cannot change HP
+        onHPChange={handleHPChange}
         onAbilityPointsChange={handleAbilityPointsChange}
         onOverchargePointsChange={handleOverchargePointsChange}
         onAbilityUse={() => {}}
@@ -262,7 +362,7 @@ export function PlayerView() {
         combatActive={combatActive}
         availableEnemies={availableEnemies}
         playerPosition={playerToken?.position || { x: 0, y: 0 }}
-        sessionId={session?.id || 'test-session'}
+        sessionId={session?.id || sessionId}
         allTokens={allTokens}
         onTargetSelect={handleTargetSelect}
         onTurretDeploy={handleTurretDeploy}
@@ -278,14 +378,14 @@ export function PlayerView() {
     return (
       <LuneCharacterSheet
         character={character}
-        onHPChange={handleHPChange} // No-op function - players cannot change HP
+        onHPChange={handleHPChange}
         onAbilityUse={() => {}}
         isMyTurn={myTurn}
         isLoading={false}
         combatActive={combatActive}
         availableEnemies={availableEnemies}
         playerPosition={playerToken?.position || { x: 0, y: 0 }}
-        sessionId={session?.id || 'test-session'}
+        sessionId={session?.id || sessionId}
         allTokens={allTokens}
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
@@ -301,7 +401,7 @@ export function PlayerView() {
     return (
       <ScielCharacterSheet
         character={character}
-        onHPChange={handleHPChange} // No-op function - players cannot change HP
+        onHPChange={handleHPChange}
         onAbilityPointsChange={handleAbilityPointsChange}
         onAbilityUse={() => {}}
         isMyTurn={myTurn}
@@ -309,7 +409,7 @@ export function PlayerView() {
         combatActive={combatActive}
         availableEnemies={availableEnemies}
         playerPosition={playerToken?.position || { x: 0, y: 0 }}
-        sessionId={session?.id || 'test-session'}
+        sessionId={session?.id || sessionId}
         allTokens={allTokens}
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
@@ -325,33 +425,13 @@ export function PlayerView() {
     );
   }
 
-  // Default for other characters (e.g., Maelle)
-  const canSwitchStance =
-    character.name.toLowerCase() === 'maelle' &&
-    myTurn &&
-    combatActive &&
-    hasActedThisTurn &&
-    !hasChangedStance;
-
+  // Fallback for any other characters
   return (
-    <CharacterSheet
-      character={character}
-      onHPChange={handleHPChange} // No-op function - players cannot change HP
-      onStanceChange={handleStanceChange}
-      onAbilityPointsChange={handleAbilityPointsChange}
-      onAbilityUse={() => {}}
-      isMyTurn={myTurn}
-      isLoading={false}
-      combatActive={combatActive}
-      targetingMode={targetingMode}
-      availableEnemies={availableEnemies}
-      playerPosition={playerToken?.position || { x: 0, y: 0 }}
-      onTargetSelect={handleTargetSelect}
-      onEndTurn={handleEndTurn}
-      onCancelTargeting={cancelTargeting}
-      hasActedThisTurn={hasActedThisTurn}
-      canSwitchStance={canSwitchStance}
-      hasChangedStance={hasChangedStance}
-    />
+    <div className="min-h-screen bg-clair-shadow-900 flex items-center justify-center">
+      <div className="text-white text-center">
+        <h1 className="text-2xl font-bold mb-4">Character Sheet</h1>
+        <p>Character sheet for: {character.name}</p>
+      </div>
+    </div>
   );
 }

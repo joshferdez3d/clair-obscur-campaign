@@ -448,6 +448,7 @@ export class FirestoreService {
       'combatState.phase': 'ended',
       'combatState.currentTurn': '',
       pendingActions: [],
+      'tokens.token-maelle.phantomStrikeUsed': false,
       updatedAt: serverTimestamp()
     });
   }
