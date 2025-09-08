@@ -128,13 +128,10 @@ export interface Character {
 
 export interface BattleMap {
   id: string;
-  name: string;
-  gridSize: {
-    width: number;
-    height: number;
-  };
+  name?: string;
   backgroundImage?: string;
-  gridVisible: boolean;
+  gridSize: { width: number; height: number };
+  gridVisible?: boolean;
 }
 
 // Combat system types
@@ -171,6 +168,7 @@ export interface BattleSession {
   battleState: BattleState;
   tokens: { [tokenId: string]: BattleToken };
   mapId: string;
+  currentMap?: MapConfig
   createdAt: Date;
   updatedAt: Date;
   // Enhanced combat fields
@@ -181,6 +179,14 @@ export interface BattleSession {
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
+}
+
+export interface MapConfig {
+  id: string;
+  name: string;
+  backgroundImage: string;
+  gridSize: { width: number; height: number };
+  gridVisible: boolean;
 }
 
 export interface UIState {

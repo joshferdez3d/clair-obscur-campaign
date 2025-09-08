@@ -66,10 +66,16 @@ export function BattleMap({
         const r = containerRef.current.getBoundingClientRect();
         setContainerSize({ width: r.width, height: r.height });
       } else {
-        setContainerSize({
-          width: window.innerWidth,
-          height: window.innerHeight,
-        });
+        // For player mode, use available space instead of full window
+        if (containerRef.current) {
+          const r = containerRef.current.getBoundingClientRect();
+          setContainerSize({ width: r.width, height: r.height });
+        } else {
+          setContainerSize({
+            width: window.innerWidth,
+            height: window.innerHeight,
+          });
+        }
       }
     };
     update();
@@ -224,20 +230,17 @@ export function BattleMap({
       ref={containerRef}
       className={
         mode === 'player'
-          ? 'fixed inset-0 bg-clair-shadow-900 flex items-center justify-center overflow-hidden'
+          ? 'relative w-full h-full bg-clair-shadow-900 flex flex-col overflow-hidden'
           : 'relative w-full h-full bg-clair-shadow-900 overflow-hidden'
       }
       style={mode === 'gm' ? { minHeight: 300 } : undefined}
     >
-      {/* Top status bar (player view only) */}
-      {mode === 'player' && (
-        <div className="absolute top-2 left-2 right-2 flex justify-between items-center z-30">
-          {/* Map Info */}
+      {/* Top status bar */}
+      <div className="flex-shrink-0 p-2">
+        <div className="flex justify-between items-center">
+          {/* Map Info - Simplified, removed duplicate grid info */}
           <div className="bg-clair-shadow-800/95 backdrop-blur-sm border border-clair-gold-600 text-clair-gold-50 px-4 py-2 rounded-lg shadow-shadow">
             <h2 className="font-display text-lg font-bold text-clair-gold-400">{map.name ?? 'Battle Map'}</h2>
-            <p className="font-sans text-xs text-clair-gold-300">
-              {map.gridSize.width} × {map.gridSize.height} grid • A-{String.fromCharCode(64 + map.gridSize.width)} × 1-{map.gridSize.height}
-            </p>
           </div>
 
           {/* Current Turn */}
@@ -258,80 +261,73 @@ export function BattleMap({
             </div>
           )}
         </div>
-      )}
-
-      {/* Board container */}
-      <div
-        className="relative border-4 border-clair-gold-500 shadow-shadow"
-        style={{ width: `${boardWidth}px`, height: `${boardHeight}px` }}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {/* Background image (map) */}
-        <div
-          className="absolute"
-          style={{
-            left: coordinatePadding,
-            top: coordinatePadding,
-            width: totalWidth,
-            height: totalHeight,
-          }}
-        >
-          {map.backgroundImage ? (
-            <img
-              src={map.backgroundImage}
-              alt={map.name ?? 'Battle map background'}
-              className="w-full h-full object-cover select-none pointer-events-none"
-              draggable={false}
-            />
-          ) : (
-            <div className="w-full h-full bg-slate-800" />
-          )}
-          {/* Optional overlay tint */}
-          <div className="absolute inset-0 bg-black/10 pointer-events-none" />
-        </div>
-
-        {/* Grid & coordinates */}
-        <Grid
-          width={map.gridSize.width}
-          height={map.gridSize.height}
-          gridSize={gridSize}
-          showGrid={!!map.gridVisible}
-          showCoordinates={true}
-          onGridClick={handleGridClick}
-          onGridHover={handleGridHover}
-          getCellClass={getGridCellClass}
-          hoveredPosition={hoveredPosition}
-        />
-
-        {/* Tokens */}
-        {tokens.map((token) => (
-          <Token
-            key={token.id}
-            token={token}
-            gridSize={gridSize}
-            isSelected={selectedToken?.id === token.id}
-            isDragging={draggedToken?.id === token.id}
-            isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
-            isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
-            onClick={handleTokenClick}
-            onDragStart={handleTokenDragStart}
-            onDragEnd={handleTokenDragEnd}
-            coordinateOffset={{ x: coordinatePadding, y: coordinatePadding }}
-          />
-        ))}
       </div>
 
-      {/* Bottom instructions (player view only) */}
-      {mode === 'player' && (
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30">
-          <div className="bg-clair-shadow-800/95 backdrop-blur-sm border border-clair-gold-600 text-clair-gold-50 px-6 py-2 rounded-lg shadow-shadow">
-            <p className="font-sans text-sm text-center text-clair-gold-300">
-              Use chess notation to call out positions • e.g. “Move to C4” or “Attack enemy at F7”
-            </p>
+      {/* Board container - flex-1 to take remaining space */}
+      <div className="flex-1 flex items-center justify-center p-2">
+        <div
+          className="relative"
+          style={{ width: `${boardWidth}px`, height: `${boardHeight}px` }}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          {/* Background image (map) */}
+          <div
+            className="absolute"
+            style={{
+              left: coordinatePadding,
+              top: coordinatePadding,
+              width: totalWidth,
+              height: totalHeight,
+            }}
+          >
+            {map.backgroundImage ? (
+              <img
+                src={map.backgroundImage}
+                alt={map.name ?? 'Battle map background'}
+                className="w-full h-full object-cover select-none pointer-events-none"
+                draggable={false}
+              />
+            ) : (
+              <div className="w-full h-full bg-slate-800" />
+            )}
+            {/* Optional overlay tint */}
+            <div className="absolute inset-0 bg-black/10 pointer-events-none" />
           </div>
+
+          {/* Grid & coordinates */}
+          <Grid
+            width={map.gridSize.width}
+            height={map.gridSize.height}
+            gridSize={gridSize}
+            showGrid={!!map.gridVisible}
+            showCoordinates={true}
+            onGridClick={handleGridClick}
+            onGridHover={handleGridHover}
+            getCellClass={getGridCellClass}
+            hoveredPosition={hoveredPosition}
+          />
+
+          
+
+          {/* Tokens */}
+          {tokens.map((token) => (
+            <Token
+              key={token.id}
+              token={token}
+              gridSize={gridSize}
+              isSelected={selectedToken?.id === token.id}
+              isDragging={draggedToken?.id === token.id}
+              isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
+              isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
+              onClick={handleTokenClick}
+              onDragStart={handleTokenDragStart}
+              onDragEnd={handleTokenDragEnd}
+              coordinateOffset={{ x: coordinatePadding, y: coordinatePadding }}
+            />
+          ))}
         </div>
-      )}
+      </div>
     </div>
   );
 }

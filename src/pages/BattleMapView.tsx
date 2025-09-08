@@ -8,6 +8,7 @@ import { useStormSystem } from '../hooks/useStormSystem';
 import { useBattleSession } from '../hooks/useBattleSession';
 import type { BattleToken } from '../types';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
+import { AVAILABLE_MAPS } from '../components/GM/MapSelector';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -109,6 +110,17 @@ export function BattleMapView() {
   // Get current turn information
   const currentTurn = currentSession.combatState?.currentTurn;
   // REMOVED: Duplicate combatActive declaration - already declared above
+  const getCurrentMap = () => {
+    if (currentSession?.currentMap) {
+      return currentSession.currentMap;
+    }
+
+    return AVAILABLE_MAPS[0];
+
+  }
+
+  const currentMap = getCurrentMap();
+
 
   return (
     <div className="fixed inset-0 bg-clair-shadow-900 flex">
@@ -163,7 +175,7 @@ export function BattleMapView() {
             {/* Left side - Session info */}
             <div className="flex items-center space-x-4">
               <div className="text-clair-gold-300 text-sm font-bold">
-                The Docks of Lumière
+                The Landing
               </div>
               {combatActive && currentTurn && (
                 <div className="text-green-400 text-sm">
@@ -244,13 +256,7 @@ export function BattleMapView() {
         <div className="absolute inset-0 pt-12 z-0">
           <BattleMap
             mode="player"
-            map={{
-              id: currentSession.id,
-              name: "The Docks of Lumière",
-              backgroundImage: "/maps/BattleMap_Landing.jpg",
-              gridSize: { width: 20, height: 15 },
-              gridVisible: true
-            }}
+            map={currentMap} // Use dynamic map instead of hardcoded values
             tokens={battleTokens}
             isGM={false}
             currentTurn={currentTurn}
@@ -269,22 +275,6 @@ export function BattleMapView() {
           />
         </div>
 
-        {/* REMOVED: Grid Reference Helper - Bottom overlay */}
-        {/* Chess notation helper removed per user request */}
-
-        {/* Debug Info (only in development) - Fixed positioning */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="absolute bottom-16 left-2 bg-black bg-opacity-75 text-white p-2 rounded text-xs z-50 max-w-xs">
-            <div className="font-bold mb-1">Debug Info:</div>
-            <div>Session: {sessionId}</div>
-            <div>Tokens: {battleTokens.length}</div>
-            <div>Combat: {combatActive ? 'Active' : 'Inactive'}</div>
-            <div>Turn: {currentTurn || 'None'}</div>
-            <div>Connected: {isConnected ? 'Yes' : 'No'}</div>
-            <div>Storm: {isStormActive ? `Active (${stormState?.currentTurn}/5)` : 'Inactive'}</div>
-            <div>Last Render: {new Date().toLocaleTimeString()}</div>
-          </div>
-        )}
       </div>
     </div>
   );

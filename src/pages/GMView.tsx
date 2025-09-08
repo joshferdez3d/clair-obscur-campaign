@@ -26,6 +26,7 @@ import { SimpleCharacterDisplay } from '../components/GM/SimpleCharacterDisplay'
 import { HPSettingsModal } from '../components/GM/HPSettingsModal';
 import { ResetButton } from '../components/GM/ResetButton';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
+import { MapSelector, AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -35,6 +36,7 @@ export function GMView() {
   const [isPlacingEnemy, setIsPlacingEnemy] = useState(false);
   const [openHPModal, setOpenHPModal] = useState<string | null>(null);
   const [turretAttacksTriggered, setTurretAttacksTriggered] = useState<Set<string>>(new Set());
+  const [currentMap, setCurrentMap] = useState<MapConfig>(AVAILABLE_MAPS[0]); // Default to first map
 
 
   // IMPORTANT: All hooks must be called at the top level, before any early returns
@@ -149,6 +151,30 @@ export function GMView() {
       console.error('Error applying damage:', e);
     }
   };
+
+  const handleMapChange = async (map: MapConfig) => {
+  if (!sessionId) return;
+  
+  try {
+    // Update local state immediately for responsive UI
+    setCurrentMap(map);
+    
+    // Update session in Firestore
+    await import('../services/firestoreService').then(({ FirestoreService }) =>
+      FirestoreService.updateBattleSession(sessionId, {
+        currentMap: map,
+        updatedAt: new Date()
+      })
+    );
+    
+    console.log(`Switched to map: ${map.name}`);
+  } catch (error) {
+    console.error('Failed to switch map:', error);
+    // Revert local state on error
+    setCurrentMap(currentMap);
+  }
+};
+
 
   const handleRemoveEnemy = async (enemyId: string) => {
     try {
@@ -698,7 +724,13 @@ const handleGridClick = async (position: Position) => {
               </div>
             </div>
           </div>
-            
+            <div className="flex-1 max-w-sm">
+                <MapSelector
+                  currentMapId={currentMap.id}
+                  onMapChange={handleMapChange}
+                  disabled={isPlacingEnemy}
+                />
+              </div>
             {/* Show active turrets if any */}
             {activeTurrets.length > 0 && (
               <div className="mt-3 p-3 bg-red-800/30 rounded border border-red-500">
@@ -728,7 +760,7 @@ const handleGridClick = async (position: Position) => {
           <div className="bg-clair-shadow-800 border border-clair-gold-600 rounded-lg p-4 h-full">
             <BattleMap
               mode="gm"
-              map={map}
+              map={currentMap} // Use the selected map instead of hardcoded map
               tokens={tokens}
               currentTurn={combatState.currentTurn}
               combatActive={combatActive}
