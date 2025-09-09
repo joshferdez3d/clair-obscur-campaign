@@ -1,3 +1,34 @@
+// src/types/index.ts - Complete and corrected type definitions
+
+// Basic interfaces
+export interface Position {
+  x: number;
+  y: number;
+}
+
+export interface Stats {
+  str: number;
+  dex: number;
+  con: number;
+  int: number;
+  wis: number;
+  cha: number;
+}
+
+export interface Ability {
+  id: string;
+  name: string;
+  description: string;
+  type: 'action' | 'bonus_action' | 'reaction' | 'passive';
+  damage?: string;
+  effect?: string;
+  range?: string;
+  cooldown?: number;
+  costsCharges?: number;
+}
+
+export type Stance = 'offensive' | 'defensive' | 'agile';
+
 // Enhanced BattleToken interface to include AC
 export interface BattleToken {
   id: string;
@@ -58,7 +89,7 @@ export interface CombatTargeting {
   sourcePosition?: Position;
 }
 
-// Enhanced combat action with AC rolls and GM popup support
+// Base combat action interface
 export interface CombatAction {
   id: string;
   type: 'move' | 'attack' | 'ability' | 'end_turn';
@@ -81,33 +112,88 @@ export interface CombatAction {
   damageApplied?: boolean;
 }
 
-// The rest of your existing types remain the same...
-export interface Stats {
-  str: number;
-  dex: number;
-  con: number;
-  int: number;
-  wis: number;
-  cha: number;
+// Enhanced GM combat action interface for ultimate actions
+export interface GMCombatAction extends CombatAction {
+  // Legacy single-target
+  targetId?: string;
+  targetName?: string;
+
+  // AoE support
+  targetIds?: string[];
+  targetNames?: string[];
+
+  // General action properties
+  playerName?: string;
+  abilityName?: string;
+  hit?: boolean;
+  needsDamageInput?: boolean;
+  damageApplied?: boolean;
+
+  // Ultimate-specific properties
+  ultimateType?: string; // 'elemental_genesis', etc.
+  element?: 'fire' | 'ice' | 'nature' | 'light';
+  effectName?: string;
+  description?: string;
+  needsGMInteraction?: boolean;
+
+  // Element-specific data
+  healingTargets?: Array<{
+    id: string;
+    name: string;
+    currentHP: number;
+    maxHP: number;
+    position: { x: number; y: number };
+  }>;
+  
+  affectedSquares?: Array<{ x: number; y: number }>;
+  affectedTokens?: string[];
+  
+  // Fire terrain
+  terrainCenter?: { x: number; y: number };
+  
+  // Ice wall
+  wallType?: 'row' | 'column';
+  wallIndex?: number;
+  wallSquares?: Array<{ x: number; y: number }>;
+  
+  // Light blind
+  blindedSquares?: Array<{ x: number; y: number }>;
+
+  // Required properties
+  sourcePosition: Position;
+  range: number;
+  timestamp: Date;
 }
 
-export interface Ability {
+// Fire terrain zone data
+export interface FireTerrainZone {
   id: string;
-  name: string;
-  description: string;
-  type: 'action' | 'bonus_action' | 'reaction' | 'passive';
-  damage?: string;
-  effect?: string;
-  range?: string;
-  cooldown?: number;
-  costsCharges?: number;
+  center: { x: number; y: number };
+  radius: number;
+  affectedSquares: Array<{ x: number; y: number }>;
+  damagePerTurn: number;
+  createdBy: string;
+  createdAt: number;
 }
 
-export type Stance = 'offensive' | 'defensive' | 'agile';
+// Ice wall data
+export interface IceWall {
+  id: string;
+  type: 'row' | 'column';
+  index: number;
+  squares: Array<{ x: number; y: number }>;
+  createdBy: string;
+  createdAt: number;
+}
 
-export interface Position {
-  x: number;
-  y: number;
+// Light blind effect data
+export interface LightBlindEffect {
+  id: string;
+  affectedTokens: string[];
+  affectedSquares: Array<{ x: number; y: number }>;
+  duration: number;
+  createdBy: string;
+  createdAt: number;
 }
 
 export interface Character {
@@ -173,12 +259,17 @@ export interface BattleSession {
   updatedAt: Date;
   // Enhanced combat fields
   combatState?: CombatState;
-  pendingActions?: CombatAction[];
+  pendingActions?: GMCombatAction[]; // Updated to use GMCombatAction
   enemyHP?: { [enemyId: string]: { current: number, max: number } };
   enemyData?: { [enemyId: string]: EnemyData }; // Store full enemy stat blocks
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
+  
+  // NEW: Terrain effects from Elemental Genesis
+  fireTerrainZones?: FireTerrainZone[];
+  iceWalls?: IceWall[];
+  lightBlindEffects?: LightBlindEffect[];
 }
 
 export interface MapConfig {
@@ -222,6 +313,7 @@ export interface CharacterDoc {
   updatedAt: any;
 }
 
+// Enhanced BattleSessionDoc to include terrain effects
 export interface BattleSessionDoc {
   name: string;
   characters: string[];
@@ -231,13 +323,21 @@ export interface BattleSessionDoc {
   createdAt: any;
   updatedAt: any;
   combatState?: CombatState;
-  pendingActions?: CombatAction[];
+  pendingActions?: GMCombatAction[]; // Updated to use GMCombatAction
   enemyHP?: { [enemyId: string]: { current: number, max: number } };
-  enemyData?: { [enemyId: string]: EnemyData }; // Store full enemy stat blocks
+  enemyData?: { [enemyId: string]: EnemyData };
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
+  
+  // NEW: Terrain effects from Elemental Genesis
+  fireTerrainZones?: FireTerrainZone[];
+  iceWalls?: IceWall[];
+  lightBlindEffects?: LightBlindEffect[];
 }
+
+// Elemental stain type
+export type ElementalStain = 'fire' | 'ice' | 'nature' | 'light';
 
 // Character-specific interfaces
 export interface MaelleCharacter extends Character {
@@ -255,13 +355,9 @@ export interface GustaveCharacter extends Character {
 export interface LuneCharacter extends Character {
   charges: number;
   maxCharges: number;
-  activeStains: {
-    fire: number;
-    ice: number;
-    nature: number;
-    light: number;
-  };
-  lastElementUsed?: 'fire' | 'ice' | 'nature' | 'light';
+  elementalStains: ElementalStain[];
+  elementalGenesisUsed?: boolean;
+  lastElementUsed?: ElementalStain;
 }
 
 export interface ScielCharacter extends Character {

@@ -18,30 +18,9 @@ import type {
   BattleToken,
   Position,
   CombatAction,
-  InitiativeEntry
+  InitiativeEntry,
+  GMCombatAction // Import from types file
 } from '../types';
-
-// Enhanced GM action used by GM popup and service
-export interface GMCombatAction extends CombatAction {
-  // legacy single-target
-  targetId?: string;
-  targetName?: string;
-
-  // NEW: AoE
-  targetIds?: string[];
-  targetNames?: string[];
-
-  playerName?: string;
-  abilityName?: string;
-  hit?: boolean;
-  needsDamageInput?: boolean;
-  damageApplied?: boolean;
-
-  // always present on our actions (even if not used by UI)
-  sourcePosition: Position;
-  range: number;
-  timestamp: Date;
-}
 
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
@@ -364,6 +343,299 @@ export class FirestoreService {
         updatedAt: serverTimestamp()
       });
     }
+  }
+
+  // ========== NEW: Ultimate Actions for Elemental Genesis ==========
+  static async createUltimateAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      ultimateType: string;
+      element: 'fire' | 'ice' | 'nature' | 'light';
+      effectName: string;
+      description: string;
+      needsGMInteraction: boolean; // Fire and Ice need GM clicks
+      allPlayerTokens?: Array<{
+        id: string;
+        name: string;
+        currentHP: number;
+        maxHP: number;
+        position: { x: number; y: number };
+      }>;
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+    if (!payload.playerId) throw new Error('Player not found');
+
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    if (!playerToken) throw new Error('Player token not found');
+
+    const action: GMCombatAction = {
+      id: `ultimate-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      sourcePosition: playerToken.position,
+      acRoll: 999, // Ultimates don't need AC
+      range: 0, // Ultimate range varies by element
+      timestamp: new Date(),
+      resolved: false,
+      hit: true, // Ultimates always "hit"
+      needsDamageInput: false, // Most ultimates don't need damage input
+      damageApplied: false,
+      playerName: playerToken.name,
+      abilityName: `${payload.effectName} (${payload.element.charAt(0).toUpperCase() + payload.element.slice(1)})`,
+      
+      // Ultimate-specific data
+      ultimateType: payload.ultimateType,
+      element: payload.element,
+      effectName: payload.effectName,
+      description: payload.description,
+      needsGMInteraction: payload.needsGMInteraction,
+      
+      // For Nature element - healing data
+      ...(payload.element === 'nature' && {
+        healingTargets: payload.allPlayerTokens
+      }),
+      
+      // For Light element - random square data  
+      ...(payload.element === 'light' && {
+        affectedSquares: this.generateRandomSquares(20) // Generate 20 random squares
+      })
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      updatedAt: serverTimestamp()
+    });
+
+    // Handle immediate effects that don't need GM interaction
+    if (!payload.needsGMInteraction) {
+      if (payload.element === 'nature') {
+        // Apply healing immediately
+        await this.applyNatureHealing(sessionId, payload.allPlayerTokens || []);
+      }
+      // Light element will be handled visually by the GM view
+    }
+
+    return action;
+  }
+
+  // Apply Nature healing to all player tokens
+  static async applyNatureHealing(
+    sessionId: string, 
+    playerTokens: Array<{
+      id: string;
+      name: string;
+      currentHP: number;
+      maxHP: number;
+      position: { x: number; y: number };
+    }>
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const updatedTokens = { ...session.tokens };
+    
+    // Heal all player tokens by 50% of current HP
+    for (const playerData of playerTokens) {
+      const token = updatedTokens[playerData.id];
+      if (token && token.type === 'player') {
+        const healAmount = Math.floor(playerData.currentHP * 0.5);
+        const newHP = Math.min(playerData.maxHP, playerData.currentHP + healAmount);
+        
+        // Update token HP
+        updatedTokens[playerData.id] = {
+          ...token,
+          hp: newHP
+        };
+        
+        // Also update character document
+        if (token.characterId) {
+          await this.updateCharacterHP(token.characterId, newHP);
+        }
+        
+        console.log(`Nature Genesis: Healed ${playerData.name} for ${healAmount} (${playerData.currentHP} -> ${newHP})`);
+      }
+    }
+
+    // Update session with new token HP values
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      tokens: updatedTokens,
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  // Helper method to generate 20 random squares for Light element
+  private static generateRandomSquares(count: number): Array<{ x: number; y: number }> {
+    const squares: Array<{ x: number; y: number }> = [];
+    const gridWidth = 20; // Assuming a 20x20 grid
+    const gridHeight = 20;
+    
+    for (let i = 0; i < count; i++) {
+      squares.push({
+        x: Math.floor(Math.random() * gridWidth),
+        y: Math.floor(Math.random() * gridHeight)
+      });
+    }
+    
+    return squares;
+  }
+
+  // Handle Fire terrain creation (called by GM when they click position)
+  static async createFireTerrain(
+    sessionId: string,
+    actionId: string,
+    centerPosition: { x: number; y: number }
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const action = session.pendingActions?.find(a => a.id === actionId);
+    if (!action) return;
+
+    // Calculate affected squares in 40ft radius (8 squares)
+    const affectedSquares: Array<{ x: number; y: number }> = [];
+    const radius = 8; // 40ft = 8 squares
+    
+    for (let x = centerPosition.x - radius; x <= centerPosition.x + radius; x++) {
+      for (let y = centerPosition.y - radius; y <= centerPosition.y + radius; y++) {
+        const distance = Math.sqrt(Math.pow(x - centerPosition.x, 2) + Math.pow(y - centerPosition.y, 2));
+        if (distance <= radius) {
+          affectedSquares.push({ x, y });
+        }
+      }
+    }
+
+    // Mark action as resolved and store terrain data
+    const updatedActions = session.pendingActions?.map(a =>
+      a.id === actionId 
+        ? { 
+            ...a, 
+            resolved: true, 
+            damageApplied: true,
+            terrainCenter: centerPosition,
+            affectedSquares 
+          }
+        : a
+    );
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: updatedActions,
+      // Store active fire terrain
+      fireTerrainZones: arrayUnion({
+        id: `fire_terrain_${Date.now()}`,
+        center: centerPosition,
+        radius: 40,
+        affectedSquares,
+        damagePerTurn: 5,
+        createdBy: action.playerId,
+        createdAt: Date.now()
+      }),
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  // Handle Ice wall creation (called by GM when they select row/column)
+  static async createIceWall(
+    sessionId: string,
+    actionId: string,
+    wallData: {
+      type: 'row' | 'column';
+      index: number; // Row or column index
+      squares: Array<{ x: number; y: number }>;
+    }
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const action = session.pendingActions?.find(a => a.id === actionId);
+    if (!action) return;
+
+    // Mark action as resolved and store wall data
+    const updatedActions = session.pendingActions?.map(a =>
+      a.id === actionId 
+        ? { 
+            ...a, 
+            resolved: true, 
+            damageApplied: true,
+            wallType: wallData.type,
+            wallIndex: wallData.index,
+            wallSquares: wallData.squares
+          }
+        : a
+    );
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: updatedActions,
+      // Store active ice walls
+      iceWalls: arrayUnion({
+        id: `ice_wall_${Date.now()}`,
+        type: wallData.type,
+        index: wallData.index,
+        squares: wallData.squares,
+        createdBy: action.playerId,
+        createdAt: Date.now()
+      }),
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  // Apply Light element blind effects (called after visual effect)
+  static async applyLightBlindEffects(
+    sessionId: string,
+    actionId: string,
+    affectedSquares: Array<{ x: number; y: number }>
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    // Find all tokens (enemies and players) on affected squares
+    const affectedTokens: string[] = [];
+    
+    Object.entries(session.tokens).forEach(([tokenId, token]) => {
+      const isOnAffectedSquare = affectedSquares.some(square => 
+        square.x === token.position.x && square.y === token.position.y
+      );
+      
+      if (isOnAffectedSquare) {
+        affectedTokens.push(tokenId);
+      }
+    });
+
+    // Mark action as resolved
+    const updatedActions = session.pendingActions?.map(a =>
+      a.id === actionId 
+        ? { 
+            ...a, 
+            resolved: true, 
+            damageApplied: true,
+            affectedTokens,
+            blindedSquares: affectedSquares
+          }
+        : a
+    );
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: updatedActions,
+      // Store blind effects (GM will track duration manually)
+      lightBlindEffects: arrayUnion({
+        id: `light_blind_${Date.now()}`,
+        affectedTokens,
+        affectedSquares,
+        duration: 2, // 2 turns
+        createdBy: session.pendingActions?.find(a => a.id === actionId)?.playerId,
+        createdAt: Date.now()
+      }),
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`Light Genesis: Blinded ${affectedTokens.length} tokens on ${affectedSquares.length} squares`);
   }
 
   static async dismissMissAction(sessionId: string, actionId: string) {

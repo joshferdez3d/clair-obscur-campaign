@@ -1,9 +1,7 @@
 // src/components/Combat/GMCombatPopup.tsx
 import React, { useEffect, useState } from 'react';
 import { Sword, X, Check } from 'lucide-react';
-import type { GMCombatAction as ServiceGMCombatAction } from '../../services/firestoreService';
-
-export type GMCombatAction = ServiceGMCombatAction;
+import type { GMCombatAction } from '../../types'; // Import from types file
 
 interface GMCombatPopupProps {
   actions: GMCombatAction[];

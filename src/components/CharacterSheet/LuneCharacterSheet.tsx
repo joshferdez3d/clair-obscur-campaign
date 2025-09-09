@@ -72,6 +72,30 @@ const STATUS_EFFECTS = {
   light: 'Blind: Miss next attack'
 };
 
+// Ultimate element effects
+const ULTIMATE_EFFECTS = {
+  fire: {
+    name: 'Inferno Terrain',
+    description: 'Creates fire terrain in 40ft radius. +5 damage per turn to anyone in zone.',
+    icon: '🔥'
+  },
+  ice: {
+    name: 'Glacial Wall',
+    description: 'Creates ice wall along row/column, blocking movement.',
+    icon: '🧊'
+  },
+  nature: {
+    name: 'Life Surge',
+    description: 'Heals all allies by 50% of current health.',
+    icon: '🌱'
+  },
+  light: {
+    name: 'Divine Judgment',
+    description: '20 random squares hit by light beams. Blinds for 2 turns.',
+    icon: '⚡'
+  }
+};
+
 export function LuneCharacterSheet({
   character,
   onHPChange,
@@ -94,15 +118,17 @@ export function LuneCharacterSheet({
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [acRoll, setACRoll] = useState<string>('');
   const [elementRoll, setElementRoll] = useState<string>('');
+  const [elementalGenesisUsed, setElementalGenesisUsed] = useState(false);
+  const [selectedUltimateElement, setSelectedUltimateElement] = useState<ElementType | null>(null);
   const { triggerUltimate } = useUltimateVideo(sessionId);
 
   const [selectedAction, setSelectedAction] = useState<{
-    type: 'basic' | 'ability';
+    type: 'basic' | 'ability' | 'ultimate';
     id: string;
     name: string;
     description: string;
     damage?: string;
-    cost?: number;
+    cost?: number | string;
     needsElement?: boolean;
     multiTarget?: boolean;
   } | null>(null);
@@ -135,131 +161,9 @@ export function LuneCharacterSheet({
     return consumed;
   };
 
-  // Handle action selection
-  const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn) return;
-
-    // Check if we have enough stains for abilities
-    if (action.type === 'ability' && action.cost) {
-      if (elementalStains.length < action.cost) {
-        alert(`Not enough stains! Need ${action.cost}, have ${elementalStains.length}`);
-        return;
-      }
-    }
-
-    setSelectedAction(action);
-    setSelectedTarget('');
-    setSelectedTargets([]);
-    setACRoll('');
-    setElementRoll('');
-  };
-
-  // Handle target selection for multi-target abilities
-  const handleTargetToggle = (targetId: string) => {
-    if (selectedAction?.multiTarget) {
-      if (selectedTargets.includes(targetId)) {
-        setSelectedTargets(selectedTargets.filter(id => id !== targetId));
-      } else {
-        if (selectedAction.id === 'twin_catalyst' && selectedTargets.length >= 2) {
-          alert('Twin Catalyst can only target up to 2 enemies');
-          return;
-        }
-        setSelectedTargets([...selectedTargets, targetId]);
-      }
-    } else {
-      setSelectedTarget(targetId);
-    }
-  };
-
-  // Confirm action execution
-  const handleConfirmAction = async () => {
-    if (!selectedAction) return;
-
-    // For Elemental Bolt (basic attack)
-    if (selectedAction.id === 'elemental_bolt') {
-      if (!selectedTarget || !acRoll || !elementRoll) {
-        alert('Please select target, enter AC roll, and element roll (1-4)');
-        return;
-      }
-
-      const elementNum = parseInt(elementRoll);
-      if (elementNum < 1 || elementNum > 4) {
-        alert('Element roll must be between 1-4');
-        return;
-      }
-
-      const element = ELEMENT_MAP[elementNum];
-      
-      // Add stain for the element used
-      addStain(element);
-
-      // Trigger the attack
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, parseInt(acRoll), 'ranged', 'elemental_bolt');
-      }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setElementRoll('');
-      return;
-    }
-
-    // For single-target abilities
-    if (!selectedAction.multiTarget) {
-      if (!selectedTarget || !acRoll) {
-        alert('Please select target and enter AC roll');
-        return;
-      }
-
-      // Consume stains
-      const consumed = consumeStains(selectedAction.cost || 0);
-      console.log(`Consumed ${consumed.length} stains:`, consumed);
-
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, parseInt(acRoll), 'ability', selectedAction.id);
-      }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      return;
-    }
-
-    // For multi-target abilities (Twin Catalyst)
-    if (selectedAction.multiTarget) {
-      if (selectedTargets.length === 0 || !acRoll) {
-        alert('Please select at least one target and enter AC roll');
-        return;
-      }
-
-      // Consume stains
-      const consumed = consumeStains(selectedAction.cost || 0);
-      console.log(`Twin Catalyst consumed ${consumed.length} stains:`, consumed);
-
-      // For Twin Catalyst, we need to create multiple actions or handle specially
-      // For now, we'll use the first target as primary and note in GM popup
-      if (onTargetSelect) {
-        // Create attack for each target with same AC roll
-        for (const targetId of selectedTargets) {
-          onTargetSelect(targetId, parseInt(acRoll), 'ability', selectedAction.id);
-        }
-      }
-
-      setSelectedAction(null);
-      setSelectedTargets([]);
-      setACRoll('');
-      return;
-    }
-  };
-
-  const handleCancelAction = () => {
-    setSelectedAction(null);
-    setSelectedTarget('');
-    setSelectedTargets([]);
-    setACRoll('');
-    setElementRoll('');
-    onCancelTargeting?.();
+  // Get unique available elements for ultimate
+  const getAvailableElements = (): ElementType[] => {
+    return Array.from(new Set(elementalStains));
   };
 
   // Define Lune's actions
@@ -304,6 +208,229 @@ export function LuneCharacterSheet({
       range: 'Unlimited',
     },
   ];
+
+  const ultimateAbility = {
+    type: 'ultimate' as const,
+    id: 'elemental_genesis',
+    name: 'Elemental Genesis',
+    description: 'Choose element for powerful terrain/support effect',
+    cost: 1,
+    range: 'Battlefield',
+    onePerRest: true
+  };
+
+  // Handle action selection
+  const handleActionSelect = (action: any) => {
+    if (hasActedThisTurn) return;
+
+    // Check if we have enough stains for abilities
+    if (action.type === 'ability' && action.cost) {
+      if (elementalStains.length < action.cost) {
+        alert(`Not enough stains! Need ${action.cost}, have ${elementalStains.length}`);
+        return;
+      }
+    }
+
+    // Check ultimate requirements
+    if (action.type === 'ultimate') {
+      if (elementalStains.length === 0) {
+        alert('Need at least 1 stain to use Elemental Genesis!');
+        return;
+      }
+      if (elementalGenesisUsed) {
+        alert('Elemental Genesis already used this rest!');
+        return;
+      }
+    }
+
+    setSelectedAction(action);
+    setSelectedTarget('');
+    setSelectedTargets([]);
+    setACRoll('');
+    setElementRoll('');
+    setSelectedUltimateElement(null);
+  };
+
+  // Handle target selection for multi-target abilities
+  const handleTargetToggle = (targetId: string) => {
+    if (selectedAction?.multiTarget) {
+      if (selectedTargets.includes(targetId)) {
+        setSelectedTargets(selectedTargets.filter(id => id !== targetId));
+      } else {
+        if (selectedAction.id === 'twin_catalyst' && selectedTargets.length >= 2) {
+          alert('Twin Catalyst can only target up to 2 enemies');
+          return;
+        }
+        setSelectedTargets([...selectedTargets, targetId]);
+      }
+    } else {
+      setSelectedTarget(targetId);
+    }
+  };
+
+  // Handle element selection for ultimate
+  const handleUltimateElementSelect = (element: ElementType) => {
+    setSelectedUltimateElement(element);
+  };
+
+  // Execute ultimate based on selected element
+  const executeUltimate = async (element: ElementType) => {
+    console.log(`🌟 Starting Elemental Genesis - ${element}`);
+    
+    try {
+      // Trigger the ultimate video
+      await triggerUltimate('lune', 'Elemental Genesis');
+    } catch (error) {
+      console.error('Failed to trigger ultimate video:', error);
+    }
+
+    // Consume one stain of the selected element
+    const newStains = [...elementalStains];
+    const elementIndex = newStains.indexOf(element);
+    if (elementIndex !== -1) {
+      newStains.splice(elementIndex, 1);
+      onStainsChange?.(newStains);
+    }
+
+    // Mark ultimate as used
+    setElementalGenesisUsed(true);
+
+    // Trigger appropriate effect
+    if (onTargetSelect) {
+      onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
+    }
+
+    // Create specific ultimate action for GM
+    try {
+      await FirestoreService.createUltimateAction(sessionId, {
+        playerId: character.id,
+        ultimateType: 'elemental_genesis',
+        element: element,
+        effectName: ULTIMATE_EFFECTS[element].name,
+        description: ULTIMATE_EFFECTS[element].description,
+        needsGMInteraction: element === 'fire' || element === 'ice', // Fire needs position, Ice needs row/column
+        allPlayerTokens: allTokens.filter(t => t.type === 'player').map(t => ({
+          id: t.id,
+          name: t.name,
+          currentHP: t.hp || 0,
+          maxHP: t.maxHp || 0,
+          position: t.position
+        }))
+      });
+    } catch (error) {
+      console.error('Failed to create ultimate action:', error);
+    }
+  };
+
+  // Confirm action execution
+  const handleConfirmAction = async () => {
+    if (!selectedAction) return;
+
+    // Handle Elemental Genesis (Ultimate)
+    if (selectedAction.id === 'elemental_genesis') {
+      if (!selectedUltimateElement) {
+        alert('Please select an element for your Genesis!');
+        return;
+      }
+
+      await executeUltimate(selectedUltimateElement);
+      setSelectedAction(null);
+      setSelectedUltimateElement(null);
+      return;
+    }
+
+    // For Elemental Bolt (basic attack)
+    if (selectedAction.id === 'elemental_bolt') {
+      if (!selectedTarget || !acRoll || !elementRoll) {
+        alert('Please select target, enter AC roll, and element roll (1-4)');
+        return;
+      }
+
+      const elementNum = parseInt(elementRoll);
+      if (elementNum < 1 || elementNum > 4) {
+        alert('Element roll must be between 1-4');
+        return;
+      }
+
+      const element = ELEMENT_MAP[elementNum];
+      
+      // Add stain for the element used
+      addStain(element);
+
+      // Trigger the attack
+      if (onTargetSelect) {
+        onTargetSelect(selectedTarget, parseInt(acRoll), 'ranged', 'elemental_bolt');
+      }
+
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setACRoll('');
+      setElementRoll('');
+      return;
+    }
+
+    // For single-target abilities
+    if (!selectedAction.multiTarget) {
+      if (!selectedTarget || !acRoll) {
+        alert('Please select target and enter AC roll');
+        return;
+      }
+
+      // Consume stains
+      const consumed = consumeStains(selectedAction.cost as number || 0);
+      console.log(`Consumed ${consumed.length} stains:`, consumed);
+
+      if (onTargetSelect) {
+        onTargetSelect(selectedTarget, parseInt(acRoll), 'ability', selectedAction.id);
+      }
+
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setACRoll('');
+      return;
+    }
+
+    // For multi-target abilities (Twin Catalyst)
+    if (selectedAction.multiTarget) {
+      if (selectedTargets.length === 0 || !acRoll) {
+        alert('Please select at least one target and enter AC roll');
+        return;
+      }
+
+      // Consume stains
+      const consumed = consumeStains(selectedAction.cost as number || 0);
+      console.log(`Twin Catalyst consumed ${consumed.length} stains:`, consumed);
+
+      // For Twin Catalyst, we need to create multiple actions or handle specially
+      // For now, we'll use the first target as primary and note in GM popup
+      if (onTargetSelect) {
+        // Create attack for each target with same AC roll
+        for (const targetId of selectedTargets) {
+          onTargetSelect(targetId, parseInt(acRoll), 'ability', selectedAction.id);
+        }
+      }
+
+      setSelectedAction(null);
+      setSelectedTargets([]);
+      setACRoll('');
+      return;
+    }
+  };
+
+  const handleCancelAction = () => {
+    setSelectedAction(null);
+    setSelectedTarget('');
+    setSelectedTargets([]);
+    setACRoll('');
+    setElementRoll('');
+    setSelectedUltimateElement(null);
+    onCancelTargeting?.();
+  };
+
+  // Reset function for long rest
+  const handleLongRest = () => {
+    setElementalGenesisUsed(false);
+  };
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
@@ -398,21 +525,18 @@ export function LuneCharacterSheet({
             <div className="space-y-3">
               {/* Basic Attack */}
               <div>
-                <h4 className="text-sm font-bold text-clair-mystical-300 mb-2">Basic Attack</h4>
+                <h4 className="text-sm font-bold text-gray-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
                   disabled={!isMyTurn || !combatActive || hasActedThisTurn}
-                  className="w-full bg-clair-mystical-600 hover:bg-clair-mystical-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                  className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white border border-gray-500"
                 >
                   <div className="flex items-center">
                     <Circle className="w-4 h-4 mr-2" />
                     <span className="font-bold">{basicAttack.name}</span>
-                    <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      +1 Stain
-                    </span>
                   </div>
                   <div className="text-sm opacity-90 mt-1">{basicAttack.description}</div>
-                  <div className="text-xs text-clair-gold-200 mt-1">{basicAttack.damage}</div>
+                  <div className="text-xs text-gray-300 mt-1">{basicAttack.damage}</div>
                 </button>
               </div>
 
@@ -424,18 +548,19 @@ export function LuneCharacterSheet({
                     <button
                       key={ability.id}
                       onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || elementalStains.length < ability.cost || hasActedThisTurn}
-                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                      disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)}
+                      className={`w-full p-3 rounded-lg transition-colors text-left border ${
+                        elementalStains.length < (ability.cost || 0)
+                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
+                          : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500'
+                      }`}
                     >
                       <div className="flex items-center">
                         <Zap className="w-4 h-4 mr-2" />
                         <span className="font-bold">{ability.name}</span>
                         <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.cost} stain{ability.cost > 1 ? 's' : ''}
+                          {ability.cost} stains
                         </span>
-                        {ability.id === 'genesis_spark' && (
-                          <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
-                        )}
                       </div>
                       <div className="text-sm opacity-90 mt-1">{ability.description}</div>
                       <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
@@ -443,99 +568,171 @@ export function LuneCharacterSheet({
                   ))}
                 </div>
               </div>
+
+              {/* Ultimate Ability - Elemental Genesis */}
+              <div className="mt-4">
+                <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
+                <button
+                  onClick={() => handleActionSelect(ultimateAbility)}
+                  disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed}
+                  className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
+                    elementalStains.length === 0 || elementalGenesisUsed
+                      ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+                  }`}
+                >
+                  <div className="flex items-center">
+                    <span className="text-xl mr-2">🌟</span>
+                    <span className="font-bold">{ultimateAbility.name}</span>
+                    <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                      1 stain
+                    </span>
+                    <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
+                  </div>
+                  <div className="text-sm opacity-90 mt-1">
+                    {elementalGenesisUsed 
+                      ? '⚡ Already used this rest!'
+                      : elementalStains.length === 0 
+                        ? 'Need stains to unleash Genesis'
+                        : `Choose from ${getAvailableElements().length} elements`
+                    }
+                  </div>
+                  <div className="text-xs text-yellow-200 mt-1">{ultimateAbility.description}</div>
+                </button>
+              </div>
             </div>
           ) : (
-            /* Target Selection */
+            // Target Selection / Element Selection
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-clair-mystical-200">
                   <Target className="w-4 h-4 inline mr-2" />
-                  {selectedAction.name} - Select Target{selectedAction.multiTarget ? 's' : ''}
+                  {selectedAction.name}
                 </h4>
                 <button onClick={handleCancelAction} className="text-sm bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white">
                   Cancel
                 </button>
               </div>
 
-              {/* Element Roll Input (for Elemental Bolt) */}
-              {selectedAction.needsElement && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-bold mb-2 text-clair-mystical-300">
-                    Roll 1d4 for element (1=Fire, 2=Ice, 3=Nature, 4=Light):
-                  </label>
-                  <input
-                    type="number"
-                    value={elementRoll}
-                    onChange={(e) => setElementRoll(e.target.value)}
-                    placeholder="Enter 1d4 result"
-                    className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                    min={1}
-                    max={4}
-                  />
-                  {elementRoll && ELEMENT_MAP[parseInt(elementRoll)] && (
-                    <div className={`text-sm font-bold ${ELEMENT_TEXT_COLORS[ELEMENT_MAP[parseInt(elementRoll)]]}`}>
-                      Element: {ELEMENT_NAMES[ELEMENT_MAP[parseInt(elementRoll)]]}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Enemy Selection */}
-              <div className="space-y-2">
-                {getValidTargets().map(enemy => (
-                  <button
-                    key={enemy.id}
-                    onClick={() => handleTargetToggle(enemy.id)}
-                    className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                      (selectedAction.multiTarget ? selectedTargets.includes(enemy.id) : selectedTarget === enemy.id)
-                        ? 'border-clair-gold-400 bg-clair-gold-900 bg-opacity-30'
-                        : 'border-clair-shadow-400 bg-clair-shadow-700 hover:border-clair-gold-600'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <div className="font-bold text-clair-gold-200">{enemy.name}</div>
-                        <div className="text-sm text-clair-gold-300">
-                          Distance: {calculateDistance(playerPosition, enemy.position)}ft
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm text-clair-gold-400">AC: {enemy.ac}</div>
-                        <div className="text-sm text-red-400">{enemy.hp}/{enemy.maxHp} HP</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* AC Roll Input */}
-              {(selectedTarget || selectedTargets.length > 0) && (
+              {selectedAction.id === 'elemental_genesis' ? (
                 <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-clair-gold-300">
-                      Roll d20 + modifiers:
-                    </label>
-                    <input
-                      type="number"
-                      value={acRoll}
-                      onChange={(e) => setACRoll(e.target.value)}
-                      placeholder="Enter your attack roll total"
-                      className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                      min={1}
-                      max={30}
-                    />
+                  <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg">
+                    <p className="text-purple-200 text-sm">
+                      Choose an element to unleash its Genesis effect! Each element creates a unique battlefield effect.
+                    </p>
                   </div>
+
+                  {/* Element Selection */}
+                  <div>
+                    <label className="block text-sm font-bold text-clair-mystical-300 mb-2">Select Element:</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {getAvailableElements().map((element) => (
+                        <button
+                          key={element}
+                          onClick={() => handleUltimateElementSelect(element)}
+                          className={`p-3 rounded-lg transition-colors border text-left ${
+                            selectedUltimateElement === element
+                              ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
+                              : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                          }`}
+                        >
+                          <div className="flex items-center mb-1">
+                            <span className="text-lg mr-2">{ULTIMATE_EFFECTS[element].icon}</span>
+                            <span className={`font-bold ${ELEMENT_TEXT_COLORS[element]}`}>
+                              {ELEMENT_NAMES[element]}
+                            </span>
+                          </div>
+                          <div className="text-xs font-bold mb-1">{ULTIMATE_EFFECTS[element].name}</div>
+                          <div className="text-xs opacity-90">{ULTIMATE_EFFECTS[element].description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <button
                     onClick={handleConfirmAction}
-                    disabled={!acRoll || (!selectedTarget && selectedTargets.length === 0) || (selectedAction.needsElement && !elementRoll)}
-                    className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
+                    disabled={!selectedUltimateElement}
+                    className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
+                  >
+                    Unleash Elemental Genesis! 🌟
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* AC Roll Input */}
+                  <div>
+                    <label className="block text-sm font-bold text-clair-mystical-300 mb-1">AC Roll (d20):</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={acRoll}
+                      onChange={(e) => setACRoll(e.target.value)}
+                      className="w-full p-2 rounded bg-clair-shadow-800 border border-clair-mystical-600 text-white"
+                      placeholder="Enter d20 roll result"
+                    />
+                  </div>
+
+                  {/* Element Roll for Elemental Bolt */}
+                  {selectedAction.needsElement && (
+                    <div>
+                      <label className="block text-sm font-bold text-clair-mystical-300 mb-1">Element Roll (1-4):</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="4"
+                        value={elementRoll}
+                        onChange={(e) => setElementRoll(e.target.value)}
+                        className="w-full p-2 rounded bg-clair-shadow-800 border border-clair-mystical-600 text-white"
+                        placeholder="1=Fire, 2=Ice, 3=Nature, 4=Light"
+                      />
+                    </div>
+                  )}
+
+                  {/* Target Selection */}
+                  <div>
+                    <label className="block text-sm font-bold text-clair-mystical-300 mb-2">
+                      Select Target{selectedAction.multiTarget ? 's' : ''}:
+                    </label>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {getValidTargets().map((enemy) => (
+                        <button
+                          key={enemy.id}
+                          onClick={() => handleTargetToggle(enemy.id)}
+                          className={`w-full p-2 rounded text-left transition-colors border ${
+                            selectedAction.multiTarget
+                              ? selectedTargets.includes(enemy.id)
+                                ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
+                                : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                              : selectedTarget === enemy.id
+                                ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
+                                : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                          }`}
+                        >
+                          <div className="font-bold">{enemy.name}</div>
+                          <div className="text-xs opacity-75">AC: {enemy.ac} | HP: {enemy.hp}/{enemy.maxHp}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Confirm Button */}
+                  <button
+                    onClick={handleConfirmAction}
+                    disabled={
+                      (selectedAction.multiTarget && selectedTargets.length === 0) ||
+                      (!selectedAction.multiTarget && !selectedTarget) ||
+                      !acRoll ||
+                      (selectedAction.needsElement && !elementRoll)
+                    }
+                    className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
                   >
                     Confirm {selectedAction.name}
                   </button>
-                </div>
+                </>
               )}
 
-              {/* Show status effects info for Elemental Strike */}
+              {/* Status Effect Preview for Elemental Strike */}
               {selectedAction.id === 'elemental_strike' && elementalStains.length > 0 && (
                 <div className="mt-4 p-3 bg-clair-mystical-900 bg-opacity-30 rounded-lg border border-clair-mystical-500">
                   <h4 className="font-serif font-bold text-clair-mystical-300 text-sm mb-2">Next Stain Effects:</h4>
@@ -548,7 +745,7 @@ export function LuneCharacterSheet({
                 </div>
               )}
 
-              {getValidTargets().length === 0 && (
+              {getValidTargets().length === 0 && selectedAction.id !== 'elemental_genesis' && (
                 <div className="text-center text-clair-gold-400 py-4">No enemies available</div>
               )}
             </div>
@@ -578,8 +775,8 @@ export function LuneCharacterSheet({
               <li>• Abilities consume oldest stains first</li>
               <li>• Fire burns, Ice freezes, Nature pushes, Light blinds</li>
               <li>• Twin Catalyst can target same enemy twice</li>
-              <li>• Ranged attacks get -2 AC penalty per 5ft beyond 30ft</li>
-              <li>• Genesis Spark is your ultimate - save 3 stains for big damage</li>
+              <li>• Genesis Spark costs 3 stains for big damage</li>
+              <li>• 🌟 Elemental Genesis: Fire=terrain, Ice=wall, Nature=heal, Light=blinds</li>
             </ul>
           </div>
         </div>

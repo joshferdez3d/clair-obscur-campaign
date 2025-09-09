@@ -10,14 +10,13 @@ import { useGMHPControl } from '../hooks/useGMHPControl';
 import { useStormSystem } from '../hooks/useStormSystem';
 import { StormService } from '../services/StormService';
 import { Plus, Users, Map, Monitor, Wrench, Sword, Zap, Target } from 'lucide-react';
-import type { Position, BattleToken, InitiativeEntry, CombatState } from '../types';
+import type { Position, BattleToken, InitiativeEntry, CombatState, GMCombatAction } from '../types';
 import { GMCombatPopup } from '../components/Combat/GMCombatPopup';
 import { StormPopup } from '../components/Combat/StormPopup';
 import { StormIndicator } from '../components/Combat/StormIndicator';
 import { FirestoreService } from '../services/firestoreService';
 import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import type { GMCombatAction as ServiceGMCombatAction } from '../services/firestoreService';
 import { EnemySelectionModal } from '../components/Combat/EnemySelectionModal';
 import type { EnemyData } from '../types';
 import { X } from 'lucide-react';
@@ -96,7 +95,7 @@ export function GMView() {
       const enemyAC = enemy.ac ?? 13;
       const hit = roll >= enemyAC;
 
-      const action: ServiceGMCombatAction = {
+      const action: GMCombatAction = {
         id: `turret-attack-${turret.id}-${Date.now()}-${Math.random()}`, // More unique ID
         type: 'attack',
         playerId: 'gustave',
@@ -139,7 +138,7 @@ export function GMView() {
   const handleApplyDamage = async (actionId: string, damage: number) => {
     try {
       const a = session?.pendingActions?.find((x) => x.id === actionId) as
-        | ServiceGMCombatAction
+        | GMCombatAction
         | undefined;
       const isAoE = Array.isArray(a?.targetIds) && (a!.targetIds!.length > 0);
       if (isAoE) {
@@ -393,9 +392,9 @@ const handleGridClick = async (position: Position) => {
     characterNames[t.id] = t.name;
   });
 
-  const gmActions: ServiceGMCombatAction[] = (session.pendingActions || []).filter(
+  const gmActions: GMCombatAction[] = (session.pendingActions || []).filter(
     (a) => a.type === 'attack' || a.type === 'ability'
-  ) as ServiceGMCombatAction[];
+  ) as GMCombatAction[];
 
   const isGustavesTurn = combatState.currentTurn === 'gustave';
   const activeTurrets = tokens.filter((t) => t.name.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
