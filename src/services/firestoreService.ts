@@ -484,7 +484,7 @@ export class FirestoreService {
     return squares;
   }
 
-  // Handle Fire terrain creation (called by GM when they click position)
+  // In src/services/firestoreService.ts, update createFireTerrain:
   static async createFireTerrain(
     sessionId: string,
     actionId: string,
@@ -496,9 +496,9 @@ export class FirestoreService {
     const action = session.pendingActions?.find(a => a.id === actionId);
     if (!action) return;
 
-    // Calculate affected squares in 40ft radius (8 squares)
+    // Calculate affected squares in 15ft radius (3 squares) - UPDATED RADIUS
     const affectedSquares: Array<{ x: number; y: number }> = [];
-    const radius = 8; // 40ft = 8 squares
+    const radius = 3; // 15ft = 3 squares
     
     for (let x = centerPosition.x - radius; x <= centerPosition.x + radius; x++) {
       for (let y = centerPosition.y - radius; y <= centerPosition.y + radius; y++) {
@@ -525,27 +525,30 @@ export class FirestoreService {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       pendingActions: updatedActions,
-      // Store active fire terrain
+      // Store active fire terrain WITH DURATION TRACKING
       fireTerrainZones: arrayUnion({
         id: `fire_terrain_${Date.now()}`,
         center: centerPosition,
-        radius: 40,
+        radius: 15, // Updated to 15ft
         affectedSquares,
         damagePerTurn: 5,
+        duration: 3, // 3 rounds
+        turnsRemaining: 3,
         createdBy: action.playerId,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        createdOnRound: session.combatState?.round || 1
       }),
       updatedAt: serverTimestamp()
     });
   }
 
-  // Handle Ice wall creation (called by GM when they select row/column)
+  // Update createIceWall similarly:
   static async createIceWall(
     sessionId: string,
     actionId: string,
     wallData: {
       type: 'row' | 'column';
-      index: number; // Row or column index
+      index: number;
       squares: Array<{ x: number; y: number }>;
     }
   ): Promise<void> {
@@ -572,40 +575,35 @@ export class FirestoreService {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       pendingActions: updatedActions,
-      // Store active ice walls
+      // Store active ice walls WITH DURATION TRACKING
       iceWalls: arrayUnion({
         id: `ice_wall_${Date.now()}`,
         type: wallData.type,
         index: wallData.index,
         squares: wallData.squares,
+        duration: 3, // 3 rounds
+        turnsRemaining: 3,
         createdBy: action.playerId,
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        createdOnRound: session.combatState?.round || 1
       }),
       updatedAt: serverTimestamp()
     });
   }
 
-  // Apply Light element blind effects (called after visual effect)
-  static async applyLightBlindEffects(
+  // In src/services/firestoreService.ts, replace the applyLightBlindEffects function with:
+  static async createLightHighlights(
     sessionId: string,
-    actionId: string,
-    affectedSquares: Array<{ x: number; y: number }>
+    actionId: string
   ): Promise<void> {
     const session = await this.getBattleSession(sessionId);
     if (!session) return;
 
-    // Find all tokens (enemies and players) on affected squares
-    const affectedTokens: string[] = [];
-    
-    Object.entries(session.tokens).forEach(([tokenId, token]) => {
-      const isOnAffectedSquare = affectedSquares.some(square => 
-        square.x === token.position.x && square.y === token.position.y
-      );
-      
-      if (isOnAffectedSquare) {
-        affectedTokens.push(tokenId);
-      }
-    });
+    const action = session.pendingActions?.find(a => a.id === actionId);
+    if (!action) return;
+
+    // Generate 20 random squares
+    const affectedSquares = this.generateRandomSquares(20);
 
     // Mark action as resolved
     const updatedActions = session.pendingActions?.map(a =>
@@ -614,8 +612,7 @@ export class FirestoreService {
             ...a, 
             resolved: true, 
             damageApplied: true,
-            affectedTokens,
-            blindedSquares: affectedSquares
+            affectedSquares
           }
         : a
     );
@@ -623,19 +620,75 @@ export class FirestoreService {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       pendingActions: updatedActions,
-      // Store blind effects (GM will track duration manually)
+      // Store active light highlights with turn tracking
       lightBlindEffects: arrayUnion({
-        id: `light_blind_${Date.now()}`,
-        affectedTokens,
+        id: `light_highlight_${Date.now()}`,
         affectedSquares,
-        duration: 2, // 2 turns
-        createdBy: session.pendingActions?.find(a => a.id === actionId)?.playerId,
-        createdAt: Date.now()
+        duration: 3, // 3 rounds
+        turnsRemaining: 3,
+        createdBy: action.playerId,
+        createdAt: Date.now(),
+        createdOnRound: session.combatState?.round || 1
       }),
       updatedAt: serverTimestamp()
     });
 
-    console.log(`Light Genesis: Blinded ${affectedTokens.length} tokens on ${affectedSquares.length} squares`);
+    console.log(`Light Genesis: Highlighted ${affectedSquares.length} random squares for 3 rounds`);
+  }
+
+    // Add this new function to FirestoreService:
+  static async cleanupExpiredTerrain(sessionId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const currentRound = session.combatState?.round || 1;
+    let needsUpdate = false;
+    const updates: any = {};
+
+    // Clean up fire terrain
+    if (session.fireTerrainZones) {
+      const activeFire = session.fireTerrainZones.filter((zone: any) => {
+        const roundsElapsed = currentRound - (zone.createdOnRound || 1);
+        return roundsElapsed < 3;
+      });
+      if (activeFire.length !== session.fireTerrainZones.length) {
+        updates.fireTerrainZones = activeFire;
+        needsUpdate = true;
+      }
+    }
+
+    // Clean up ice walls
+    if (session.iceWalls) {
+      const activeIce = session.iceWalls.filter((wall: any) => {
+        const roundsElapsed = currentRound - (wall.createdOnRound || 1);
+        return roundsElapsed < 3;
+      });
+      if (activeIce.length !== session.iceWalls.length) {
+        updates.iceWalls = activeIce;
+        needsUpdate = true;
+      }
+    }
+
+    // Clean up light effects
+    if (session.lightBlindEffects) {
+      const activeLight = session.lightBlindEffects.filter((effect: any) => {
+        const roundsElapsed = currentRound - (effect.createdOnRound || 1);
+        return roundsElapsed < 3;
+      });
+      if (activeLight.length !== session.lightBlindEffects.length) {
+        updates.lightBlindEffects = activeLight;
+        needsUpdate = true;
+      }
+    }
+
+    if (needsUpdate) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      console.log('🧹 Cleaned up expired terrain effects');
+    }
   }
 
   static async dismissMissAction(sessionId: string, actionId: string) {

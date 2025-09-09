@@ -272,10 +272,11 @@ export function BattleMapView() {
         <div className="absolute inset-0 pt-12 z-0">
           <BattleMap
             mode="player"
-            map={currentMap} // Use dynamic map instead of hardcoded values
+            map={currentMap}
             tokens={battleTokens}
             isGM={false}
             currentTurn={currentTurn}
+            session={currentSession || undefined} // Fixed: handle null vs undefined
             combatActive={combatActive}
             // Players can't move tokens directly - only DM can
             onTokenMove={undefined}

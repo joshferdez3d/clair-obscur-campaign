@@ -802,7 +802,7 @@ const handleResetSession = async () => {
                       {ultimateInteractionMode.type === 'ice_wall' && '🧊 Ice Genesis: Click Row for Ice Wall'}
                     </p>
                     <p className="text-purple-300 text-xs">
-                      {ultimateInteractionMode.type === 'fire_terrain' && 'Click any square to create 40ft fire terrain'}
+                      {ultimateInteractionMode.type === 'fire_terrain' && 'Click any square to create 15ft fire terrain'}
                       {ultimateInteractionMode.type === 'ice_wall' && 'Click any square to create ice wall across that row'}
                     </p>
                   </div>
@@ -907,6 +907,7 @@ const handleResetSession = async () => {
               combatActive={combatActive}
               onTokenMove={handleTokenMove}
               onGridClick={handleGridClick}
+              session={session} // Make sure to pass this
               isGM
             />
           </div>

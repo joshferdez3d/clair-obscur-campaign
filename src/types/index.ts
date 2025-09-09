@@ -172,8 +172,11 @@ export interface FireTerrainZone {
   radius: number;
   affectedSquares: Array<{ x: number; y: number }>;
   damagePerTurn: number;
+  duration: number; // Total duration
+  turnsRemaining: number; // Remaining turns
   createdBy: string;
   createdAt: number;
+  createdOnRound: number; // Round when created
 }
 
 // Ice wall data
@@ -182,18 +185,22 @@ export interface IceWall {
   type: 'row' | 'column';
   index: number;
   squares: Array<{ x: number; y: number }>;
+  duration: number; // Total duration
+  turnsRemaining: number; // Remaining turns
   createdBy: string;
   createdAt: number;
+  createdOnRound: number; // Round when created
 }
 
 // Light blind effect data
 export interface LightBlindEffect {
   id: string;
-  affectedTokens: string[];
   affectedSquares: Array<{ x: number; y: number }>;
-  duration: number;
+  duration: number; // Total duration
+  turnsRemaining: number; // Remaining turns
   createdBy: string;
   createdAt: number;
+  createdOnRound: number; // Round when created
 }
 
 export interface Character {
@@ -265,7 +272,9 @@ export interface BattleSession {
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
-  
+
+  luneElementalGenesisUsed?: boolean;
+
   // NEW: Terrain effects from Elemental Genesis
   fireTerrainZones?: FireTerrainZone[];
   iceWalls?: IceWall[];

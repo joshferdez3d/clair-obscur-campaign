@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { Token } from './Token';
 import { Grid } from './Grid';
-import type { BattleToken, BattleMap as BattleMapType, Position } from '../../types';
+import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types'; // Add BattleSession import
 
 type BattleMapMode = 'player' | 'gm';
 
@@ -12,6 +12,7 @@ interface BattleMapProps {
   isGM?: boolean;
   currentTurn?: string;
   combatActive?: boolean;
+  session?: BattleSession; // Now properly typed
 
   onTokenMove?: (tokenId: string, newPosition: Position) => Promise<boolean>;
   onTokenSelect?: (token: BattleToken | null) => void;
@@ -37,6 +38,7 @@ export function BattleMap({
   isGM = false,
   currentTurn,
   combatActive = false,
+  session, // Add session to destructured props
   onTokenMove,
   onTokenSelect,
   onGridClick,
@@ -51,7 +53,7 @@ export function BattleMap({
 
   // --- Layout sizing ---------------------------------------------------------
   // Space around the board for the coordinate labels we draw
-  const coordinatePadding = 32;
+  const coordinatePadding = 24;
 
   // Measure either the window (player fullscreen) or the parent container (gm)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -204,23 +206,65 @@ export function BattleMap({
     setHoveredPosition(pos);
   }, []);
 
+  // UPDATED: Combined grid cell class function with terrain effects
   const getGridCellClass = useCallback((pos: Position) => {
-    if (hoveredPosition && hoveredPosition.x === pos.x && hoveredPosition.y === pos.y) {
-      return 'bg-white/5';
-    }
+    const classes: string[] = [];
 
-    if (selectedToken && combatActive) {
-      if (isWithinMovementRange(selectedToken, pos)) {
-        return 'bg-green-400/20 border border-green-400/40';
+    // Check for fire terrain zones
+    if (session?.fireTerrainZones) {
+      const isInFireZone = session.fireTerrainZones.some((zone: any) => 
+        zone.affectedSquares?.some((square: any) => 
+          square.x === pos.x && square.y === pos.y
+        )
+      );
+      if (isInFireZone) {
+        classes.push('fire-terrain');
       }
     }
 
-    if (targetingMode?.active && targetingMode.sourcePosition && isWithinTargetingRange(pos)) {
-      return 'bg-purple-400/20 border border-purple-400/40';
+    // Check for ice walls
+    if (session?.iceWalls) {
+      const isInIceWall = session.iceWalls.some((wall: any) => 
+        wall.squares?.some((square: any) => 
+          square.x === pos.x && square.y === pos.y
+        )
+      );
+      if (isInIceWall) {
+        classes.push('ice-wall');
+      }
     }
 
-    return '';
-  }, [hoveredPosition, selectedToken, combatActive, targetingMode]);
+    // Check for light blind effects
+    if (session?.lightBlindEffects) {
+      const isInLightZone = session.lightBlindEffects.some((effect: any) => 
+        effect.affectedSquares?.some((square: any) => 
+          square.x === pos.x && square.y === pos.y
+        )
+      );
+      if (isInLightZone) {
+        classes.push('light-blind');
+      }
+    }
+
+    // Add hover effect
+    if (hoveredPosition && hoveredPosition.x === pos.x && hoveredPosition.y === pos.y) {
+      classes.push('hover');
+    }
+
+    // Movement range highlighting for selected token
+    if (selectedToken && combatActive) {
+      if (isWithinMovementRange(selectedToken, pos)) {
+        classes.push('valid-movement');
+      }
+    }
+
+    // Targeting mode highlighting
+    if (targetingMode?.active && targetingMode.sourcePosition && isWithinTargetingRange(pos)) {
+      classes.push('valid-target');
+    }
+
+    return classes.join(' ');
+  }, [session, hoveredPosition, selectedToken, combatActive, targetingMode]);
 
   const currentTurnToken = tokens.find(t => t.characterId === currentTurn);
 
@@ -307,8 +351,6 @@ export function BattleMap({
             getCellClass={getGridCellClass}
             hoveredPosition={hoveredPosition}
           />
-
-          
 
           {/* Tokens */}
           {tokens.map((token) => (

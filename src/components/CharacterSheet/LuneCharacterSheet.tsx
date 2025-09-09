@@ -80,7 +80,7 @@ const STATUS_EFFECTS = {
 const ULTIMATE_EFFECTS = {
   fire: {
     name: 'Inferno Terrain',
-    description: 'Creates fire terrain in 40ft radius. +5 damage per turn to anyone in zone.',
+    description: 'Creates fire terrain in 15ft radius. +5 damage per turn to anyone in zone.',
     icon: '🔥'
   },
   ice: {
@@ -95,7 +95,7 @@ const ULTIMATE_EFFECTS = {
   },
   light: {
     name: 'Divine Judgment',
-    description: '20 random squares hit by light beams. Blinds for 2 turns.',
+    description: '20 random squares highlighted for 3 rounds. Pure divine energy.',
     icon: '⚡'
   }
 };
@@ -559,9 +559,9 @@ export function LuneCharacterSheet({
                       onClick={() => handleActionSelect(ability)}
                       disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)}
                       className={`w-full p-3 rounded-lg transition-colors text-left border ${
-                        elementalStains.length < (ability.cost || 0)
-                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
-                          : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500'
+                        !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)
+                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40' // Made more obvious
+                          : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
                       }`}
                     >
                       <div className="flex items-center">
@@ -581,15 +581,15 @@ export function LuneCharacterSheet({
               {/* Ultimate Ability - Elemental Genesis */}
               <div className="mt-4">
                 <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
-                <button
-                  onClick={() => handleActionSelect(ultimateAbility)}
-                  disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed}
-                  className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
-                    elementalStains.length === 0 || elementalGenesisUsed
-                      ? 'bg-gray-600 cursor-not-allowed opacity-50'
-                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
-                  }`}
-                >
+                  <button
+                    onClick={() => handleActionSelect(ultimateAbility)}
+                    disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed}
+                    className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
+                      !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed
+                        ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400' // Made more obvious
+                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+                    }`}
+                  >
                   <div className="flex items-center">
                     <span className="text-xl mr-2">🌟</span>
                     <span className="font-bold">{ultimateAbility.name}</span>

@@ -1,4 +1,4 @@
-// src/components/BattleMap/Grid.tsx - Updated with Chess-style coordinates
+// src/components/BattleMap/Grid.tsx - Fixed with individual cell rendering
 import React from 'react';
 
 interface GridProps {
@@ -6,7 +6,7 @@ interface GridProps {
   height: number;
   gridSize: number;
   showGrid?: boolean;
-  showCoordinates?: boolean; // New prop to control coordinate visibility
+  showCoordinates?: boolean;
   onGridClick?: (position: { x: number; y: number }) => void;
   onGridHover?: (position: { x: number; y: number } | null) => void;
   getCellClass?: (position: { x: number; y: number }) => string;
@@ -19,7 +19,10 @@ export function Grid({
   gridSize, 
   showGrid = true, 
   showCoordinates = false,
-  onGridClick 
+  onGridClick,
+  onGridHover,
+  getCellClass,
+  hoveredPosition
 }: GridProps) {
   const totalWidth = width * gridSize;
   const totalHeight = height * gridSize;
@@ -46,7 +49,43 @@ export function Grid({
     }
   };
 
+  const handleMouseMove = (event: React.MouseEvent<SVGElement>) => {
+    if (!onGridHover) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.floor((event.clientX - rect.left) / gridSize);
+    const y = Math.floor((event.clientY - rect.top) / gridSize);
+
+    if (x >= 0 && x < width && y >= 0 && y < height) {
+      onGridHover({ x, y });
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (onGridHover) {
+      onGridHover(null);
+    }
+  };
+
   const coordinatePadding = showCoordinates ? 24 : 0;
+
+  // Function to get cell fill color based on class
+  const getCellFill = (x: number, y: number): string => {
+    if (!getCellClass) return 'transparent';
+    
+    const cellClass = getCellClass({ x, y });
+    
+    // Map CSS classes to SVG fill colors
+    if (cellClass.includes('fire')) return 'rgba(239, 68, 68, 0.6)'; // red-500 with opacity
+    if (cellClass.includes('ice')) return 'rgba(59, 130, 246, 0.6)'; // blue-500 with opacity  
+    if (cellClass.includes('nature')) return 'rgba(34, 197, 94, 0.6)'; // green-500 with opacity
+    if (cellClass.includes('light')) return 'rgba(255, 255, 255, 0.8)'; // white with opacity
+    if (cellClass.includes('hover')) return 'rgba(255, 255, 255, 0.2)'; // white hover
+    if (cellClass.includes('valid-target')) return 'rgba(34, 197, 94, 0.3)'; // green tint
+    if (cellClass.includes('invalid')) return 'rgba(239, 68, 68, 0.3)'; // red tint
+    
+    return 'transparent';
+  };
 
   return (
     <div className="relative">
@@ -109,12 +148,35 @@ export function Grid({
         height={totalHeight}
         className="absolute pointer-events-auto"
         onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
         style={{ 
           zIndex: 1,
           left: coordinatePadding,
           top: coordinatePadding,
         }}
       >
+        {/* Individual Grid Cells for Visual Feedback */}
+        {Array.from({ length: width }).map((_, x) =>
+          Array.from({ length: height }).map((_, y) => {
+            const fill = getCellFill(x, y);
+            if (fill === 'transparent') return null;
+            
+            return (
+              <rect
+                key={`cell-${x}-${y}`}
+                x={x * gridSize}
+                y={y * gridSize}
+                width={gridSize}
+                height={gridSize}
+                fill={fill}
+                className="pointer-events-none"
+              />
+            );
+          })
+        )}
+
+        {/* Grid Pattern */}
         {showGrid && (
           <defs>
             <pattern
