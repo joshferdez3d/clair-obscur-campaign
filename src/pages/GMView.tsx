@@ -442,9 +442,11 @@ const handleResetSession = async () => {
       }
       
       await nextTurn();
-      
+      const sessionData = await FirestoreService.getBattleSession(sessionId || 'test-session');
+      const isStormActive = sessionData?.stormState?.isActive;
+      const currentTurn = sessionData?.combatState?.currentTurn;
       // If storm is active, trigger storm turn after normal turn advancement
-      if (isStormActive && currentTurnPlayer === 'sciel') {
+      if (isStormActive && currentTurn === 'sciel') {
         setTimeout(() => {
           StormService.triggerStormTurn(sessionId || 'test-session');
         }, 1000); // Small delay for dramatic effect
