@@ -410,16 +410,28 @@ export class FirestoreService {
       updatedAt: serverTimestamp()
     });
 
-    // Handle immediate effects that don't need GM interaction
-    if (!payload.needsGMInteraction) {
-      if (payload.element === 'nature') {
-        // Apply healing immediately
-        await this.applyNatureHealing(sessionId, payload.allPlayerTokens || []);
-      }
-      if (payload.element === 'light') {
+console.log('🔧 DEBUG: Checking immediate effects for element:', payload.element);
+console.log('🔧 DEBUG: needsGMInteraction:', payload.needsGMInteraction);
+
+  if (!payload.needsGMInteraction) {
+    console.log('🔧 DEBUG: Element does not need GM interaction, proceeding with immediate effects');
+    
+    if (payload.element === 'nature') {
+      console.log('🌿 Processing nature healing...');
+      // Apply healing immediately
+      await this.applyNatureHealing(sessionId, payload.allPlayerTokens || []);
+    }
+    
+    if (payload.element === 'light') {
+      console.log('⚡ LIGHT ULTIMATE: Starting Divine Judgment execution');
+      
+      try {
+        const lightSquares = this.generateRandomSquares(20);
+        console.log('⚡ Generated light squares:', lightSquares);
+        
         const lightBlindEffect = {
           id: `light-${Date.now()}`,
-          affectedSquares: this.generateRandomSquares(20),
+          affectedSquares: lightSquares,
           duration: 3,
           turnsRemaining: 3,
           createdBy: payload.playerId,
@@ -427,15 +439,72 @@ export class FirestoreService {
           createdOnRound: session.combatState?.round || 1
         };
         
+        console.log('⚡ Creating light blind effect:', lightBlindEffect);
+        
         // Update session with light blind effects
         await updateDoc(ref, {
           lightBlindEffects: arrayUnion(lightBlindEffect),
           updatedAt: serverTimestamp()
         });
+        
+        console.log('⚡ LIGHT ULTIMATE: Divine Judgment executed successfully!');
+        console.log('⚡ Light blind effects should now appear on grid');
+        
+        // 🔧 DEBUG: Verify the update worked
+        setTimeout(async () => {
+          const verifySession = await this.getBattleSession(sessionId);
+          console.log('🔧 DEBUG: Verification - Light effects in session:', verifySession?.lightBlindEffects);
+        }, 1000);
+        
+      } catch (error) {
+        console.error('❌ LIGHT ULTIMATE: Failed to create light effects:', error);
+        throw error; // Re-throw to see the full error
       }
     }
+  } else {
+    console.log('🔧 DEBUG: Element needs GM interaction, skipping immediate effects');
+  }
 
     return action;
+  }
+
+  static async debugLightUltimate(sessionId: string): Promise<void> {
+    console.log('🔧 DEBUG: Manually creating light ultimate effect');
+    
+    const session = await this.getBattleSession(sessionId);
+    if (!session) {
+      console.error('❌ Session not found');
+      return;
+    }
+    
+    const lightSquares = [
+      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 },
+      { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 },
+      { x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 },
+      { x: 15, y: 5 }, { x: 16, y: 5 }, { x: 17, y: 5 },
+      { x: 5, y: 12 }, { x: 6, y: 12 }, { x: 7, y: 12 },
+      { x: 18, y: 14 }, { x: 19, y: 14 }, { x: 0, y: 14 },
+      { x: 9, y: 7 }, { x: 10, y: 8 }
+    ];
+    
+    const lightBlindEffect = {
+      id: `debug-light-${Date.now()}`,
+      affectedSquares: lightSquares,
+      duration: 3,
+      turnsRemaining: 3,
+      createdBy: 'debug',
+      createdAt: Date.now(),
+      createdOnRound: session.combatState?.round || 1
+    };
+    
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      lightBlindEffects: arrayUnion(lightBlindEffect),
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log('🔧 DEBUG: Manual light effect created:', lightBlindEffect);
+    console.log('🔧 Check the grid - you should see white squares at corners and scattered positions');
   }
 
   // Apply Nature healing to all player tokens
@@ -484,17 +553,20 @@ export class FirestoreService {
     });
   }
 
-  // Helper method to generate 20 random squares for Light element
   private static generateRandomSquares(count: number): Array<{ x: number; y: number }> {
     const squares: Array<{ x: number; y: number }> = [];
-    const gridWidth = 20; // Assuming a 20x20 grid
-    const gridHeight = 20;
+    const gridWidth = 20;  // Grid is 20 wide
+    const gridHeight = 15; // Grid is 15 tall (not 20!)
+    
+    console.log(`🎯 Generating ${count} random squares on ${gridWidth}x${gridHeight} grid`);
     
     for (let i = 0; i < count; i++) {
-      squares.push({
+      const square = {
         x: Math.floor(Math.random() * gridWidth),
         y: Math.floor(Math.random() * gridHeight)
-      });
+      };
+      squares.push(square);
+      console.log(`  Square ${i + 1}: (${square.x}, ${square.y})`);
     }
     
     return squares;
@@ -652,7 +724,6 @@ export class FirestoreService {
     console.log(`Light Genesis: Highlighted ${affectedSquares.length} random squares for 3 rounds`);
   }
 
-    // Add this new function to FirestoreService:
   static async cleanupExpiredTerrain(sessionId: string): Promise<void> {
     const session = await this.getBattleSession(sessionId);
     if (!session) return;
@@ -661,39 +732,53 @@ export class FirestoreService {
     let needsUpdate = false;
     const updates: any = {};
 
+    console.log(`🔍 Checking terrain cleanup at round ${currentRound}`);
+
     // Clean up fire terrain
     if (session.fireTerrainZones) {
+      const beforeCount = session.fireTerrainZones.length;
       const activeFire = session.fireTerrainZones.filter((zone: any) => {
         const roundsElapsed = currentRound - (zone.createdOnRound || 1);
-        return roundsElapsed < 3;
+        const shouldKeep = roundsElapsed < 3;
+        console.log(`🔥 Fire terrain ${zone.id}: created round ${zone.createdOnRound}, elapsed ${roundsElapsed}, keep: ${shouldKeep}`);
+        return shouldKeep;
       });
-      if (activeFire.length !== session.fireTerrainZones.length) {
+      if (activeFire.length !== beforeCount) {
         updates.fireTerrainZones = activeFire;
         needsUpdate = true;
+        console.log(`🔥 Removed ${beforeCount - activeFire.length} expired fire terrain zones`);
       }
     }
 
     // Clean up ice walls
     if (session.iceWalls) {
+      const beforeCount = session.iceWalls.length;
       const activeIce = session.iceWalls.filter((wall: any) => {
         const roundsElapsed = currentRound - (wall.createdOnRound || 1);
-        return roundsElapsed < 3;
+        const shouldKeep = roundsElapsed < 3;
+        console.log(`🧊 Ice wall ${wall.id}: created round ${wall.createdOnRound}, elapsed ${roundsElapsed}, keep: ${shouldKeep}`);
+        return shouldKeep;
       });
-      if (activeIce.length !== session.iceWalls.length) {
+      if (activeIce.length !== beforeCount) {
         updates.iceWalls = activeIce;
         needsUpdate = true;
+        console.log(`🧊 Removed ${beforeCount - activeIce.length} expired ice walls`);
       }
     }
 
     // Clean up light effects
     if (session.lightBlindEffects) {
+      const beforeCount = session.lightBlindEffects.length;
       const activeLight = session.lightBlindEffects.filter((effect: any) => {
         const roundsElapsed = currentRound - (effect.createdOnRound || 1);
-        return roundsElapsed < 3;
+        const shouldKeep = roundsElapsed < 3;
+        console.log(`⚡ Light effect ${effect.id}: created round ${effect.createdOnRound}, elapsed ${roundsElapsed}, keep: ${shouldKeep}`);
+        return shouldKeep;
       });
-      if (activeLight.length !== session.lightBlindEffects.length) {
+      if (activeLight.length !== beforeCount) {
         updates.lightBlindEffects = activeLight;
         needsUpdate = true;
+        console.log(`⚡ Removed ${beforeCount - activeLight.length} expired light effects`);
       }
     }
 
@@ -703,9 +788,55 @@ export class FirestoreService {
         ...updates,
         updatedAt: serverTimestamp()
       });
-      console.log('🧹 Cleaned up expired terrain effects');
+      console.log('🧹 Successfully cleaned up expired terrain effects');
+    } else {
+      console.log('✅ No terrain effects needed cleanup');
     }
   }
+
+  // Also add this helper function to manually verify terrain effects status:
+  static logTerrainEffectsStatus(session: any): void {
+    const currentRound = session?.combatState?.round || 1;
+    
+    console.log(`\n📊 TERRAIN STATUS REPORT - Round ${currentRound}`);
+    console.log('='.repeat(50));
+    
+    if (session?.fireTerrainZones?.length > 0) {
+      console.log('🔥 FIRE TERRAIN:');
+      session.fireTerrainZones.forEach((zone: any, index: number) => {
+        const elapsed = currentRound - (zone.createdOnRound || 1);
+        const remaining = Math.max(0, 3 - elapsed);
+        console.log(`  ${index + 1}. ${zone.id} - Created: Round ${zone.createdOnRound}, Remaining: ${remaining} rounds`);
+      });
+    } else {
+      console.log('🔥 FIRE TERRAIN: None active');
+    }
+    
+    if (session?.iceWalls?.length > 0) {
+      console.log('🧊 ICE WALLS:');
+      session.iceWalls.forEach((wall: any, index: number) => {
+        const elapsed = currentRound - (wall.createdOnRound || 1);
+        const remaining = Math.max(0, 3 - elapsed);
+        console.log(`  ${index + 1}. ${wall.id} - Created: Round ${wall.createdOnRound}, Remaining: ${remaining} rounds`);
+      });
+    } else {
+      console.log('🧊 ICE WALLS: None active');
+    }
+    
+    if (session?.lightBlindEffects?.length > 0) {
+      console.log('⚡ LIGHT EFFECTS:');
+      session.lightBlindEffects.forEach((effect: any, index: number) => {
+        const elapsed = currentRound - (effect.createdOnRound || 1);
+        const remaining = Math.max(0, 3 - elapsed);
+        console.log(`  ${index + 1}. ${effect.id} - Created: Round ${effect.createdOnRound}, Remaining: ${remaining} rounds`);
+      });
+    } else {
+      console.log('⚡ LIGHT EFFECTS: None active');
+    }
+    
+    console.log('='.repeat(50));
+  }
+
 
   static async dismissMissAction(sessionId: string, actionId: string) {
     const session = await this.getBattleSession(sessionId);
@@ -804,8 +935,11 @@ export class FirestoreService {
       }),
       updatedAt: serverTimestamp()
     });
-  }
 
+    // 🔧 FIX: Clean up expired terrain effects after turn advancement
+    await this.cleanupExpiredTerrain(sessionId);
+    console.log('🔄 Turn advanced and terrain effects cleaned up');
+  }
   static async setInitiativeOrder(sessionId: string, initiativeOrder: InitiativeEntry[]) {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {

@@ -69,17 +69,24 @@ export function Grid({
 
   const coordinatePadding = showCoordinates ? 24 : 0;
 
-  // Function to get cell fill color based on class
-  const getCellFill = (x: number, y: number): string => {
+    const getCellFill = (x: number, y: number): string => {
     if (!getCellClass) return 'transparent';
     
     const cellClass = getCellClass({ x, y });
+    
+    // Add debugging for light cells
+    if (cellClass.includes('light-blind')) {
+      console.log(`🎨 Cell (${x}, ${y}) has light-blind class, applying white fill`);
+    }
     
     // Map CSS classes to SVG fill colors
     if (cellClass.includes('fire')) return 'rgba(239, 68, 68, 0.6)'; // red-500 with opacity
     if (cellClass.includes('ice')) return 'rgba(59, 130, 246, 0.6)'; // blue-500 with opacity  
     if (cellClass.includes('nature')) return 'rgba(34, 197, 94, 0.6)'; // green-500 with opacity
-    if (cellClass.includes('light') || cellClass.includes('light-blind')) return 'rgba(255, 255, 255, 0.8)';
+    if (cellClass.includes('light') || cellClass.includes('light-blind')) {
+      console.log(`🎨 Applying white fill to cell (${x}, ${y})`);
+      return 'rgba(255, 255, 255, 0.8)';
+    }
     if (cellClass.includes('hover')) return 'rgba(255, 255, 255, 0.2)'; // white hover
     if (cellClass.includes('valid-target')) return 'rgba(34, 197, 94, 0.3)'; // green tint
     if (cellClass.includes('invalid')) return 'rgba(239, 68, 68, 0.3)'; // red tint

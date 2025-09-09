@@ -235,18 +235,28 @@ export function BattleMap({
     }
 
     if (session?.lightBlindEffects) {
-      console.log('Light blind effects:', session.lightBlindEffects);
+      console.log('🔍 Checking light blind effects:', session.lightBlindEffects);
+      
+      session.lightBlindEffects.forEach((effect: any, index: number) => {
+        console.log(`  Effect ${index + 1}:`, effect);
+        console.log(`    Affected squares:`, effect.affectedSquares);
+      });
+      
       const isInLightZone = session.lightBlindEffects.some((effect: any) => 
-        effect.affectedSquares?.some((square: any) => 
-          square.x === pos.x && square.y === pos.y
-        )
+        effect.affectedSquares?.some((square: any) => {
+          const match = square.x === pos.x && square.y === pos.y;
+          if (match) {
+            console.log(`✨ MATCH! Cell (${pos.x}, ${pos.y}) is in light zone from effect:`, effect.id);
+          }
+          return match;
+        })
       );
+      
       if (isInLightZone) {
-        console.log(`Cell ${pos.x}, ${pos.y} is in light zone`);
+        console.log(`⚡ Adding light-blind class to cell (${pos.x}, ${pos.y})`);
         classes.push('light-blind');
       }
     }
-
     // Add hover effect
     if (hoveredPosition && hoveredPosition.x === pos.x && hoveredPosition.y === pos.y) {
       classes.push('hover');

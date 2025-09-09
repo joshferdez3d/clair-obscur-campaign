@@ -279,61 +279,123 @@ export function LuneCharacterSheet({
     setSelectedUltimateElement(element);
   };
 
+ // In LuneCharacterSheet.tsx, replace the executeUltimate function:
+
+ // Replace the executeUltimate function in LuneCharacterSheet.tsx with this fixed version:
+
   const executeUltimate = async (element: ElementType) => {
-    console.log(`🌟 Starting Elemental Genesis - ${element}`);
+  console.log(`🌟 Starting Elemental Genesis - ${element}`);
+  console.log('🔧 EARLY DEBUG: executeUltimate function called');
+  console.log('🔧 EARLY DEBUG: sessionId:', sessionId);
+  console.log('🔧 EARLY DEBUG: character.id:', character.id);
+  
+  try {
+    // Trigger the ultimate video
+    console.log('🔧 EARLY DEBUG: About to trigger ultimate video');
+    await triggerUltimate('lune', 'Elemental Genesis');
+    console.log('🔧 EARLY DEBUG: Ultimate video triggered successfully');
+  } catch (error) {
+    console.error('🔧 EARLY DEBUG: Ultimate video failed:', error);
+  }
+
+  // Consume one stain of the selected element
+  console.log('🔧 EARLY DEBUG: About to consume stains');
+  const newStains = [...elementalStains];
+  const elementIndex = newStains.indexOf(element);
+  if (elementIndex !== -1) {
+    newStains.splice(elementIndex, 1);
+    onStainsChange?.(newStains);
+    console.log('🔧 EARLY DEBUG: Stains consumed successfully');
+  } else {
+    console.log('🔧 EARLY DEBUG: Element not found in stains');
+  }
+
+  // Mark ultimate as used in session (not local state)
+  console.log('🔧 EARLY DEBUG: About to mark ultimate as used in session');
+  try {
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      'luneElementalGenesisUsed': true,
+      updatedAt: serverTimestamp()
+    });
+    console.log('🔧 EARLY DEBUG: Session updated successfully');
+  } catch (error) {
+    console.error('🔧 EARLY DEBUG: Session update failed:', error);
+  }
+
+  // Trigger appropriate effect
+  console.log('🔧 EARLY DEBUG: About to call onTargetSelect');
+  if (onTargetSelect) {
+    onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
+    console.log('🔧 EARLY DEBUG: onTargetSelect called successfully');
+  } else {
+    console.log('🔧 EARLY DEBUG: onTargetSelect is null/undefined');
+  }
+
+  // 🔧 DEBUG: Add extensive logging for ultimate creation
+  console.log('🔧 EARLY DEBUG: Reached the main debug section');
+  const needsGMInteraction = element === 'fire' || element === 'ice';
+  console.log('🔧 DEBUG: About to create ultimate action with payload:', {
+    playerId: character.id,
+    ultimateType: 'elemental_genesis',
+    element: element,
+    effectName: ULTIMATE_EFFECTS[element].name,
+    description: ULTIMATE_EFFECTS[element].description,
+    needsGMInteraction: needsGMInteraction,
+    sessionId: sessionId
+  });
+
+  // Create specific ultimate action for GM
+  try {
+    console.log('🔧 DEBUG: Calling FirestoreService.createUltimateAction...');
     
-    try {
-      // Trigger the ultimate video
-      await triggerUltimate('lune', 'Elemental Genesis');
-    } catch (error) {
-      console.error('Failed to trigger ultimate video:', error);
+    const action = await FirestoreService.createUltimateAction(sessionId, {
+      playerId: character.id,
+      ultimateType: 'elemental_genesis',
+      element: element,
+      effectName: ULTIMATE_EFFECTS[element].name,
+      description: ULTIMATE_EFFECTS[element].description,
+      needsGMInteraction: needsGMInteraction,
+      allPlayerTokens: allTokens.filter(t => t.type === 'player').map(t => ({
+        id: t.id,
+        name: t.name,
+        currentHP: t.hp || 0,
+        maxHP: t.maxHp || 0,
+        position: t.position
+      }))
+    });
+    
+    console.log('🔧 DEBUG: Ultimate action created successfully:', action);
+    
+    // 🔧 DEBUG: For light ultimates, check if immediate execution should have happened
+    if (element === 'light') {
+      console.log('🔧 DEBUG: Light ultimate should execute immediately');
+      console.log('🔧 DEBUG: needsGMInteraction should be false:', needsGMInteraction);
+      
+      // Wait a moment then check the session for light effects
+      setTimeout(async () => {
+        try {
+          const session = await FirestoreService.getBattleSession(sessionId);
+          console.log('🔧 DEBUG: Session after ultimate:', {
+            lightBlindEffects: session?.lightBlindEffects,
+            lightEffectCount: session?.lightBlindEffects?.length || 0
+          });
+        } catch (error) {
+          console.error('🔧 DEBUG: Failed to check session after ultimate:', error);
+        }
+      }, 2000);
     }
-
-    // Consume one stain of the selected element
-    const newStains = [...elementalStains];
-    const elementIndex = newStains.indexOf(element);
-    if (elementIndex !== -1) {
-      newStains.splice(elementIndex, 1);
-      onStainsChange?.(newStains);
+    
+  } catch (error) {
+    console.error('❌ Failed to create ultimate action:', error);
+    // Fix TypeScript error by properly handling unknown error type
+    if (error instanceof Error) {
+      console.error('❌ Error details:', error.message, error.stack);
+    } else {
+      console.error('❌ Error details:', String(error));
     }
-
-    // Mark ultimate as used in session (not local state)
-    try {
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, {
-        'luneElementalGenesisUsed': true,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.error('Failed to mark ultimate as used:', error);
-    }
-
-    // Trigger appropriate effect
-    if (onTargetSelect) {
-      onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
-    }
-
-    // Create specific ultimate action for GM
-    try {
-      await FirestoreService.createUltimateAction(sessionId, {
-        playerId: character.id,
-        ultimateType: 'elemental_genesis',
-        element: element,
-        effectName: ULTIMATE_EFFECTS[element].name,
-        description: ULTIMATE_EFFECTS[element].description,
-        needsGMInteraction: element === 'fire' || element === 'ice', // Fire needs position, Ice needs row/column
-        allPlayerTokens: allTokens.filter(t => t.type === 'player').map(t => ({
-          id: t.id,
-          name: t.name,
-          currentHP: t.hp || 0,
-          maxHP: t.maxHp || 0,
-          position: t.position
-        }))
-      });
-    } catch (error) {
-      console.error('Failed to create ultimate action:', error);
-    }
-  };
+  }
+};
 
   // Confirm action execution
   const handleConfirmAction = async () => {

@@ -432,8 +432,15 @@ const handleResetSession = async () => {
     }
   };
 
+  
+
   const handleNextTurn = async () => {
     try {
+      // 🔍 Debug: Log current terrain status before turn advancement
+      if (session) {
+        FirestoreService.logTerrainEffectsStatus(session);
+      }
+      
       await nextTurn();
       
       // If storm is active, trigger storm turn after normal turn advancement
