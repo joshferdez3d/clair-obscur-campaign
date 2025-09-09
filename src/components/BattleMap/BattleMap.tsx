@@ -234,14 +234,15 @@ export function BattleMap({
       }
     }
 
-    // Check for light blind effects
     if (session?.lightBlindEffects) {
+      console.log('Light blind effects:', session.lightBlindEffects);
       const isInLightZone = session.lightBlindEffects.some((effect: any) => 
         effect.affectedSquares?.some((square: any) => 
           square.x === pos.x && square.y === pos.y
         )
       );
       if (isInLightZone) {
+        console.log(`Cell ${pos.x}, ${pos.y} is in light zone`);
         classes.push('light-blind');
       }
     }

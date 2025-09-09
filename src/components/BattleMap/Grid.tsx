@@ -79,7 +79,7 @@ export function Grid({
     if (cellClass.includes('fire')) return 'rgba(239, 68, 68, 0.6)'; // red-500 with opacity
     if (cellClass.includes('ice')) return 'rgba(59, 130, 246, 0.6)'; // blue-500 with opacity  
     if (cellClass.includes('nature')) return 'rgba(34, 197, 94, 0.6)'; // green-500 with opacity
-    if (cellClass.includes('light')) return 'rgba(255, 255, 255, 0.8)'; // white with opacity
+    if (cellClass.includes('light') || cellClass.includes('light-blind')) return 'rgba(255, 255, 255, 0.8)';
     if (cellClass.includes('hover')) return 'rgba(255, 255, 255, 0.2)'; // white hover
     if (cellClass.includes('valid-target')) return 'rgba(34, 197, 94, 0.3)'; // green tint
     if (cellClass.includes('invalid')) return 'rgba(239, 68, 68, 0.3)'; // red tint

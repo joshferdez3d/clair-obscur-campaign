@@ -416,7 +416,23 @@ export class FirestoreService {
         // Apply healing immediately
         await this.applyNatureHealing(sessionId, payload.allPlayerTokens || []);
       }
-      // Light element will be handled visually by the GM view
+      if (payload.element === 'light') {
+        const lightBlindEffect = {
+          id: `light-${Date.now()}`,
+          affectedSquares: this.generateRandomSquares(20),
+          duration: 3,
+          turnsRemaining: 3,
+          createdBy: payload.playerId,
+          createdAt: Date.now(),
+          createdOnRound: session.combatState?.round || 1
+        };
+        
+        // Update session with light blind effects
+        await updateDoc(ref, {
+          lightBlindEffects: arrayUnion(lightBlindEffect),
+          updatedAt: serverTimestamp()
+        });
+      }
     }
 
     return action;

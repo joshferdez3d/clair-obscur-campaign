@@ -373,12 +373,15 @@ export function LuneCharacterSheet({
       // Trigger the attack
       if (onTargetSelect) {
         onTargetSelect(selectedTarget, parseInt(acRoll), 'ranged', 'elemental_bolt');
+        onTargetSelect('action_taken', 999, 'basic', 'elemental_bolt');
+
       }
 
       setSelectedAction(null);
       setSelectedTarget('');
       setACRoll('');
       setElementRoll('');
+      setSelectedUltimateElement(null);
       return;
     }
 
@@ -395,11 +398,15 @@ export function LuneCharacterSheet({
 
       if (onTargetSelect) {
         onTargetSelect(selectedTarget, parseInt(acRoll), 'ability', selectedAction.id);
+        onTargetSelect('action_taken', 999, 'ability', selectedAction.id);
+
       }
 
       setSelectedAction(null);
       setSelectedTarget('');
       setACRoll('');
+      setSelectedUltimateElement(null);
+      setElementRoll('');
       return;
     }
 
