@@ -20,8 +20,8 @@ export const StormPopup: React.FC<StormPopupProps> = ({
   const handleRollDamage = () => {
     setIsRolling(true);
     
-    // Simulate rolling 6d6 radiant damage
-    const rolls = Array.from({ length: 6 }, () => Math.floor(Math.random() * 6) + 1);
+    // FIXED: Simulate rolling 3d6 radiant damage instead of 6d6
+    const rolls = Array.from({ length: 3 }, () => Math.floor(Math.random() * 6) + 1);
     const totalDamage = rolls.reduce((sum, roll) => sum + roll, 0);
     
     // Animate the rolling
@@ -73,7 +73,7 @@ export const StormPopup: React.FC<StormPopupProps> = ({
             ) : hasRolled ? (
               <span className="text-yellow-300">{damage} Damage</span>
             ) : (
-              <span className="text-purple-300">6d6 Radiant</span>
+              <span className="text-purple-300">3d6 Radiant</span>
             )}
           </div>
           

@@ -285,21 +285,16 @@ export function LuneCharacterSheet({
 
   const executeUltimate = async (element: ElementType) => {
   console.log(`🌟 Starting Elemental Genesis - ${element}`);
-  console.log('🔧 EARLY DEBUG: executeUltimate function called');
-  console.log('🔧 EARLY DEBUG: sessionId:', sessionId);
-  console.log('🔧 EARLY DEBUG: character.id:', character.id);
+
   
   try {
     // Trigger the ultimate video
-    console.log('🔧 EARLY DEBUG: About to trigger ultimate video');
     await triggerUltimate('lune', 'Elemental Genesis');
-    console.log('🔧 EARLY DEBUG: Ultimate video triggered successfully');
   } catch (error) {
     console.error('🔧 EARLY DEBUG: Ultimate video failed:', error);
   }
 
   // Consume one stain of the selected element
-  console.log('🔧 EARLY DEBUG: About to consume stains');
   const newStains = [...elementalStains];
   const elementIndex = newStains.indexOf(element);
   if (elementIndex !== -1) {
@@ -311,7 +306,6 @@ export function LuneCharacterSheet({
   }
 
   // Mark ultimate as used in session (not local state)
-  console.log('🔧 EARLY DEBUG: About to mark ultimate as used in session');
   try {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {

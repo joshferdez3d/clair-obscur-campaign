@@ -410,11 +410,7 @@ export class FirestoreService {
       updatedAt: serverTimestamp()
     });
 
-console.log('🔧 DEBUG: Checking immediate effects for element:', payload.element);
-console.log('🔧 DEBUG: needsGMInteraction:', payload.needsGMInteraction);
-
   if (!payload.needsGMInteraction) {
-    console.log('🔧 DEBUG: Element does not need GM interaction, proceeding with immediate effects');
     
     if (payload.element === 'nature') {
       console.log('🌿 Processing nature healing...');
@@ -423,7 +419,6 @@ console.log('🔧 DEBUG: needsGMInteraction:', payload.needsGMInteraction);
     }
     
     if (payload.element === 'light') {
-      console.log('⚡ LIGHT ULTIMATE: Starting Divine Judgment execution');
       
       try {
         const lightSquares = this.generateRandomSquares(20);
@@ -438,17 +433,13 @@ console.log('🔧 DEBUG: needsGMInteraction:', payload.needsGMInteraction);
           createdAt: Date.now(),
           createdOnRound: session.combatState?.round || 1
         };
-        
-        console.log('⚡ Creating light blind effect:', lightBlindEffect);
-        
+                
         // Update session with light blind effects
         await updateDoc(ref, {
           lightBlindEffects: arrayUnion(lightBlindEffect),
           updatedAt: serverTimestamp()
         });
         
-        console.log('⚡ LIGHT ULTIMATE: Divine Judgment executed successfully!');
-        console.log('⚡ Light blind effects should now appear on grid');
         
         // 🔧 DEBUG: Verify the update worked
         setTimeout(async () => {
@@ -468,45 +459,7 @@ console.log('🔧 DEBUG: needsGMInteraction:', payload.needsGMInteraction);
     return action;
   }
 
-  static async debugLightUltimate(sessionId: string): Promise<void> {
-    console.log('🔧 DEBUG: Manually creating light ultimate effect');
-    
-    const session = await this.getBattleSession(sessionId);
-    if (!session) {
-      console.error('❌ Session not found');
-      return;
-    }
-    
-    const lightSquares = [
-      { x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 },
-      { x: 0, y: 1 }, { x: 1, y: 1 }, { x: 2, y: 1 },
-      { x: 10, y: 10 }, { x: 11, y: 10 }, { x: 12, y: 10 },
-      { x: 15, y: 5 }, { x: 16, y: 5 }, { x: 17, y: 5 },
-      { x: 5, y: 12 }, { x: 6, y: 12 }, { x: 7, y: 12 },
-      { x: 18, y: 14 }, { x: 19, y: 14 }, { x: 0, y: 14 },
-      { x: 9, y: 7 }, { x: 10, y: 8 }
-    ];
-    
-    const lightBlindEffect = {
-      id: `debug-light-${Date.now()}`,
-      affectedSquares: lightSquares,
-      duration: 3,
-      turnsRemaining: 3,
-      createdBy: 'debug',
-      createdAt: Date.now(),
-      createdOnRound: session.combatState?.round || 1
-    };
-    
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, {
-      lightBlindEffects: arrayUnion(lightBlindEffect),
-      updatedAt: serverTimestamp()
-    });
-    
-    console.log('🔧 DEBUG: Manual light effect created:', lightBlindEffect);
-    console.log('🔧 Check the grid - you should see white squares at corners and scattered positions');
-  }
-
+  
   // Apply Nature healing to all player tokens
   static async applyNatureHealing(
     sessionId: string, 

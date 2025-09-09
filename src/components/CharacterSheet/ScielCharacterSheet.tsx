@@ -259,9 +259,7 @@ export function ScielCharacterSheet({
 
           nearbyEnemies.forEach(nearbyEnemy => {
             // Check if Sciel's AC beats nearby enemy's AC
-            if (finalAC >= nearbyEnemy.ac) {
               addForetellStack(nearbyEnemy.id);
-            }
           });
 
           // Consume the chain charge
@@ -284,7 +282,10 @@ export function ScielCharacterSheet({
     if (selectedAction.id === 'foretell_chain') {
       onAbilityPointsChange?.(-selectedAction.cost!);
       onChainChargedChange?.(true);
-      
+        // FIXED: Foretell Chain now ends Sciel's turn
+      if (onTargetSelect) {
+        onTargetSelect('foretell_chain_charged', 0, 'ability', selectedAction.id);
+      }
       setSelectedAction(null);
       setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
       return;
@@ -585,7 +586,7 @@ export function ScielCharacterSheet({
                     }
                   </div>
                   <div className="text-xs text-clair-gold-200 mt-1">
-                    Auto-targeting storm: 6d6 radiant per turn
+                    Auto-targeting storm: 3d6 radiant per turn (triggers on Sciel's turn only)
                   </div>
                 </button>
               </div>
@@ -625,12 +626,12 @@ export function ScielCharacterSheet({
                 </button>
               </div>
 
-              {/* Foretell Chain - No targeting needed */}
               {selectedAction.id === 'foretell_chain' && (
                 <div className="space-y-3">
                   <div className="p-3 bg-green-900 bg-opacity-30 rounded-lg">
                     <p className="text-green-200 text-sm">
-                      Your next Card Toss will apply Foretell Stacks to up to 2 additional enemies within 20ft of your target.
+                      Your next Card Toss will apply Foretell Stacks to up to 2 additional enemies within 10ft of your target.
+                      <br/><strong>Using Foretell Chain will end your turn.</strong>
                     </p>
                   </div>
                   <button onClick={handleConfirmAction} className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg font-bold transition-colors">
@@ -802,11 +803,11 @@ export function ScielCharacterSheet({
             <h4 className="font-serif font-bold text-green-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-green-300 space-y-1">
               <li>• Card Toss applies Foretell Stacks (max 3 per enemy)</li>
-              <li>• Foretell Chain makes next Card Toss affect nearby enemies</li>
+              <li>• Foretell Chain affects enemies within 10ft (ends your turn)</li>
               <li>• Foretell Sweep hits all stacked enemies with one roll</li>
               <li>• Guiding Cards is a bonus action (3-round cooldown)</li>
               <li>• Ranged attacks get -2 AC penalty per 5ft beyond 30ft</li>
-              <li>• <strong>Crescendo of Fate: 5-turn automated storm using all stacks!</strong></li>
+              <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on Sciel's turns only)!</strong></li>
             </ul>
           </div>
         </div>

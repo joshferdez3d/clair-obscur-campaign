@@ -432,7 +432,7 @@ const handleResetSession = async () => {
     }
   };
 
-  
+
 
   const handleNextTurn = async () => {
     try {
@@ -444,7 +444,7 @@ const handleResetSession = async () => {
       await nextTurn();
       
       // If storm is active, trigger storm turn after normal turn advancement
-      if (isStormActive) {
+      if (isStormActive && currentTurnPlayer === 'sciel') {
         setTimeout(() => {
           StormService.triggerStormTurn(sessionId || 'test-session');
         }, 1000); // Small delay for dramatic effect
