@@ -395,6 +395,7 @@ export function PlayerView() {
         hasActedThisTurn={hasActedThisTurn}
         elementalStains={elementalStains}
         onStainsChange={setElementalStains}
+        session={session} // NEW: Pass session for ultimate cooldown tracking
       />
     );
   }

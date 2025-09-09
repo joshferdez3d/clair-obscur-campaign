@@ -713,18 +713,6 @@ export class FirestoreService {
     });
   }
 
-  static async endCombat(sessionId: string) {
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, {
-      'combatState.isActive': false,
-      'combatState.phase': 'ended',
-      'combatState.currentTurn': '',
-      pendingActions: [],
-      'tokens.token-maelle.phantomStrikeUsed': false,
-      updatedAt: serverTimestamp()
-    });
-  }
-
   static async nextTurn(sessionId: string) {
     const session = await this.getBattleSession(sessionId);
     if (!session?.combatState) return;
@@ -840,6 +828,36 @@ export class FirestoreService {
       return null;
     }
   }
+
+  // Reset Lune's ultimate on combat end (instead of long rest)
+  static async resetLuneUltimate(sessionId: string): Promise<void> {
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        'luneElementalGenesisUsed': false, // Reset ultimate cooldown
+        updatedAt: serverTimestamp()
+      });
+      console.log('Lune ultimate cooldown reset');
+    } catch (error) {
+      console.error('Failed to reset Lune ultimate:', error);
+      throw error;
+    }
+  }
+
+  // Also update the existing endCombat method to include Lune reset:
+  static async endCombat(sessionId: string) {
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      'combatState.isActive': false,
+      'combatState.phase': 'ended',
+      'combatState.currentTurn': '',
+      pendingActions: [],
+      'tokens.token-maelle.phantomStrikeUsed': false,
+      'luneElementalGenesisUsed': false, // Reset Lune's ultimate on combat end
+      updatedAt: serverTimestamp()
+    });
+  }
+
 
   static subscribeToBattleSession(
     sessionId: string,

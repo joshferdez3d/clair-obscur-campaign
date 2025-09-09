@@ -37,6 +37,15 @@ export function GMView() {
   const [turretAttacksTriggered, setTurretAttacksTriggered] = useState<Set<string>>(new Set());
   const [currentMap, setCurrentMap] = useState<MapConfig>(AVAILABLE_MAPS[0]); // Default to first map
 
+  const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
+    active: boolean;
+    type: 'fire_terrain' | 'ice_wall' | null;
+    actionId: string | null;
+  }>({
+    active: false,
+    type: null,
+    actionId: null
+  });
 
   // IMPORTANT: All hooks must be called at the top level, before any early returns
   const {
@@ -118,6 +127,40 @@ export function GMView() {
     }
   }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
 
+  // NEW: Add this useEffect to detect pending ultimate actions
+  useEffect(() => {
+    if (!session?.pendingActions) return;
+    
+    // Check for pending ultimate actions that need GM interaction
+    const pendingUltimate = session.pendingActions.find(action => 
+      action.ultimateType === 'elemental_genesis' && 
+      action.needsGMInteraction && 
+      !action.resolved
+    );
+    
+    if (pendingUltimate && !ultimateInteractionMode.active) {
+      if (pendingUltimate.element === 'fire') {
+        setUltimateInteractionMode({
+          active: true,
+          type: 'fire_terrain',
+          actionId: pendingUltimate.id
+        });
+      } else if (pendingUltimate.element === 'ice') {
+        setUltimateInteractionMode({
+          active: true,
+          type: 'ice_wall', 
+          actionId: pendingUltimate.id
+        });
+      }
+    } else if (!pendingUltimate && ultimateInteractionMode.active) {
+      // No pending ultimate, clear interaction mode
+      setUltimateInteractionMode({
+        active: false,
+        type: null,
+        actionId: null
+      });
+    }
+  }, [session?.pendingActions, ultimateInteractionMode.active]);
 
   useEffect(() => {
     if (session?.combatState?.currentTurn === 'gustave' && session?.combatState?.isActive) {
@@ -248,52 +291,115 @@ const handleResetSession = async () => {
   };
 
 
-// REPLACE: Handle battle map click for enemy placement
-const handleGridClick = async (position: Position) => {
-  if (isPlacingEnemy && selectedEnemyType && session && sessionId) {
-    // Create a new enemy token with full stat block
-    const enemyId = `enemy-${selectedEnemyType.id}-${Date.now()}`;
-    const newEnemy: BattleToken = {
-      id: enemyId,
-      name: selectedEnemyType.name,
-      position,
-      type: 'enemy',
-      hp: selectedEnemyType.hp,
-      maxHp: selectedEnemyType.maxHp,
-      ac: selectedEnemyType.ac,
-      size: selectedEnemyType.size || 1,
-      color: selectedEnemyType.color || '#dc2626'
-    };
-
-    try {
-      // Add to session tokens
-      const updatedTokens = { ...session.tokens, [enemyId]: newEnemy };
+  const handleGridClick = async (position: Position) => {
+    console.log('Grid clicked at:', position, 'Interaction mode:', ultimateInteractionMode);
+    
+    // Handle Ultimate interactions first (highest priority)
+    if (ultimateInteractionMode.active && ultimateInteractionMode.actionId) {
+      try {
+        if (ultimateInteractionMode.type === 'fire_terrain') {
+          console.log('🔥 Placing Fire Terrain at:', position);
+          await FirestoreService.createFireTerrain(
+            sessionId || 'test-session',
+            ultimateInteractionMode.actionId,
+            position
+          );
+          
+          // Clear interaction mode
+          setUltimateInteractionMode({
+            active: false,
+            type: null,
+            actionId: null
+          });
+          
+          console.log('🔥 Fire Terrain placed successfully!');
+          return;
+        }
+        
+        if (ultimateInteractionMode.type === 'ice_wall') {
+          console.log('🧊 Ice wall placement clicked at:', position);
+          // For ice wall, we need to let GM choose row or column
+          // For simplicity, let's make it create a horizontal wall at clicked row
+          const wallSquares: Array<{ x: number; y: number }> = [];
+          
+          // Create horizontal wall across entire row
+          for (let x = 0; x < 20; x++) {
+            wallSquares.push({ x, y: position.y });
+          }
+          
+          await FirestoreService.createIceWall(
+            sessionId || 'test-session',
+            ultimateInteractionMode.actionId,
+            {
+              type: 'row',
+              index: position.y,
+              squares: wallSquares
+            }
+          );
+          
+          // Clear interaction mode
+          setUltimateInteractionMode({
+            active: false,
+            type: null,
+            actionId: null
+          });
+          
+          console.log('🧊 Ice Wall placed successfully!');
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to handle ultimate interaction:', error);
+      }
       
-      // Store full enemy data for reference
-      const updatedEnemyData = { 
-        ...session.enemyData, 
-        [enemyId]: selectedEnemyType 
-      };
-
-      // Update the session
-      await import('../services/firestoreService').then(({ FirestoreService }) =>
-        FirestoreService.updateBattleSession(sessionId, {
-          tokens: updatedTokens,
-          enemyData: updatedEnemyData,
-          updatedAt: new Date()
-        })
-      );
-
-      console.log(`Added ${selectedEnemyType.name} at position ${position.x}, ${position.y}`);
-    } catch (error) {
-      console.error('Failed to add enemy:', error);
+      return; // Don't continue to enemy placement if we're in ultimate mode
     }
 
-    // Reset enemy placement state
-    setSelectedEnemyType(null);
-    setIsPlacingEnemy(false);
-  }
-};
+    // Handle enemy placement (existing logic)
+    if (isPlacingEnemy && selectedEnemyType && session && sessionId) {
+      // Create a new enemy token with full stat block
+      const enemyId = `enemy-${selectedEnemyType.id}-${Date.now()}`;
+      const newEnemy: BattleToken = {
+        id: enemyId,
+        name: selectedEnemyType.name,
+        position,
+        type: 'enemy',
+        hp: selectedEnemyType.hp,
+        maxHp: selectedEnemyType.maxHp,
+        ac: selectedEnemyType.ac,
+        size: selectedEnemyType.size || 1,
+        color: selectedEnemyType.color || '#dc2626'
+      };
+
+      try {
+        // Add to session tokens
+        const updatedTokens = { ...session.tokens, [enemyId]: newEnemy };
+        
+        // Store full enemy data for reference
+        const updatedEnemyData = { 
+          ...session.enemyData, 
+          [enemyId]: selectedEnemyType 
+        };
+
+        // Update the session
+        await import('../services/firestoreService').then(({ FirestoreService }) =>
+          FirestoreService.updateBattleSession(sessionId, {
+            tokens: updatedTokens,
+            enemyData: updatedEnemyData,
+            updatedAt: new Date()
+          })
+        );
+
+        console.log(`Added ${selectedEnemyType.name} at position ${position.x}, ${position.y}`);
+      } catch (error) {
+        console.error('Failed to add enemy:', error);
+      }
+
+      // Reset enemy placement state
+      setSelectedEnemyType(null);
+      setIsPlacingEnemy(false);
+    }
+  };
+
 
   const handleStartCombat = async (order: InitiativeEntry[]) => {
     try {
@@ -303,13 +409,24 @@ const handleGridClick = async (position: Position) => {
     }
   };
 
+  // REPLACE the existing handleEndCombat function with this enhanced version:
   const handleEndCombat = async () => {
     try {
       await endCombat();
+      
       // End storm if active
       if (isStormActive) {
         await StormService.endStorm(sessionId || 'test-session');
       }
+      
+      // Reset Lune's ultimate cooldown on combat end
+      try {
+        await FirestoreService.resetLuneUltimate(sessionId || 'test-session');
+        console.log('✅ Lune ultimate reset for next combat');
+      } catch (error) {
+        console.error('Failed to reset Lune ultimate:', error);
+      }
+      
     } catch (e) {
       console.error('Failed to end combat:', e);
     }
@@ -674,6 +791,31 @@ const handleGridClick = async (position: Position) => {
                 </span>
               )}
             </h3>
+
+            {/* Ultimate Placement Status */}
+            {ultimateInteractionMode.active && (
+              <div className="mb-4 p-3 bg-purple-900 border border-purple-500 rounded-lg">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-bold text-purple-200 text-sm">
+                      {ultimateInteractionMode.type === 'fire_terrain' && '🔥 Fire Genesis: Click to Place Fire Terrain'}
+                      {ultimateInteractionMode.type === 'ice_wall' && '🧊 Ice Genesis: Click Row for Ice Wall'}
+                    </p>
+                    <p className="text-purple-300 text-xs">
+                      {ultimateInteractionMode.type === 'fire_terrain' && 'Click any square to create 40ft fire terrain'}
+                      {ultimateInteractionMode.type === 'ice_wall' && 'Click any square to create ice wall across that row'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setUltimateInteractionMode({ active: false, type: null, actionId: null })}
+                    className="text-purple-300 hover:text-purple-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             
            {/* NEW: Enemy placement status */}
           {isPlacingEnemy && selectedEnemyType && (

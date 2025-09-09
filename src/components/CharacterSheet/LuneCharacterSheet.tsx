@@ -6,7 +6,8 @@ import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import type { Character, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
-
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 interface LuneCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -33,6 +34,9 @@ interface LuneCharacterSheetProps {
   // For abilities that need AoE or special targeting
   sessionId?: string;
   allTokens?: BattleToken[];
+  
+  // NEW: Combat state tracking for ultimate reset
+  session?: any; // For accessing luneElementalGenesisUsed from session
 }
 
 type ElementType = 'fire' | 'ice' | 'nature' | 'light';
@@ -113,14 +117,16 @@ export function LuneCharacterSheet({
   onStainsChange,
   sessionId = 'test-session',
   allTokens = [],
+  session, // NEW: session prop for ultimate tracking
+
 }: LuneCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [acRoll, setACRoll] = useState<string>('');
   const [elementRoll, setElementRoll] = useState<string>('');
-  const [elementalGenesisUsed, setElementalGenesisUsed] = useState(false);
   const [selectedUltimateElement, setSelectedUltimateElement] = useState<ElementType | null>(null);
   const { triggerUltimate } = useUltimateVideo(sessionId);
+  const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate';
@@ -273,7 +279,6 @@ export function LuneCharacterSheet({
     setSelectedUltimateElement(element);
   };
 
-  // Execute ultimate based on selected element
   const executeUltimate = async (element: ElementType) => {
     console.log(`🌟 Starting Elemental Genesis - ${element}`);
     
@@ -292,8 +297,16 @@ export function LuneCharacterSheet({
       onStainsChange?.(newStains);
     }
 
-    // Mark ultimate as used
-    setElementalGenesisUsed(true);
+    // Mark ultimate as used in session (not local state)
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        'luneElementalGenesisUsed': true,
+        updatedAt: serverTimestamp()
+      });
+    } catch (error) {
+      console.error('Failed to mark ultimate as used:', error);
+    }
 
     // Trigger appropriate effect
     if (onTargetSelect) {
@@ -427,11 +440,7 @@ export function LuneCharacterSheet({
     onCancelTargeting?.();
   };
 
-  // Reset function for long rest
-  const handleLongRest = () => {
-    setElementalGenesisUsed(false);
-  };
-
+  
   return (
     <div className="min-h-screen bg-clair-shadow-900">
       {/* CHARACTER HEADER */}
@@ -589,14 +598,14 @@ export function LuneCharacterSheet({
                     </span>
                     <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                   </div>
-                  <div className="text-sm opacity-90 mt-1">
-                    {elementalGenesisUsed 
-                      ? '⚡ Already used this rest!'
-                      : elementalStains.length === 0 
-                        ? 'Need stains to unleash Genesis'
-                        : `Choose from ${getAvailableElements().length} elements`
-                    }
-                  </div>
+                     <div className="text-sm opacity-90 mt-1">
+                      {elementalGenesisUsed 
+                        ? '⚡ Already used this combat!'
+                        : elementalStains.length === 0 
+                          ? 'Need stains to unleash Genesis'
+                          : `Choose from ${getAvailableElements().length} elements`
+                      }
+                    </div>
                   <div className="text-xs text-yellow-200 mt-1">{ultimateAbility.description}</div>
                 </button>
               </div>
