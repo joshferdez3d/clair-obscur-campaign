@@ -1,13 +1,15 @@
 // src/components/CharacterSheet/LuneCharacterSheet.tsx
 import React, { useState } from 'react';
-import { User, Sparkles, Target, Eye, Zap, Circle } from 'lucide-react';
+import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
+import { HPSyncService } from '../../services/HPSyncService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import type { Character, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+
 interface LuneCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -117,19 +119,19 @@ export function LuneCharacterSheet({
   onStainsChange,
   sessionId = 'test-session',
   allTokens = [],
-  session, // NEW: session prop for ultimate tracking
-
+  session,
 }: LuneCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
   const [acRoll, setACRoll] = useState<string>('');
   const [elementRoll, setElementRoll] = useState<string>('');
   const [selectedUltimateElement, setSelectedUltimateElement] = useState<ElementType | null>(null);
+  const [healAmount, setHealAmount] = useState<string>('');
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
 
   const [selectedAction, setSelectedAction] = useState<{
-    type: 'basic' | 'ability' | 'ultimate';
+    type: 'basic' | 'ability' | 'ultimate' | 'heal';
     id: string;
     name: string;
     description: string;
@@ -137,6 +139,7 @@ export function LuneCharacterSheet({
     cost?: number | string;
     needsElement?: boolean;
     multiTarget?: boolean;
+    isHealing?: boolean;
   } | null>(null);
 
   // Calculate distance for range validation
@@ -149,6 +152,19 @@ export function LuneCharacterSheet({
   // Get valid targets (Lune's abilities are all ranged)
   const getValidTargets = () => {
     return availableEnemies; // All enemies are valid for Lune's ranged attacks
+  };
+
+  // Get available healing targets (allies + self)
+  const getAvailableAllies = () => {
+    const playerTokens = allTokens.filter(token => token.type === 'player');
+    return playerTokens.map(token => ({
+      id: token.characterId || token.id,
+      tokenId: token.id,
+      name: token.name,
+      currentHP: token.hp || 0,
+      maxHP: token.maxHp || 0,
+      position: token.position,
+    }));
   };
 
   // Add stain to collection
@@ -184,6 +200,7 @@ export function LuneCharacterSheet({
     range: 'Unlimited',
   };
 
+  // UPDATED ABILITIES - Replace Genesis Spark with Nature's Balm
   const abilities = [
     {
       type: 'ability' as const,
@@ -204,14 +221,16 @@ export function LuneCharacterSheet({
       multiTarget: true,
       range: 'Unlimited',
     },
+    // NEW: Nature's Balm - Replace Genesis Spark
     {
-      type: 'ability' as const,
-      id: 'genesis_spark',
-      name: 'Genesis Spark',
-      description: 'Ultimate focused elemental blast',
-      damage: '5d10 elemental',
-      cost: 3,
+      type: 'heal' as const,
+      id: 'natures_balm',
+      name: "Nature's Balm",
+      description: 'Heal an ally (or yourself) for 2d6 HP',
+      damage: '2d6 healing',
+      cost: 2,
       range: 'Unlimited',
+      isHealing: true,
     },
   ];
 
@@ -237,6 +256,14 @@ export function LuneCharacterSheet({
       }
     }
 
+    // NEW: Check healing ability requirements
+    if (action.type === 'heal' && action.cost) {
+      if (elementalStains.length < action.cost) {
+        alert(`Not enough stains! Need ${action.cost}, have ${elementalStains.length}`);
+        return;
+      }
+    }
+
     // Check ultimate requirements
     if (action.type === 'ultimate') {
       if (elementalStains.length === 0) {
@@ -255,6 +282,7 @@ export function LuneCharacterSheet({
     setACRoll('');
     setElementRoll('');
     setSelectedUltimateElement(null);
+    setHealAmount('');
   };
 
   // Handle target selection for multi-target abilities
@@ -279,121 +307,166 @@ export function LuneCharacterSheet({
     setSelectedUltimateElement(element);
   };
 
- // In LuneCharacterSheet.tsx, replace the executeUltimate function:
+  // NEW: Handle heal amount confirmation
+  const handleConfirmHeal = async () => {
+    if (!selectedAction || selectedAction.id !== 'natures_balm') return;
+    if (!selectedTarget || !healAmount) {
+      alert('Please select a target and enter heal amount!');
+      return;
+    }
 
- // Replace the executeUltimate function in LuneCharacterSheet.tsx with this fixed version:
+    const healValue = parseInt(healAmount);
+    if (isNaN(healValue) || healValue <= 0) {
+      alert('Please enter a valid heal amount!');
+      return;
+    }
+
+    try {
+      // Find the target ally
+      const allies = getAvailableAllies();
+      const targetAlly = allies.find(ally => ally.id === selectedTarget);
+      if (!targetAlly) {
+        alert('Target not found!');
+        return;
+      }
+
+      // Apply healing using HPSyncService
+      await HPSyncService.applyHealing(targetAlly.id, sessionId, healValue);
+
+      // Consume stains
+      consumeStains(2);
+
+      // Mark action as taken
+      if (onTargetSelect) {
+        onTargetSelect('action_taken', 0, 'heal', 'natures_balm');
+      }
+
+      console.log(`Nature's Balm: Healed ${targetAlly.name} for ${healValue} HP`);
+      
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setHealAmount('');
+      
+    } catch (error) {
+      console.error('Failed to apply healing:', error);
+      alert('Failed to apply healing. Please try again.');
+    }
+  };
 
   const executeUltimate = async (element: ElementType) => {
-  console.log(`🌟 Starting Elemental Genesis - ${element}`);
+    console.log(`🌟 Starting Elemental Genesis - ${element}`);
 
-  
-  try {
-    // Trigger the ultimate video
-    await triggerUltimate('lune', 'Elemental Genesis');
-  } catch (error) {
-    console.error('🔧 EARLY DEBUG: Ultimate video failed:', error);
-  }
+    try {
+      // Trigger the ultimate video
+      await triggerUltimate('lune', 'Elemental Genesis');
+    } catch (error) {
+      console.error('🔧 EARLY DEBUG: Ultimate video failed:', error);
+    }
 
-  // Consume one stain of the selected element
-  const newStains = [...elementalStains];
-  const elementIndex = newStains.indexOf(element);
-  if (elementIndex !== -1) {
-    newStains.splice(elementIndex, 1);
-    onStainsChange?.(newStains);
-    console.log('🔧 EARLY DEBUG: Stains consumed successfully');
-  } else {
-    console.log('🔧 EARLY DEBUG: Element not found in stains');
-  }
+    // Consume one stain of the selected element
+    const newStains = [...elementalStains];
+    const elementIndex = newStains.indexOf(element);
+    if (elementIndex !== -1) {
+      newStains.splice(elementIndex, 1);
+      onStainsChange?.(newStains);
+      console.log('🔧 EARLY DEBUG: Stains consumed successfully');
+    } else {
+      console.log('🔧 EARLY DEBUG: Element not found in stains');
+    }
 
-  // Mark ultimate as used in session (not local state)
-  try {
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, {
-      'luneElementalGenesisUsed': true,
-      updatedAt: serverTimestamp()
-    });
-    console.log('🔧 EARLY DEBUG: Session updated successfully');
-  } catch (error) {
-    console.error('🔧 EARLY DEBUG: Session update failed:', error);
-  }
+    // Mark ultimate as used in session (not local state)
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        'luneElementalGenesisUsed': true,
+        updatedAt: serverTimestamp()
+      });
+      console.log('🔧 EARLY DEBUG: Session updated successfully');
+    } catch (error) {
+      console.error('🔧 EARLY DEBUG: Session update failed:', error);
+    }
 
-  // Trigger appropriate effect
-  console.log('🔧 EARLY DEBUG: About to call onTargetSelect');
-  if (onTargetSelect) {
-    onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
-    console.log('🔧 EARLY DEBUG: onTargetSelect called successfully');
-  } else {
-    console.log('🔧 EARLY DEBUG: onTargetSelect is null/undefined');
-  }
+    // Trigger appropriate effect
+    console.log('🔧 EARLY DEBUG: About to call onTargetSelect');
+    if (onTargetSelect) {
+      onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
+      console.log('🔧 EARLY DEBUG: onTargetSelect called successfully');
+    } else {
+      console.log('🔧 EARLY DEBUG: onTargetSelect is null/undefined');
+    }
 
-  // 🔧 DEBUG: Add extensive logging for ultimate creation
-  console.log('🔧 EARLY DEBUG: Reached the main debug section');
-  const needsGMInteraction = element === 'fire' || element === 'ice';
-  console.log('🔧 DEBUG: About to create ultimate action with payload:', {
-    playerId: character.id,
-    ultimateType: 'elemental_genesis',
-    element: element,
-    effectName: ULTIMATE_EFFECTS[element].name,
-    description: ULTIMATE_EFFECTS[element].description,
-    needsGMInteraction: needsGMInteraction,
-    sessionId: sessionId
-  });
-
-  // Create specific ultimate action for GM
-  try {
-    console.log('🔧 DEBUG: Calling FirestoreService.createUltimateAction...');
-    
-    const action = await FirestoreService.createUltimateAction(sessionId, {
+    const needsGMInteraction = element === 'fire' || element === 'ice';
+    console.log('🔧 DEBUG: About to create ultimate action with payload:', {
       playerId: character.id,
       ultimateType: 'elemental_genesis',
       element: element,
       effectName: ULTIMATE_EFFECTS[element].name,
       description: ULTIMATE_EFFECTS[element].description,
       needsGMInteraction: needsGMInteraction,
-      allPlayerTokens: allTokens.filter(t => t.type === 'player').map(t => ({
-        id: t.id,
-        name: t.name,
-        currentHP: t.hp || 0,
-        maxHP: t.maxHp || 0,
-        position: t.position
-      }))
+      sessionId: sessionId
     });
-    
-    console.log('🔧 DEBUG: Ultimate action created successfully:', action);
-    
-    // 🔧 DEBUG: For light ultimates, check if immediate execution should have happened
-    if (element === 'light') {
-      console.log('🔧 DEBUG: Light ultimate should execute immediately');
-      console.log('🔧 DEBUG: needsGMInteraction should be false:', needsGMInteraction);
+
+    // Create specific ultimate action for GM
+    try {
+      console.log('🔧 DEBUG: Calling FirestoreService.createUltimateAction...');
       
-      // Wait a moment then check the session for light effects
-      setTimeout(async () => {
-        try {
-          const session = await FirestoreService.getBattleSession(sessionId);
-          console.log('🔧 DEBUG: Session after ultimate:', {
-            lightBlindEffects: session?.lightBlindEffects,
-            lightEffectCount: session?.lightBlindEffects?.length || 0
-          });
-        } catch (error) {
-          console.error('🔧 DEBUG: Failed to check session after ultimate:', error);
-        }
-      }, 2000);
+      const action = await FirestoreService.createUltimateAction(sessionId, {
+        playerId: character.id,
+        ultimateType: 'elemental_genesis',
+        element: element,
+        effectName: ULTIMATE_EFFECTS[element].name,
+        description: ULTIMATE_EFFECTS[element].description,
+        needsGMInteraction: needsGMInteraction,
+        allPlayerTokens: allTokens.filter(t => t.type === 'player').map(t => ({
+          id: t.id,
+          name: t.name,
+          currentHP: t.hp || 0,
+          maxHP: t.maxHp || 0,
+          position: t.position
+        }))
+      });
+      
+      console.log('🔧 DEBUG: Ultimate action created successfully:', action);
+      
+      // 🔧 DEBUG: For light ultimates, check if immediate execution should have happened
+      if (element === 'light') {
+        console.log('🔧 DEBUG: Light ultimate should execute immediately');
+        console.log('🔧 DEBUG: needsGMInteraction should be false:', needsGMInteraction);
+        
+        // Wait a moment then check the session for light effects
+        setTimeout(async () => {
+          try {
+            const session = await FirestoreService.getBattleSession(sessionId);
+            console.log('🔧 DEBUG: Session after ultimate:', {
+              lightBlindEffects: session?.lightBlindEffects,
+              lightEffectCount: session?.lightBlindEffects?.length || 0
+            });
+          } catch (error) {
+            console.error('🔧 DEBUG: Failed to check session after ultimate:', error);
+          }
+        }, 2000);
+      }
+      
+    } catch (error) {
+      console.error('❌ Failed to create ultimate action:', error);
+      // Fix TypeScript error by properly handling unknown error type
+      if (error instanceof Error) {
+        console.error('❌ Error details:', error.message, error.stack);
+      } else {
+        console.error('❌ Error details:', String(error));
+      }
     }
-    
-  } catch (error) {
-    console.error('❌ Failed to create ultimate action:', error);
-    // Fix TypeScript error by properly handling unknown error type
-    if (error instanceof Error) {
-      console.error('❌ Error details:', error.message, error.stack);
-    } else {
-      console.error('❌ Error details:', String(error));
-    }
-  }
-};
+  };
 
   // Confirm action execution
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
+
+    // NEW: Handle Nature's Balm healing
+    if (selectedAction.id === 'natures_balm') {
+      await handleConfirmHeal();
+      return;
+    }
 
     // Handle Elemental Genesis (Ultimate)
     if (selectedAction.id === 'elemental_genesis') {
@@ -401,106 +474,80 @@ export function LuneCharacterSheet({
         alert('Please select an element for your Genesis!');
         return;
       }
-
       await executeUltimate(selectedUltimateElement);
       setSelectedAction(null);
-      setSelectedUltimateElement(null);
       return;
     }
 
-    // For Elemental Bolt (basic attack)
-    if (selectedAction.id === 'elemental_bolt') {
-      if (!selectedTarget || !acRoll || !elementRoll) {
-        alert('Please select target, enter AC roll, and element roll (1-4)');
-        return;
-      }
-
-      const elementNum = parseInt(elementRoll);
-      if (elementNum < 1 || elementNum > 4) {
-        alert('Element roll must be between 1-4');
-        return;
-      }
-
-      const element = ELEMENT_MAP[elementNum];
-      
-      // Add stain for the element used
-      addStain(element);
-
-      // Trigger the attack
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, parseInt(acRoll), 'ranged', 'elemental_bolt');
-        onTargetSelect('action_taken', 999, 'basic', 'elemental_bolt');
-
-      }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setElementRoll('');
-      setSelectedUltimateElement(null);
-      return;
-    }
-
-    // For single-target abilities
-    if (!selectedAction.multiTarget) {
+    // Validate inputs for other abilities
+    if (!selectedAction.needsElement && !selectedAction.multiTarget) {
       if (!selectedTarget || !acRoll) {
-        alert('Please select target and enter AC roll');
+        alert('Please select a target and enter AC roll!');
         return;
       }
-
-      // Consume stains
-      const consumed = consumeStains(selectedAction.cost as number || 0);
-      console.log(`Consumed ${consumed.length} stains:`, consumed);
-
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, parseInt(acRoll), 'ability', selectedAction.id);
-        onTargetSelect('action_taken', 999, 'ability', selectedAction.id);
-
+    } else if (selectedAction.needsElement && !selectedAction.multiTarget) {
+      if (!selectedTarget || !acRoll || !elementRoll) {
+        alert('Please select target, enter AC roll, and roll for element!');
+        return;
       }
+    } else if (selectedAction.multiTarget) {
+      if (selectedTargets.length === 0 || !acRoll) {
+        alert('Please select at least one target and enter AC roll!');
+        return;
+      }
+    }
 
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setSelectedUltimateElement(null);
-      setElementRoll('');
+    const acRollNum = parseInt(acRoll);
+    if (isNaN(acRollNum) || acRollNum < 1 || acRollNum > 20) {
+      alert('AC roll must be between 1 and 20!');
       return;
     }
 
-    // For multi-target abilities (Twin Catalyst)
-    if (selectedAction.multiTarget) {
-      if (selectedTargets.length === 0 || !acRoll) {
-        alert('Please select at least one target and enter AC roll');
+    // Handle element roll if needed
+    if (selectedAction.needsElement) {
+      const elementRollNum = parseInt(elementRoll);
+      if (isNaN(elementRollNum) || elementRollNum < 1 || elementRollNum > 4) {
+        alert('Element roll must be between 1 and 4!');
         return;
       }
+      const rolledElement = ELEMENT_MAP[elementRollNum];
+      addStain(rolledElement);
+    }
 
-      // Consume stains
-      const consumed = consumeStains(selectedAction.cost as number || 0);
-      console.log(`Twin Catalyst consumed ${consumed.length} stains:`, consumed);
-
-      // For Twin Catalyst, we need to create multiple actions or handle specially
-      // For now, we'll use the first target as primary and note in GM popup
-      if (onTargetSelect) {
-        // Create attack for each target with same AC roll
+    try {
+      if (selectedAction.multiTarget) {
+        // Handle multi-target abilities like Twin Catalyst
         for (const targetId of selectedTargets) {
-          onTargetSelect(targetId, parseInt(acRoll), 'ability', selectedAction.id);
+          if (onTargetSelect) {
+            onTargetSelect(targetId, acRollNum, selectedAction.type, selectedAction.id);
+          }
+        }
+        
+        // Consume stains for the ability
+        if (selectedAction.cost && typeof selectedAction.cost === 'number') {
+          consumeStains(selectedAction.cost);
+        }
+      } else {
+        // Handle single-target abilities
+        if (onTargetSelect) {
+          onTargetSelect(selectedTarget, acRollNum, selectedAction.type, selectedAction.id);
+        }
+        
+        // Consume stains for the ability
+        if (selectedAction.cost && typeof selectedAction.cost === 'number') {
+          consumeStains(selectedAction.cost);
         }
       }
 
       setSelectedAction(null);
+      setSelectedTarget('');
       setSelectedTargets([]);
       setACRoll('');
-      return;
+      setElementRoll('');
+    } catch (error) {
+      console.error('Error executing action:', error);
+      alert('Failed to execute action. Please try again.');
     }
-  };
-
-  const handleCancelAction = () => {
-    setSelectedAction(null);
-    setSelectedTarget('');
-    setSelectedTargets([]);
-    setACRoll('');
-    setElementRoll('');
-    setSelectedUltimateElement(null);
-    onCancelTargeting?.();
   };
 
   
@@ -623,12 +670,18 @@ export function LuneCharacterSheet({
                       disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)}
                       className={`w-full p-3 rounded-lg transition-colors text-left border ${
                         !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)
-                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40' // Made more obvious
-                          : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
+                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
+                          : ability.isHealing 
+                            ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
+                            : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
                       }`}
                     >
                       <div className="flex items-center">
-                        <Zap className="w-4 h-4 mr-2" />
+                        {ability.isHealing ? (
+                          <Heart className="w-4 h-4 mr-2" />
+                        ) : (
+                          <Zap className="w-4 h-4 mr-2" />
+                        )}
                         <span className="font-bold">{ability.name}</span>
                         <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
                           {ability.cost} stains
@@ -649,7 +702,7 @@ export function LuneCharacterSheet({
                     disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed}
                     className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
                       !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed
-                        ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400' // Made more obvious
+                        ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400'
                         : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
                     }`}
                   >
@@ -665,170 +718,243 @@ export function LuneCharacterSheet({
                       {elementalGenesisUsed 
                         ? '⚡ Already used this combat!'
                         : elementalStains.length === 0 
-                          ? 'Need stains to unleash Genesis'
-                          : `Choose from ${getAvailableElements().length} elements`
+                          ? 'Need at least 1 stain to use'
+                          : ultimateAbility.description
                       }
                     </div>
-                  <div className="text-xs text-yellow-200 mt-1">{ultimateAbility.description}</div>
-                </button>
+                  </button>
               </div>
             </div>
           ) : (
-            // Target Selection / Element Selection
+            /* ACTION CONFIRMATION */
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-clair-mystical-200">
-                  <Target className="w-4 h-4 inline mr-2" />
-                  {selectedAction.name}
+              <div className="p-3 bg-clair-mystical-900 bg-opacity-30 rounded-lg border border-clair-mystical-600">
+                <h4 className="font-bold text-clair-mystical-200 mb-2">
+                  {selectedAction.isHealing ? '🌿' : '⚡'} {selectedAction.name}
                 </h4>
-                <button onClick={handleCancelAction} className="text-sm bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white">
-                  Cancel
-                </button>
+                <p className="text-sm text-clair-mystical-300">{selectedAction.description}</p>
               </div>
 
-              {selectedAction.id === 'elemental_genesis' ? (
+              {/* Nature's Balm healing interface */}
+              {selectedAction.id === 'natures_balm' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg">
-                    <p className="text-purple-200 text-sm">
-                      Choose an element to unleash its Genesis effect! Each element creates a unique battlefield effect.
-                    </p>
+                  <div>
+                    <label className="block text-sm font-bold text-green-300 mb-2">Select Ally to Heal:</label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
+                      {getAvailableAllies().map((ally) => (
+                        <button
+                          key={ally.id}
+                          onClick={() => setSelectedTarget(ally.id)}
+                          className={`w-full p-2 rounded text-left text-sm transition-colors ${
+                            selectedTarget === ally.id
+                              ? 'bg-green-600 text-white border-2 border-green-400'
+                              : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600'
+                          }`}
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{ally.name}</span>
+                            <span className="text-xs">
+                              {ally.currentHP}/{ally.maxHP} HP
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
-                  {/* Element Selection */}
                   <div>
-                    <label className="block text-sm font-bold text-clair-mystical-300 mb-2">Select Element:</label>
+                    <label className="block text-sm font-bold text-green-300 mb-2">Heal Amount (2d6):</label>
+                    <input
+                      type="number"
+                      value={healAmount}
+                      onChange={(e) => setHealAmount(e.target.value)}
+                      placeholder="Enter heal amount (e.g., 8)"
+                      className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-green-500"
+                      min="1"
+                      max="12"
+                    />
+                    <p className="text-xs text-gray-400 mt-1">Roll 2d6 and enter the result (2-12)</p>
+                  </div>
+
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleConfirmHeal}
+                      disabled={!selectedTarget || !healAmount || parseInt(healAmount) <= 0}
+                      className="flex-1 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-2 rounded font-bold transition-colors"
+                    >
+                      Apply Healing
+                    </button>
+                    <button
+                      onClick={() => setSelectedAction(null)}
+                      className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Ultimate Element Selection */}
+              {selectedAction.id === 'elemental_genesis' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-bold text-purple-300 mb-2">Choose Element:</label>
                     <div className="grid grid-cols-2 gap-2">
                       {getAvailableElements().map((element) => (
                         <button
                           key={element}
                           onClick={() => handleUltimateElementSelect(element)}
-                          className={`p-3 rounded-lg transition-colors border text-left ${
+                          className={`p-3 rounded-lg text-left border transition-colors ${
                             selectedUltimateElement === element
-                              ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
-                              : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                              ? `${ELEMENT_COLORS[element]} border-white text-white font-bold`
+                              : 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
                           }`}
                         >
                           <div className="flex items-center mb-1">
                             <span className="text-lg mr-2">{ULTIMATE_EFFECTS[element].icon}</span>
-                            <span className={`font-bold ${ELEMENT_TEXT_COLORS[element]}`}>
-                              {ELEMENT_NAMES[element]}
-                            </span>
+                            <span className="font-bold text-sm">{ULTIMATE_EFFECTS[element].name}</span>
                           </div>
-                          <div className="text-xs font-bold mb-1">{ULTIMATE_EFFECTS[element].name}</div>
-                          <div className="text-xs opacity-90">{ULTIMATE_EFFECTS[element].description}</div>
+                          <div className="text-xs opacity-80">{ULTIMATE_EFFECTS[element].description}</div>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <button
-                    onClick={handleConfirmAction}
-                    disabled={!selectedUltimateElement}
-                    className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
-                  >
-                    Unleash Elemental Genesis! 🌟
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* AC Roll Input */}
-                  <div>
-                    <label className="block text-sm font-bold text-clair-mystical-300 mb-1">AC Roll (d20):</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={acRoll}
-                      onChange={(e) => setACRoll(e.target.value)}
-                      className="w-full p-2 rounded bg-clair-shadow-800 border border-clair-mystical-600 text-white"
-                      placeholder="Enter d20 roll result"
-                    />
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleConfirmAction}
+                      disabled={!selectedUltimateElement}
+                      className="flex-1 bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-2 rounded font-bold transition-colors"
+                    >
+                      Unleash Genesis
+                    </button>
+                    <button
+                      onClick={() => setSelectedAction(null)}
+                      className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
                   </div>
+                </div>
+              )}
 
-                  {/* Element Roll for Elemental Bolt */}
-                  {selectedAction.needsElement && (
-                    <div>
-                      <label className="block text-sm font-bold text-clair-mystical-300 mb-1">Element Roll (1-4):</label>
-                      <input
-                        type="number"
-                        min="1"
-                        max="4"
-                        value={elementRoll}
-                        onChange={(e) => setElementRoll(e.target.value)}
-                        className="w-full p-2 rounded bg-clair-shadow-800 border border-clair-mystical-600 text-white"
-                        placeholder="1=Fire, 2=Ice, 3=Nature, 4=Light"
-                      />
-                    </div>
-                  )}
-
+              {/* Regular Target Selection for other abilities */}
+              {selectedAction.type === 'basic' || (selectedAction.type === 'ability' && !selectedAction.isHealing) ? (
+                <div className="space-y-3">
                   {/* Target Selection */}
                   <div>
-                    <label className="block text-sm font-bold text-clair-mystical-300 mb-2">
-                      Select Target{selectedAction.multiTarget ? 's' : ''}:
+                    <label className="block text-sm font-bold text-red-300 mb-2">
+                      {selectedAction.multiTarget ? 'Select Targets:' : 'Select Target:'}
                     </label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                    <div className="space-y-2 max-h-32 overflow-y-auto">
                       {getValidTargets().map((enemy) => (
                         <button
                           key={enemy.id}
                           onClick={() => handleTargetToggle(enemy.id)}
-                          className={`w-full p-2 rounded text-left transition-colors border ${
+                          className={`w-full p-2 rounded text-left text-sm transition-colors ${
                             selectedAction.multiTarget
                               ? selectedTargets.includes(enemy.id)
-                                ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
-                                : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                                ? 'bg-red-600 text-white border-2 border-red-400'
+                                : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600'
                               : selectedTarget === enemy.id
-                                ? 'bg-clair-gold-600 border-clair-gold-400 text-white'
-                                : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:bg-clair-shadow-600'
+                              ? 'bg-red-600 text-white border-2 border-red-400'
+                              : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600'
                           }`}
                         >
-                          <div className="font-bold">{enemy.name}</div>
-                          <div className="text-xs opacity-75">AC: {enemy.ac} | HP: {enemy.hp}/{enemy.maxHp}</div>
+                          <div className="flex justify-between items-center">
+                            <span className="font-medium">{enemy.name}</span>
+                            <span className="text-xs">
+                              AC {enemy.ac} • {enemy.hp}/{enemy.maxHp} HP
+                            </span>
+                          </div>
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Confirm Button */}
-                  <button
-                    onClick={handleConfirmAction}
-                    disabled={
-                      (selectedAction.multiTarget && selectedTargets.length === 0) ||
-                      (!selectedAction.multiTarget && !selectedTarget) ||
-                      !acRoll ||
-                      (selectedAction.needsElement && !elementRoll)
-                    }
-                    className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
-                  >
-                    Confirm {selectedAction.name}
-                  </button>
-                </>
-              )}
+                  {/* AC Roll Input */}
+                  <div className="flex space-x-2">
+                    <div className="flex-1">
+                      <label className="block text-sm font-bold text-gray-300 mb-1">AC Roll (1d20):</label>
+                      <input
+                        type="number"
+                        value={acRoll}
+                        onChange={(e) => setACRoll(e.target.value)}
+                        placeholder="Enter d20 roll"
+                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
+                        min="1"
+                        max="20"
+                      />
+                    </div>
 
-              {/* Status Effect Preview for Elemental Strike */}
-              {selectedAction.id === 'elemental_strike' && elementalStains.length > 0 && (
-                <div className="mt-4 p-3 bg-clair-mystical-900 bg-opacity-30 rounded-lg border border-clair-mystical-500">
-                  <h4 className="font-serif font-bold text-clair-mystical-300 text-sm mb-2">Next Stain Effects:</h4>
-                  <div className="text-xs text-clair-mystical-200">
-                    <span className={`font-bold ${ELEMENT_TEXT_COLORS[elementalStains[0]]}`}>
-                      {ELEMENT_NAMES[elementalStains[0]]}
-                    </span>
-                    : {STATUS_EFFECTS[elementalStains[0]]}
+                    {/* Element Roll for basic attacks */}
+                    {selectedAction.needsElement && (
+                      <div className="flex-1">
+                        <label className="block text-sm font-bold text-gray-300 mb-1">Element (1d4):</label>
+                        <input
+                          type="number"
+                          value={elementRoll}
+                          onChange={(e) => setElementRoll(e.target.value)}
+                          placeholder="1-4"
+                          className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
+                          min="1"
+                          max="4"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Element Preview */}
+                  {selectedAction.needsElement && elementRoll && (
+                    <div className="p-2 bg-clair-mystical-900 bg-opacity-30 rounded border border-clair-mystical-600">
+                      <div className="flex items-center text-sm">
+                        <span className="text-clair-mystical-300 mr-2">Element:</span>
+                        <span className={`font-bold ${ELEMENT_TEXT_COLORS[ELEMENT_MAP[parseInt(elementRoll)]] || 'text-white'}`}>
+                          {ELEMENT_NAMES[ELEMENT_MAP[parseInt(elementRoll)]] || 'Invalid'}
+                        </span>
+                        {ELEMENT_MAP[parseInt(elementRoll)] && (
+                          <span className="text-xs text-gray-400 ml-2">
+                            ({STATUS_EFFECTS[ELEMENT_MAP[parseInt(elementRoll)]]})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Action Buttons */}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={handleConfirmAction}
+                      disabled={
+                        (!selectedAction.multiTarget && !selectedTarget) ||
+                        (selectedAction.multiTarget && selectedTargets.length === 0) ||
+                        !acRoll ||
+                        (selectedAction.needsElement && !elementRoll)
+                      }
+                      className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-2 rounded font-bold transition-colors"
+                    >
+                      Execute Action
+                    </button>
+                    <button
+                      onClick={() => setSelectedAction(null)}
+                      className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 </div>
-              )}
-
-              {getValidTargets().length === 0 && selectedAction.id !== 'elemental_genesis' && (
-                <div className="text-center text-clair-gold-400 py-4">No enemies available</div>
-              )}
+              ) : null}
             </div>
           )}
+        </div>
 
-          {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && (
+        {/* END TURN BUTTON */}
+        <div className="mb-6">
+          {isMyTurn && combatActive && (
             <button
               onClick={onEndTurn}
               disabled={!hasActedThisTurn}
-              className={`w-full mt-4 p-3 rounded-lg font-bold transition-colors ${
+              className={`w-full py-3 px-4 rounded-lg font-bold transition-colors ${
                 hasActedThisTurn
                   ? 'bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900'
                   : 'bg-gray-600 text-gray-400 cursor-not-allowed'
@@ -847,7 +973,7 @@ export function LuneCharacterSheet({
               <li>• Abilities consume oldest stains first</li>
               <li>• Fire burns, Ice freezes, Nature pushes, Light blinds</li>
               <li>• Twin Catalyst can target same enemy twice</li>
-              <li>• Genesis Spark costs 3 stains for big damage</li>
+              <li>• Nature's Balm heals allies for 2d6 HP (costs 2 stains)</li>
               <li>• 🌟 Elemental Genesis: Fire=terrain, Ice=wall, Nature=heal, Light=blinds</li>
             </ul>
           </div>
