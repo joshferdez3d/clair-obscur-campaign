@@ -68,6 +68,22 @@ export function Token({
     }
   };
 
+  const getEnemyImage = (enemyName: string) => {
+    // Normalize the enemy name to match your image file names
+    const normalizedName = enemyName.toLowerCase().replace(/[^a-z]/g, '');
+    
+    const enemyImageMap: { [key: string]: string } = {
+      'benisseur': '/tokens/enemies/Benisseur_Image.png',
+      'bruler': '/tokens/enemies/Bruler_Image.png', 
+      'lancelier': '/tokens/enemies/Lancelier_Image.png',
+      'noirharbinger': '/tokens/enemies/Noir_Harbinger_Image.png',
+      'portier': '/tokens/enemies/Portier_Image.png',
+      'volester': '/tokens/enemies/Volester_Image.png'
+    };
+    
+    return enemyImageMap[normalizedName] || null;
+  };
+
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
@@ -109,7 +125,22 @@ export function Token({
     }
   };
 
-  const characterImage = token.characterId ? getCharacterImage(token.characterId) : null;
+const getTokenImage = () => {
+    // For player characters, use character ID
+    if (token.characterId) {
+      return getCharacterImage(token.characterId);
+    }
+    
+    // For enemy tokens, use enemy name
+    if (token.type === 'enemy') {
+      return getEnemyImage(token.name);
+    }
+    
+    // For NPCs or other types, no image
+    return null;
+  };
+
+  const tokenImage = getTokenImage();
 
   return (
     <div
@@ -142,9 +173,9 @@ export function Token({
         }}
       >
         {/* Character Image */}
-        {characterImage ? (
+        {tokenImage ? (
           <img
-            src={characterImage}
+            src={tokenImage}
             alt={token.name}
             className="w-full h-full object-cover"
             style={{ imageRendering: 'crisp-edges' }}

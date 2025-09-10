@@ -74,4 +74,20 @@ code {
   .min-h-screen {
     min-height: 100dvh;
   }
+
+  @keyframes fireGlow {
+    from {
+      background: radial-gradient(circle, rgba(255,100,0,0.15) 0%, transparent 70%);
+    }
+    to {
+      background: radial-gradient(circle, rgba(255,150,0,0.25) 0%, transparent 80%);
+    }
+  }
+
+  /* Performance optimization for fire animations */
+  .fire-terrain-overlay {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+    transform-style: preserve-3d;
+  }
 }

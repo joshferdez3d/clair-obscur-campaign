@@ -4,6 +4,61 @@ import { Token } from './Token';
 import { Grid } from './Grid';
 import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types'; // Add BattleSession import
 
+interface FireTerrainOverlayProps {
+  gridSize: number;
+  turnsRemaining?: number;
+  intensity?: 'low' | 'medium' | 'high';
+}
+
+const FireTerrainOverlay: React.FC<FireTerrainOverlayProps> = ({
+  gridSize,
+  turnsRemaining = 3,
+  intensity = 'medium'
+}) => {
+  // Calculate opacity based on remaining turns (fade out as it expires)
+  const opacity = Math.max(0.4, turnsRemaining / 3);
+  
+  // Different fire scales based on intensity
+  const fireScale = {
+    low: 0.8,
+    medium: 1.0,
+    high: 1.2
+  };
+
+  return (
+    <div 
+      className="absolute pointer-events-none fire-terrain-overlay"
+      style={{
+        width: gridSize,
+        height: gridSize,
+        opacity,
+        transform: `scale(${fireScale[intensity]})`,
+        zIndex: 5, // Above grid but below tokens
+      }}
+    >
+      <img
+        src="/gifs/fire.gif" // Make sure your gif is named "fire.gif" in public/gifs/
+        alt="Fire terrain"
+        className="w-full h-full object-cover"
+        style={{
+          imageRendering: 'pixelated', // For crisp pixel art
+          mixBlendMode: 'screen' // Helps with transparency
+        }}
+      />
+      
+      {/* Optional glow effect */}
+      <div 
+        className="absolute inset-0 rounded-sm"
+        style={{
+          background: `radial-gradient(circle, rgba(255,100,0,${0.15 * opacity}) 0%, transparent 70%)`,
+          animation: 'fireGlow 2s ease-in-out infinite alternate'
+        }}
+      />
+    </div>
+  );
+};
+
+
 type BattleMapMode = 'player' | 'gm';
 
 interface BattleMapProps {
@@ -206,6 +261,41 @@ export function BattleMap({
     setHoveredPosition(pos);
   }, []);
 
+  const renderFireTerrainOverlays = useCallback(() => {
+    if (!session?.fireTerrainZones) return null;
+
+    const overlays: JSX.Element[] = [];
+
+    session.fireTerrainZones.forEach((zone: any) => {
+      zone.affectedSquares?.forEach((square: any) => {
+        const pixelX = square.x * gridSize + coordinatePadding;
+        const pixelY = square.y * gridSize + coordinatePadding;
+
+        overlays.push(
+          <div
+            key={`fire-terrain-${zone.id}-${square.x}-${square.y}`}
+            className="absolute"
+            style={{
+              left: pixelX,
+              top: pixelY,
+              width: gridSize,
+              height: gridSize,
+              zIndex: 5, // Above grid, below tokens
+            }}
+          >
+            <FireTerrainOverlay
+              gridSize={gridSize}
+              turnsRemaining={zone.turnsRemaining || 3}
+              intensity={zone.damagePerTurn > 5 ? 'high' : 'medium'}
+            />
+          </div>
+        );
+      });
+    });
+
+    return <>{overlays}</>;
+  }, [session?.fireTerrainZones, gridSize, coordinatePadding]);
+
   // UPDATED: Combined grid cell class function with terrain effects
   const getGridCellClass = useCallback((pos: Position) => {
     const classes: string[] = [];
@@ -362,6 +452,8 @@ export function BattleMap({
             getCellClass={getGridCellClass}
             hoveredPosition={hoveredPosition}
           />
+
+          {renderFireTerrainOverlays()}
 
           {/* Tokens */}
           {tokens.map((token) => (
