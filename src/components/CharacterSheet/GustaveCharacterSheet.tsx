@@ -35,6 +35,7 @@ interface GustaveCharacterSheetProps {
   // Needed for Overcharge Burst + popup writing
   sessionId?: string;
   allTokens?: BattleToken[];
+  session?: any; // Or use your specific session type
 
   activeTurretId: string | null;          // ID of currently active turret
   turretsDeployedThisBattle: number;      // Total turrets deployed this battle (max 2)
@@ -60,6 +61,8 @@ export function GustaveCharacterSheet({
   overchargePoints = 0,
   sessionId = 'test-session',
   allTokens = [],
+  session, // ADD THIS
+
     // ADD THESE MISSING PROPS:
   activeTurretId,
   turretsDeployedThisBattle,

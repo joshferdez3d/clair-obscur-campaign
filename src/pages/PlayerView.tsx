@@ -139,7 +139,7 @@ export function PlayerView() {
   console.log(`Ability used: ${ability.name}`);
   // This can be empty for Gustave or implement specific logic if needed
 };
-  
+
 
   const handlePhantomStrikeUse = async () => {
     // Get available enemies for Maelle
@@ -408,6 +408,7 @@ export function PlayerView() {
         onOverchargePointsChange={handleOverchargePointsChange}
         allTokens={tokensArray}
         sessionId={sessionId!}
+        session={session}
         // Turret tracking props:
         activeTurretId={activeTurretId}
         turretsDeployedThisBattle={turretsDeployedThisBattle}

@@ -112,26 +112,25 @@ export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss }: GMComba
               ) : null}
             </div>
 
-            {action.abilityName === "Leader's Sacrifice" && (
+            {a.abilityName === "Leader's Sacrifice" && (
             <div className="mt-3 p-3 bg-blue-900 bg-opacity-30 rounded-lg border border-blue-500">
               <div className="text-blue-200 text-sm font-bold mb-2">
                 🛡️ Leader's Sacrifice Activated!
               </div>
               <div className="text-blue-300 text-sm space-y-1">
-                <p>• {action.playerName} is ready to protect an ally</p>
+                <p>• {a.playerName} is ready to protect an ally</p>
                 <p>• Player will call out who to protect</p>
-                <p>• Redirect damage to {action.playerName} for 2 rounds</p>
+                <p>• Redirect damage to {a.playerName} for 2 rounds</p>
                 <p>• Track manually in your notes</p>
               </div>
               <button
-                onClick={() => onDismissMiss(action.id)}
+                onClick={() => onDismissMiss(a.id)}
                 className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded font-bold"
               >
                 Acknowledge Protection
               </button>
             </div>
-          )}
-
+            )}
             {showDamageInput ? (
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-white">Apply Damage:</label>
