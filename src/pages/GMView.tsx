@@ -9,7 +9,7 @@ import { useCombat } from '../hooks/useCombat';
 import { useGMHPControl } from '../hooks/useGMHPControl';
 import { useStormSystem } from '../hooks/useStormSystem';
 import { StormService } from '../services/StormService';
-import { Plus, Users, Map, Monitor, Wrench, Sword, Zap, Target } from 'lucide-react';
+import { Plus, Users, Map, Monitor, Wrench, Sword, Zap, Target, Ship } from 'lucide-react';
 import type { Position, BattleToken, InitiativeEntry, CombatState, GMCombatAction } from '../types';
 import { GMCombatPopup } from '../components/Combat/GMCombatPopup';
 import { StormPopup } from '../components/Combat/StormPopup';
@@ -26,6 +26,7 @@ import { HPSettingsModal } from '../components/GM/HPSettingsModal';
 import { ResetButton } from '../components/GM/ResetButton';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
 import { MapSelector, AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
+import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -36,6 +37,8 @@ export function GMView() {
   const [openHPModal, setOpenHPModal] = useState<string | null>(null);
   const [turretAttacksTriggered, setTurretAttacksTriggered] = useState<Set<string>>(new Set());
   const [currentMap, setCurrentMap] = useState<MapConfig>(AVAILABLE_MAPS[0]); // Default to first map
+  const [showExpeditionModal, setShowExpeditionModal] = useState(false);
+  const [pendingExpeditioner, setPendingExpeditioner] = useState<BattleToken | null>(null);
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -216,6 +219,56 @@ export function GMView() {
     setCurrentMap(currentMap);
   }
 };
+
+const handleExpeditionerSelected = (expeditioner: BattleToken) => {
+  console.log('🚢 Expeditioner selected:', expeditioner.name);
+  setPendingExpeditioner(expeditioner);
+};
+
+  const handleMapClickForExpeditioner = async (position: Position) => {
+    if (pendingExpeditioner && sessionId) {
+      try {
+        const expeditionerToAdd = { 
+          ...pendingExpeditioner, 
+          position
+        };
+        
+        await FirestoreService.addToken(sessionId, expeditionerToAdd);
+        setPendingExpeditioner(null);
+        console.log('✅ Expeditioner placed:', expeditionerToAdd.name, 'at position', position);
+      } catch (error) {
+        console.error('❌ Failed to add expeditioner:', error);
+      }
+    }
+  };
+
+  const handleRemoveToken = async (tokenId: string) => {
+    if (!sessionId) return;
+    try {
+      await FirestoreService.removeToken(sessionId, tokenId);
+    } catch (error) {
+      console.error('❌ Failed to remove token:', error);
+    }
+  };
+
+  const handleClearAllExpeditioners = async () => {
+    if (!sessionId) return;
+    
+    const expeditioners = tokens.filter(t => t.type === 'npc');
+    if (expeditioners.length === 0) return;
+    
+    const confirmed = confirm(`Remove all ${expeditioners.length} expedition crew members from the map?`);
+    if (!confirmed) return;
+    
+    try {
+      for (const expeditioner of expeditioners) {
+        await FirestoreService.removeToken(sessionId, expeditioner.id);
+      }
+      console.log('✅ All expedition crew cleared from battlefield');
+    } catch (error) {
+      console.error('❌ Failed to clear expedition crew:', error);
+    }
+  };
 
 
   const handleRemoveEnemy = async (enemyId: string) => {
@@ -418,6 +471,11 @@ const handleResetSession = async () => {
         return; // Don't continue to enemy placement
       }
     }
+
+      if (pendingExpeditioner) {
+        await handleMapClickForExpeditioner(position);
+        return;
+      }
 
     // Handle enemy placement (existing logic)
     if (isPlacingEnemy && selectedEnemyType && session && sessionId) {

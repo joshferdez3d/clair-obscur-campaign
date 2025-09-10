@@ -1,4 +1,4 @@
-// src/services/firestoreService.ts - CORRECTED VERSION
+// src/services/firestoreService.ts - COMPLETE VERSION WITH NPC MANAGEMENT
 
 import {
   doc,
@@ -111,8 +111,6 @@ export class FirestoreService {
     });
   }
 
-  // Add these methods to your FirestoreService class
-
   static async updateBattleSession(sessionId: string, updates: any): Promise<void> {
     const sessionRef = doc(db, 'battleSessions', sessionId);
     await updateDoc(sessionRef, updates);
@@ -150,6 +148,170 @@ export class FirestoreService {
         updatedAt: serverTimestamp()
       });
     }
+  }
+
+  // ========== ENHANCED TOKEN MANAGEMENT FOR EXPEDITION NPCS ==========
+  
+  /**
+   * Enhanced addToken method with better error handling and validation
+   */
+  static async addToken(sessionId: string, token: BattleToken): Promise<void> {
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      
+      // Validate token data
+      if (!token.id || !token.name || !token.position || !token.type) {
+        throw new Error('Invalid token data: missing required fields');
+      }
+
+      // Ensure token has required properties for its type
+      const tokenToAdd = {
+        ...token,
+        hp: token.hp ?? (token.type === 'npc' ? 20 : token.hp),
+        maxHp: token.maxHp ?? (token.type === 'npc' ? 20 : token.maxHp),
+        ac: token.ac ?? 13,
+        size: token.size ?? 1,
+        color: token.color ?? this.getDefaultColorForType(token.type)
+      };
+
+      await updateDoc(ref, { 
+        [`tokens.${token.id}`]: tokenToAdd, 
+        updatedAt: serverTimestamp() 
+      });
+
+      console.log(`✅ ${token.type.toUpperCase()} token added:`, token.name);
+    } catch (error) {
+      console.error('❌ Failed to add token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Enhanced removeToken method with type-aware logging
+   */
+  static async removeToken(sessionId: string, tokenId: string): Promise<void> {
+    try {
+      const session = await this.getBattleSession(sessionId);
+      if (!session?.tokens[tokenId]) {
+        console.warn(`Token ${tokenId} not found in session ${sessionId}`);
+        return;
+      }
+
+      const tokenToRemove = session.tokens[tokenId];
+      const updated = { ...session.tokens };
+      delete updated[tokenId];
+      
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, { 
+        tokens: updated, 
+        updatedAt: serverTimestamp() 
+      });
+
+      console.log(`✅ ${tokenToRemove.type?.toUpperCase()} removed:`, tokenToRemove.name);
+    } catch (error) {
+      console.error('❌ Failed to remove token:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get tokens by type (useful for GM management)
+   */
+  static async getTokensByType(sessionId: string, tokenType: 'player' | 'enemy' | 'npc'): Promise<BattleToken[]> {
+    try {
+      const session = await this.getBattleSession(sessionId);
+      if (!session?.tokens) return [];
+
+      return Object.values(session.tokens).filter(token => token.type === tokenType);
+    } catch (error) {
+      console.error('❌ Failed to get tokens by type:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Bulk remove tokens by type (useful for clearing enemies/NPCs)
+   */
+  static async removeTokensByType(sessionId: string, tokenType: 'enemy' | 'npc'): Promise<void> {
+    try {
+      const session = await this.getBattleSession(sessionId);
+      if (!session?.tokens) return;
+
+      const tokensToKeep = Object.entries(session.tokens)
+        .filter(([_, token]) => token.type !== tokenType)
+        .reduce((acc, [id, token]) => ({ ...acc, [id]: token }), {});
+
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, { 
+        tokens: tokensToKeep, 
+        updatedAt: serverTimestamp() 
+      });
+
+      console.log(`✅ All ${tokenType} tokens removed from session`);
+    } catch (error) {
+      console.error(`❌ Failed to remove ${tokenType} tokens:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update token properties (HP, position, etc.)
+   */
+  static async updateTokenProperty(sessionId: string, tokenId: string, property: string, value: any): Promise<void> {
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        [`tokens.${tokenId}.${property}`]: value,
+        updatedAt: serverTimestamp()
+      });
+
+      console.log(`✅ Token ${tokenId} ${property} updated to:`, value);
+    } catch (error) {
+      console.error(`❌ Failed to update token ${property}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get default color for token type
+   */
+  private static getDefaultColorForType(tokenType: 'player' | 'enemy' | 'npc'): string {
+    switch (tokenType) {
+      case 'player':
+        return '#4f46e5'; // Blue
+      case 'enemy':
+        return '#dc2626'; // Red
+      case 'npc':
+        return '#16a34a'; // Green
+      default:
+        return '#6b7280'; // Gray
+    }
+  }
+
+  /**
+   * Validate token placement on the map
+   */
+  static validateTokenPlacement(
+    position: Position, 
+    mapWidth: number = 20, 
+    mapHeight: number = 15, 
+    existingTokens: BattleToken[] = []
+  ): { valid: boolean; reason?: string } {
+    // Check bounds
+    if (position.x < 0 || position.x >= mapWidth || position.y < 0 || position.y >= mapHeight) {
+      return { valid: false, reason: 'Position is outside map bounds' };
+    }
+
+    // Check for overlapping tokens (optional - remove if you allow stacking)
+    const hasOverlap = existingTokens.some(token => 
+      token.position.x === position.x && token.position.y === position.y
+    );
+    
+    if (hasOverlap) {
+      return { valid: false, reason: 'Another token is already at this position' };
+    }
+
+    return { valid: true };
   }
 
   // ========== GM Actions ==========
@@ -248,7 +410,6 @@ export class FirestoreService {
   }
 
   // Apply one damage number to all targets in an AoE action
-  // In firestoreService.ts
   static async applyAoEDamage(sessionId: string, actionId: string, damage: number): Promise<void> {
     const session = await this.getBattleSession(sessionId);
     if (!session || !session.pendingActions) return;
@@ -1048,20 +1209,6 @@ export class FirestoreService {
   static async updateTokenPosition(sessionId: string, tokenId: string, position: Position) {
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, { [`tokens.${tokenId}.position`]: position, updatedAt: serverTimestamp() });
-  }
-
-  static async addToken(sessionId: string, token: BattleToken) {
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, { [`tokens.${token.id}`]: token, updatedAt: serverTimestamp() });
-  }
-
-  static async removeToken(sessionId: string, tokenId: string) {
-    const session = await this.getBattleSession(sessionId);
-    if (!session?.tokens[tokenId]) return;
-    const updated = { ...session.tokens };
-    delete updated[tokenId];
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, { tokens: updated, updatedAt: serverTimestamp() });
   }
 
   // ========== Combat state ==========

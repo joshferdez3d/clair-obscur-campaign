@@ -52,7 +52,9 @@ export function isValidPosition(position: Position, mapWidth: number, mapHeight:
 }
 
 export function generateId(prefix: string = 'id'): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const timestamp = Date.now().toString(36);
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  return `${prefix}-${timestamp}-${randomStr}`;
 }
 
 export function debounce<T extends (...args: any[]) => any>(
