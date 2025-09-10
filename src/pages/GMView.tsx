@@ -354,6 +354,71 @@ const handleResetSession = async () => {
       return; // Don't continue to enemy placement if we're in ultimate mode
     }
 
+    // NEW: Handle turret placement
+    if (session?.pendingActions) {
+      const turretPlacementAction = session.pendingActions.find(
+        (action: GMCombatAction) => 
+          action.type === 'turret_placement' && 
+          !action.resolved
+      );
+      
+      if (turretPlacementAction) {
+        // Check if placement is within 5ft of player
+        const playerToken = Object.values(session.tokens).find(
+          t => t.characterId === turretPlacementAction.playerId
+        );
+        
+        if (playerToken) {
+          const distance = Math.max(
+            Math.abs(position.x - playerToken.position.x),
+            Math.abs(position.y - playerToken.position.y)
+          ) * 5;
+          
+          if (distance > 5) {
+            alert('Turret must be placed within 5ft of Gustave!');
+            return;
+          }
+          
+          // Create turret token
+          const turretId = `turret-${Date.now()}`;
+          const turretToken: BattleToken = {
+            id: turretId,
+            name: turretPlacementAction.turretData?.name || "Gustave's Turret",
+            position,
+            type: 'npc',
+            hp: turretPlacementAction.turretData?.hp || 10,
+            maxHp: turretPlacementAction.turretData?.maxHp || 10,
+            size: turretPlacementAction.turretData?.size || 1,
+            color: turretPlacementAction.turretData?.color || '#8B4513'
+          };
+          
+          try {
+            // Add turret to session
+            const updatedTokens = { ...session.tokens, [turretId]: turretToken };
+            
+            // Mark placement action as resolved
+            const updatedActions = session.pendingActions.map((a: GMCombatAction) =>
+              a.id === turretPlacementAction.id ? { ...a, resolved: true } : a
+            );
+            
+            await FirestoreService.updateBattleSession(sessionId!, {
+              tokens: updatedTokens,
+              pendingActions: updatedActions,
+              updatedAt: new Date()
+            });
+            
+            console.log(`Turret placed at (${position.x}, ${position.y})`);
+            
+          } catch (error) {
+            console.error('Failed to place turret:', error);
+            alert('Failed to place turret. Please try again.');
+          }
+        }
+        
+        return; // Don't continue to enemy placement
+      }
+    }
+
     // Handle enemy placement (existing logic)
     if (isPlacingEnemy && selectedEnemyType && session && sessionId) {
       // Create a new enemy token with full stat block
@@ -451,6 +516,9 @@ const handleResetSession = async () => {
           StormService.triggerStormTurn(sessionId || 'test-session');
         }, 1000); // Small delay for dramatic effect
       }
+
+      await FirestoreService.cleanupExpiredProtectionEffects(sessionId || 'test-session');
+
     } catch (e) {
       console.error('Failed to advance turn:', e);
     }
@@ -644,6 +712,22 @@ const handleResetSession = async () => {
                     <span className="text-purple-300 font-bold">
                       Turn {stormState?.currentTurn} / {stormState?.totalTurns}
                     </span>
+                  </div>
+                )}
+
+                {session?.activeProtectionEffects && session.activeProtectionEffects.length > 0 && (
+                  <div className="mt-2 p-2 bg-blue-900/30 rounded border border-blue-500">
+                    <div className="text-blue-200 text-xs font-bold mb-1">
+                      🛡️ Active Protection Effects
+                    </div>
+                    {session.activeProtectionEffects.map((effect: any) => (
+                      <div key={effect.id} className="text-blue-300 text-xs">
+                        {effect.protectorName} protecting: {effect.protectedAlly}
+                        <span className="ml-2 text-blue-400">
+                          ({effect.remainingRounds} rounds left)
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 )}
 

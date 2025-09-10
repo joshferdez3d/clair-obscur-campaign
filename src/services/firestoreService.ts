@@ -790,6 +790,218 @@ export class FirestoreService {
     console.log('='.repeat(50));
   }
 
+  static async createTurretPlacementAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      playerPosition: { x: number; y: number };
+      turretName: string;
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+    
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    if (!playerToken) throw new Error('Player token not found');
+
+    const action: GMCombatAction = {
+      id: `turret-placement-${Date.now()}`,
+      type: 'turret_placement',
+      playerId: payload.playerId,
+      sourcePosition: payload.playerPosition,
+      acRoll: 0, // Not used for placement
+      range: 5, // 5ft placement radius
+      timestamp: new Date(),
+      resolved: false,
+      hit: true, // Always succeeds
+      needsDamageInput: false,
+      damageApplied: false,
+      playerName: playerToken.name,
+      abilityName: `Deploy ${payload.turretName}`,
+      targetIds: [], // No specific targets
+      targetNames: [],
+      // Custom data for turret placement
+      turretData: {
+        name: payload.turretName,
+        hp: 10,
+        maxHp: 10,
+        type: 'npc',
+        color: '#8B4513',
+        size: 1
+      }
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      updatedAt: serverTimestamp()
+    });
+
+    return action;
+  }
+  // Clean up expired protection effects
+  static async cleanupExpiredProtectionEffects(sessionId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const currentRound = session.combatState?.round || 1;
+    let needsUpdate = false;
+    const updates: any = {};
+
+    if (session.activeProtectionEffects) {
+      const beforeCount = session.activeProtectionEffects.length;
+      const activeProtections = session.activeProtectionEffects.filter((effect: any) => {
+        const roundsElapsed = currentRound - (effect.activatedOnRound || 1);
+        const shouldKeep = roundsElapsed < 2;
+        return shouldKeep;
+      });
+      
+      if (activeProtections.length !== beforeCount) {
+        updates.activeProtectionEffects = activeProtections;
+        needsUpdate = true;
+      }
+    }
+
+    if (needsUpdate) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+  // Create Leader's Sacrifice protection action
+  static async createLeadersSacrificePAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      playerName: string;
+      currentRound: number;
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+    
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    if (!playerToken) throw new Error('Player token not found');
+
+    const action: GMCombatAction = {
+      id: `leaders-sacrifice-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      sourcePosition: playerToken.position,
+      acRoll: 0,
+      range: 0,
+      timestamp: new Date(),
+      resolved: false,
+      hit: true,
+      needsDamageInput: false,
+      damageApplied: false,
+      playerName: payload.playerName,
+      abilityName: "Leader's Sacrifice",
+      targetIds: [],
+      targetNames: [],
+      protectionData: {
+        protectorName: payload.playerName,
+        activatedOnRound: payload.currentRound,
+        duration: 2,
+        remainingRounds: 2,
+        protectedAlly: 'TBD - GM to assign manually',
+        description: 'Gustave redirects damage from protected ally to himself for 2 rounds'
+      }
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      activeProtectionEffects: arrayUnion({
+        id: action.id,
+        protectorId: payload.playerId,
+        protectorName: payload.playerName,
+        activatedOnRound: payload.currentRound,
+        remainingRounds: 2,
+        protectedAlly: 'TBD - Call out to GM',
+        type: 'leaders_sacrifice'
+      }),
+      updatedAt: serverTimestamp()
+    });
+
+    return action;
+  }
+
+  // Create self destruct action - destroys turret and damages nearby enemies
+  static async createSelfDestructAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      turretId: string;
+      turretPosition: { x: number; y: number };
+    }
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+    
+    const turret = session.tokens[payload.turretId];
+    if (!turret) throw new Error('Turret not found');
+    
+    // Find enemies within 10ft of turret
+    const enemies = Object.values(session.tokens).filter(token => 
+      token.type === 'enemy' && 
+      (token.hp || 0) > 0
+    );
+    
+    const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
+      const dx = Math.abs(pos1.x - pos2.x);
+      const dy = Math.abs(pos1.y - pos2.y);
+      return Math.max(dx, dy) * 5;
+    };
+    
+    const enemiesInRange = enemies.filter(enemy => 
+      calculateDistance(payload.turretPosition, enemy.position) <= 10
+    );
+    
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    
+    // Remove the turret immediately
+    const updatedTokens = { ...session.tokens };
+    delete updatedTokens[payload.turretId];
+    
+    // If there are enemies in range, create AoE damage action
+    if (enemiesInRange.length > 0) {
+      const action: GMCombatAction = {
+        id: `self-destruct-${Date.now()}`,
+        type: 'ability',
+        playerId: payload.playerId,
+        sourcePosition: payload.turretPosition,
+        acRoll: 999, // Auto-hit
+        range: 10,
+        timestamp: new Date(),
+        resolved: false,
+        hit: true,
+        needsDamageInput: true,
+        damageApplied: false,
+        playerName: playerToken?.name || 'Gustave',
+        abilityName: 'Turret Self Destruct (2d6 fire)',
+        targetIds: enemiesInRange.map(e => e.id),
+        targetNames: enemiesInRange.map(e => e.name)
+      };
+      
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: updatedTokens,
+        pendingActions: arrayUnion(action),
+        updatedAt: serverTimestamp()
+      });
+    } else {
+      // No enemies in range, just remove turret
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: updatedTokens,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
 
   static async dismissMissAction(sessionId: string, actionId: string) {
     const session = await this.getBattleSession(sessionId);
@@ -891,6 +1103,8 @@ export class FirestoreService {
 
     // 🔧 FIX: Clean up expired terrain effects after turn advancement
     await this.cleanupExpiredTerrain(sessionId);
+    await this.cleanupExpiredProtectionEffects(sessionId); // ADD THIS LINE
+
     console.log('🔄 Turn advanced and terrain effects cleaned up');
   }
   static async setInitiativeOrder(sessionId: string, initiativeOrder: InitiativeEntry[]) {

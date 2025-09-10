@@ -34,7 +34,9 @@ export function PlayerView() {
   const [foretellStacks, setForetellStacks] = useState<Record<string, number>>({});
   const [foretellChainCharged, setForetellChainCharged] = useState(false);
   const [bonusActionCooldown, setBonusActionCooldown] = useState(0);
-  
+  const [activeTurretId, setActiveTurretId] = useState<string | null>(null);
+  const [turretsDeployedThisBattle, setTurretsDeployedThisBattle] = useState<number>(0);
+
   const currentTurnRef = useRef<string>('');
 
   // Use different session sources for different characters
@@ -84,10 +86,60 @@ export function PlayerView() {
     }
   }, [session?.combatState?.currentTurn, characterId, isPlayerTurn, bonusActionCooldown]);
 
+  useEffect(() => {
+    if (!session?.tokens) return;
+    
+    // Find all Gustave turrets (including destroyed ones by checking all session tokens)
+    const allGustaveTurrets = Object.values(session.tokens).filter((token: any) => 
+      token.type === 'npc' && 
+      /turret/i.test(token.name) &&
+      token.name.includes('Gustave')
+      // Don't filter by HP here - we want to count all turrets ever placed
+    ) as any[];
+    
+    // Find active turrets
+    const activeGustaveTurrets = allGustaveTurrets.filter((token: any) => 
+      (token.hp || 0) > 0
+    );
+    
+    // Set active turret (should only be one active at a time)
+    if (activeGustaveTurrets.length > 0) {
+      setActiveTurretId(activeGustaveTurrets[0].id);
+    } else {
+      setActiveTurretId(null);
+    }
+    
+    // Update the total count of turrets deployed this battle
+    // This counts ALL turrets (active + destroyed) that have been placed
+    setTurretsDeployedThisBattle(allGustaveTurrets.length);
+    
+  }, [session?.tokens]);
+
+  // Reset turret count when combat ends or session resets
+  useEffect(() => {
+    if (!session?.combatState?.isActive) {
+      // Reset turret count when combat is not active (combat ended)
+      setTurretsDeployedThisBattle(0);
+    }
+  }, [session?.combatState?.isActive]);
+
+  // 3. Add effect to reset turret count on new battle/session
+  useEffect(() => {
+    if (session?.metadata?.battleStarted) {
+      // Reset turret count when new battle starts
+      setTurretsDeployedThisBattle(0);
+    }
+  }, [session?.metadata?.battleStarted]);
+
   // ----- Handlers -----
   const handleAfterimageChange = async (newStacks: number) => {
     await maelleAfterimage.updateStacks(newStacks);
   };
+  const handleAbilityUse = (ability: any) => {
+  console.log(`Ability used: ${ability.name}`);
+  // This can be empty for Gustave or implement specific logic if needed
+};
+  
 
   const handlePhantomStrikeUse = async () => {
     // Get available enemies for Maelle
@@ -160,25 +212,10 @@ export function PlayerView() {
   };
 
   const handleTurretDeploy = async (position: { x: number; y: number }) => {
-    if (!session) return;
-
-    const turretToken = {
-      id: `turret-${Date.now()}`,
-      name: "Gustave's Turret",
-      position,
-      type: 'npc' as const,
-      hp: 10,
-      maxHp: 10,
-      size: 1,
-      color: '#8B4513',
-    };
-
-    try {
-      await addToken(turretToken);
-      setHasActedThisTurn(true);
-    } catch (error) {
-      console.error('Error deploying turret:', error);
-    }
+      console.log('Turret deployment now handled via GM placement action');
+      const incrementTurretCount = () => {
+        setTurretsDeployedThisBattle(prev => prev + 1);
+      }; 
   };
 
   if (characterLoading || combatLoading) {
@@ -357,21 +394,25 @@ export function PlayerView() {
         character={character}
         onHPChange={handleHPChange}
         onAbilityPointsChange={handleAbilityPointsChange}
-        onOverchargePointsChange={handleOverchargePointsChange}
-        onAbilityUse={() => {}}
+        onAbilityUse={handleAbilityUse}  // ADD THIS MISSING PROP
         isMyTurn={myTurn}
-        isLoading={false}
         combatActive={combatActive}
         availableEnemies={availableEnemies}
         playerPosition={playerToken?.position || { x: 0, y: 0 }}
-        sessionId={session?.id || sessionId}
-        allTokens={allTokens}
         onTargetSelect={handleTargetSelect}
-        onTurretDeploy={handleTurretDeploy}
         onEndTurn={handleEndTurn}
-        onCancelTargeting={cancelTargeting}
+        onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={hasActedThisTurn}
+        onTurretDeploy={handleTurretDeploy}
         overchargePoints={overchargePoints}
+        onOverchargePointsChange={handleOverchargePointsChange}
+        allTokens={tokensArray}
+        sessionId={sessionId!}
+        // Turret tracking props:
+        activeTurretId={activeTurretId}
+        turretsDeployedThisBattle={turretsDeployedThisBattle}
+        // Optional callback (can be undefined):
+        onSelfDestructTurret={undefined}
       />
     );
   }

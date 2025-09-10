@@ -35,6 +35,10 @@ interface GustaveCharacterSheetProps {
   // Needed for Overcharge Burst + popup writing
   sessionId?: string;
   allTokens?: BattleToken[];
+
+  activeTurretId: string | null;          // ID of currently active turret
+  turretsDeployedThisBattle: number;      // Total turrets deployed this battle (max 2)
+  onSelfDestructTurret?: (turretId: string) => void;  // Self destruct callback
 }
 
 export function GustaveCharacterSheet({
@@ -56,6 +60,10 @@ export function GustaveCharacterSheet({
   overchargePoints = 0,
   sessionId = 'test-session',
   allTokens = [],
+    // ADD THESE MISSING PROPS:
+  activeTurretId,
+  turretsDeployedThisBattle,
+  onSelfDestructTurret,
 }: GustaveCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = React.useState<string>('');
   const [acRoll, setACRoll] = React.useState<string>('');
@@ -101,6 +109,7 @@ export function GustaveCharacterSheet({
     });
   };
 
+  // 2. Update handleActionSelect to check turret deployment limits
   const handleActionSelect = (action: any) => {
     if (hasActedThisTurn) return;
 
@@ -108,6 +117,17 @@ export function GustaveCharacterSheet({
       const currentPoints = character.charges || 0;
       if (action.cost > currentPoints) {
         alert(`Not enough ability points! Need ${action.cost}, have ${currentPoints}`);
+        return;
+      }
+    }
+
+    if (action.id === 'deploy_turret') {
+      if (activeTurretId) {
+        alert('A turret is already deployed! Self destruct it first.');
+        return;
+      }
+      if (turretsDeployedThisBattle >= 2) {
+        alert('Maximum 2 turrets per battle reached!');
         return;
       }
     }
@@ -126,15 +146,96 @@ export function GustaveCharacterSheet({
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
 
-    // 1) Deploy Turret
+    // 1) Deploy Turret - Create GM placement action
     if (selectedAction.id === 'deploy_turret') {
-      if (onTurretDeploy) {
-        onTurretDeploy(playerPosition);
+      try {
+        await FirestoreService.createTurretPlacementAction(sessionId, {
+          playerId: character.id,
+          playerPosition,
+          turretName: "Gustave's Turret"
+        });
+
+        // Mark action as taken
+        if (onTargetSelect) {
+          onTargetSelect('action_taken', 0, 'ability', 'deploy_turret');
+        }
+
+        // Spend ability points
         onAbilityPointsChange?.(-3);
+        
+        console.log('Turret placement action created for GM');
+      } catch (error) {
+        console.error('Failed to create turret placement action:', error);
+        alert('Failed to create turret placement action. Please try again.');
       }
+      
       setSelectedAction(null);
       return;
     }
+
+    if (selectedAction.id === 'self_destruct_turret' && activeTurretId) {
+      try {
+        // Find the turret token to get its position
+        const turret = allTokens.find(t => t.id === activeTurretId);
+        if (!turret) {
+          alert('Turret not found!');
+          setSelectedAction(null);
+          return;
+        }
+
+        await FirestoreService.createSelfDestructAction(sessionId, {
+          playerId: character.id,
+          turretId: activeTurretId,
+          turretPosition: turret.position
+        });
+
+        // Mark action as taken
+        if (onTargetSelect) {
+          onTargetSelect('action_taken', 0, 'ability', 'self_destruct_turret');
+        }
+
+        console.log('Turret self destruct initiated');
+      } catch (error) {
+        console.error('Failed to self destruct turret:', error);
+        alert('Failed to self destruct turret. Please try again.');
+      }
+      
+      setSelectedAction(null);
+      return;
+    }
+
+    // 3) NEW: Leader's Sacrifice
+    if (selectedAction.id === 'leaders_sacrifice') {
+      try {
+        await FirestoreService.createLeadersSacrificePAction(sessionId, {
+          playerId: character.id,
+          playerName: character.name,
+          currentRound: session?.combatState?.round || 1
+        });
+
+        // Mark action as taken and END TURN IMMEDIATELY
+        if (onTargetSelect) {
+          onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
+        }
+
+        // Spend ability points
+        onAbilityPointsChange?.(-1);
+        
+        // END TURN IMMEDIATELY
+        if (onEndTurn) {
+          onEndTurn();
+        }
+        
+        console.log("Leader's Sacrifice activated - turn ended");
+      } catch (error) {
+        console.error("Failed to activate Leader's Sacrifice:", error);
+        alert("Failed to activate Leader's Sacrifice. Please try again.");
+      }
+      
+      setSelectedAction(null);
+      return;
+    }
+
 
     // 2) Overcharge Burst -> create ONE AoE GM action
     if (selectedAction.id === 'overcharge_burst') {
@@ -233,14 +334,7 @@ export function GustaveCharacterSheet({
 
       onTargetSelect(selectedTarget, finalAC, selectedAction.type, selectedAction.id);
 
-      const enemy = availableEnemies.find((e) => e.id === selectedTarget);
-      const hit = finalAC >= (enemy?.ac || 10);
-
-      if (hit) {
-        onAbilityPointsChange?.(1);
-        if (selectedAction.type !== 'ranged') onOverchargePointsChange?.(1);
-      }
-
+      // Spend ability points for ability actions
       if (selectedAction.type === 'ability' && selectedAction.cost) {
         onAbilityPointsChange?.(-selectedAction.cost);
       }
@@ -293,13 +387,36 @@ export function GustaveCharacterSheet({
     },
     {
       type: 'ability' as const,
-      id: 'deploy_turret',
-      name: 'Deploy Turret Prototype',
-      description: 'Place turret that attacks enemies or supports allies',
-      damage: 'No direct damage',
-      cost: 3,
-      range: '10ft',
+      id: 'leaders_sacrifice',
+      name: "Leader's Sacrifice",
+      description: 'End turn and protect an ally for 2 rounds',
+      damage: 'Redirects ally damage to you',
+      cost: 1,
+      range: 'Any ally',
     },
+    // Dynamic turret ability based on current state
+    activeTurretId 
+    ? {
+        type: 'ability' as const,
+        id: 'self_destruct_turret',
+        name: 'Self Destruct Turret',
+        description: 'Destroy turret, damaging nearby enemies',
+        damage: '2d6 fire (10ft radius)',
+        cost: 0,
+        range: '10ft AoE',
+      }
+    : {
+        type: 'ability' as const,
+        id: 'deploy_turret',
+        name: turretsDeployedThisBattle >= 2 ? 'No Turrets Left' : 'Deploy Turret Prototype',
+        description: turretsDeployedThisBattle >= 2 
+          ? 'Maximum 2 turrets per battle' 
+          : 'Place turret that attacks enemies or supports allies',
+        damage: 'No direct damage',
+        cost: 3,
+        range: '5ft placement radius',
+        disabled: turretsDeployedThisBattle >= 2
+      }
   ];
 
   const ultimateAbility = {
@@ -493,12 +610,57 @@ export function GustaveCharacterSheet({
               </div>
 
               {selectedAction.id === 'deploy_turret' ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-orange-900 bg-opacity-30 rounded-lg">
+                  <p className="text-orange-200 text-sm">
+                    GM will click on the map to place your turret within 5ft of your position.
+                  </p>
+                  <p className="text-orange-300 text-xs mt-1">
+                    Turrets deployed this battle: {turretsDeployedThisBattle}/2
+                  </p>
+                </div>
+                <button 
+                  onClick={handleConfirmAction} 
+                  className="w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-bold transition-colors"
+                >
+                  Request Turret Deployment
+                </button>
+              </div>
+            ) : selectedAction.id === 'self_destruct_turret' ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-red-900 bg-opacity-30 rounded-lg">
+                  <p className="text-red-200 text-sm">
+                    Destroy your turret, dealing 2d6 fire damage to all enemies within 10ft.
+                  </p>
+                </div>
+                <button 
+                  onClick={handleConfirmAction} 
+                  className="w-full bg-red-600 hover:bg-red-700 text-white p-3 rounded-lg font-bold transition-colors"
+                >
+                  Self Destruct Turret
+                </button>
+              </div>
+              ) : selectedAction.id === 'leaders_sacrifice' ? (
                 <div className="space-y-3">
-                  <div className="p-3 bg-orange-900 bg-opacity-30 rounded-lg">
-                    <p className="text-orange-200 text-sm">Turret will be deployed at your current position. No targeting required.</p>
+                  <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
+                    <p className="text-blue-200 text-sm font-bold mb-2">
+                      Leader's Sacrifice - Protection Protocol
+                    </p>
+                    <p className="text-blue-300 text-sm mb-2">
+                      • Your turn will end immediately
+                    </p>
+                    <p className="text-blue-300 text-sm mb-2">
+                      • Call out to the GM which ally you want to protect
+                    </p>
+                    <p className="text-blue-300 text-sm">
+                      • For the next 2 rounds, you will take damage meant for that ally
+                    </p>
                   </div>
-                  <button onClick={handleConfirmAction} className="w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-bold transition-colors">
-                    Deploy Turret
+                  <button 
+                    onClick={handleConfirmAction} 
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-bold transition-colors"
+                  >
+                    Activate Leader's Sacrifice
                   </button>
                 </div>
               ) : selectedAction.id === 'overcharge_burst' ? (

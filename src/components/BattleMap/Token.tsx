@@ -69,21 +69,24 @@ export function Token({
   };
 
   const getEnemyImage = (enemyName: string) => {
+    
     // Normalize the enemy name to match your image file names
     const normalizedName = enemyName.toLowerCase().replace(/[^a-z]/g, '');
     
     const enemyImageMap: { [key: string]: string } = {
-      'benisseur': '/tokens/enemies/Benisseur_Image.png',
-      'bruler': '/tokens/enemies/Bruler_Image.png', 
+      'bnisseur': '/tokens/enemies/Benisseur_Image.png',     // Fixed: was 'benisseur' 
+      'brler': '/tokens/enemies/Bruler_Image.png',          // Fixed: was 'bruler'
       'lancelier': '/tokens/enemies/Lancelier_Image.png',
       'noirharbinger': '/tokens/enemies/Noir_Harbinger_Image.png',
       'portier': '/tokens/enemies/Portier_Image.png',
       'volester': '/tokens/enemies/Volester_Image.png'
     };
     
-    return enemyImageMap[normalizedName] || null;
+    const imagePath = enemyImageMap[normalizedName] || null;
+    console.log('🎭 Image path:', imagePath);
+    
+    return imagePath;
   };
-
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':

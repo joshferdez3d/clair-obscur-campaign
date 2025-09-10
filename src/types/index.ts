@@ -92,7 +92,7 @@ export interface CombatTargeting {
 // Base combat action interface
 export interface CombatAction {
   id: string;
-  type: 'move' | 'attack' | 'ability' | 'end_turn';
+  type: 'move' | 'attack' | 'ability' | 'end_turn' | 'turret_placement'; // ADD turret_placement here
   playerId: string;
   targetId?: string;
   targetPosition?: Position;
@@ -114,6 +114,9 @@ export interface CombatAction {
 
 // Enhanced GM combat action interface for ultimate actions
 export interface GMCombatAction extends CombatAction {
+  // Override type to be more specific
+  type: 'attack' | 'ability' | 'turret_placement';
+
   // Legacy single-target
   targetId?: string;
   targetName?: string;
@@ -159,10 +162,24 @@ export interface GMCombatAction extends CombatAction {
   // Light blind
   blindedSquares?: Array<{ x: number; y: number }>;
 
-  // Required properties
-  sourcePosition: Position;
-  range: number;
-  timestamp: Date;
+  // Turret placement data
+  turretData?: {
+    name: string;
+    hp: number;
+    maxHp: number;
+    type: 'npc';
+    color: string;
+    size: number;
+  };
+
+  protectionData?: {
+    protectorName: string;
+    activatedOnRound: number;
+    duration: number;
+    remainingRounds: number;
+    protectedAlly: string;
+    description: string;
+  };
 }
 
 // Fire terrain zone data
@@ -279,6 +296,17 @@ export interface BattleSession {
   fireTerrainZones?: FireTerrainZone[];
   iceWalls?: IceWall[];
   lightBlindEffects?: LightBlindEffect[];
+
+    // NEW: Active protection effects tracking
+  activeProtectionEffects?: Array<{
+    id: string;
+    protectorId: string;
+    protectorName: string;
+    activatedOnRound: number;
+    remainingRounds: number;
+    protectedAlly: string;
+    type: 'leaders_sacrifice';
+  }>;
 }
 
 export interface MapConfig {
