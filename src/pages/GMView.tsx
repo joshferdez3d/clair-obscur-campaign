@@ -26,6 +26,7 @@ import { HPSettingsModal } from '../components/GM/HPSettingsModal';
 import { ResetButton } from '../components/GM/ResetButton';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
 import { MapSelector, AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
+import { NPCPanel } from '../components/Combat/NPCPanel';
 import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 
 export function GMView() {
@@ -39,6 +40,9 @@ export function GMView() {
   const [currentMap, setCurrentMap] = useState<MapConfig>(AVAILABLE_MAPS[0]); // Default to first map
   const [showExpeditionModal, setShowExpeditionModal] = useState(false);
   const [pendingExpeditioner, setPendingExpeditioner] = useState<BattleToken | null>(null);
+  const [showNPCModal, setShowNPCModal] = useState(false);
+  const [selectedNPCType, setSelectedNPCType] = useState<BattleToken | null>(null);
+  const [isPlacingNPC, setIsPlacingNPC] = useState(false);
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -242,6 +246,53 @@ const handleExpeditionerSelected = (expeditioner: BattleToken) => {
     }
   };
 
+  const handleNPCSelected = (npcToken: BattleToken) => {
+    setSelectedNPCType(npcToken);
+    setIsPlacingNPC(true);
+    setShowNPCModal(false);
+  };
+
+  const handleCancelNPCPlacement = () => {
+    setSelectedNPCType(null);
+    setIsPlacingNPC(false);
+  };
+
+  const handleRemoveNPC = async (npcId: string) => {
+    try {
+      await FirestoreService.removeToken(sessionId || 'test-session', npcId);
+      console.log('✅ NPC removed:', npcId);
+    } catch (error) {
+      console.error('❌ Failed to remove NPC:', error);
+    }
+  };
+
+  const handleEditNPCHP = async (npcId: string, newHP: number) => {
+    try {
+      await FirestoreService.updateTokenHP(sessionId || 'test-session', npcId, newHP);
+      console.log('✅ NPC HP updated');
+    } catch (error) {
+      console.error('❌ Failed to update NPC HP:', error);
+    }
+  };
+
+  const handleClearAllNPCs = async () => {
+    const npcs = tokens.filter(t => t.type === 'npc');
+    if (npcs.length === 0) {
+      alert('No expedition crew members on the map');
+      return;
+    }
+
+  const confirmed = window.confirm(`Remove all ${npcs.length} expedition crew members from the map?`);
+    if (!confirmed) return;
+
+    try {
+      await FirestoreService.removeTokensByType(sessionId || 'test-session', 'npc');
+      console.log('✅ All expedition crew cleared from battlefield');
+    } catch (error) {
+      console.error('❌ Failed to clear expedition crew:', error);
+    }
+  };
+
   const handleRemoveToken = async (tokenId: string) => {
     if (!sessionId) return;
     try {
@@ -257,8 +308,7 @@ const handleExpeditionerSelected = (expeditioner: BattleToken) => {
     const expeditioners = tokens.filter(t => t.type === 'npc');
     if (expeditioners.length === 0) return;
     
-    const confirmed = confirm(`Remove all ${expeditioners.length} expedition crew members from the map?`);
-    if (!confirmed) return;
+  const confirmed = window.confirm(`Remove all ${expeditioners.length} expedition crew members from the map?`);    if (!confirmed) return;
     
     try {
       for (const expeditioner of expeditioners) {
@@ -521,6 +571,30 @@ const handleResetSession = async () => {
       setSelectedEnemyType(null);
       setIsPlacingEnemy(false);
     }
+
+      if (isPlacingNPC && selectedNPCType) {
+      console.log('🎭 Placing NPC at:', position);
+      
+      const npcToken: BattleToken = {
+        ...selectedNPCType,
+        id: `npc-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        position: position,
+        type: 'npc'
+      };
+
+      try {
+        await FirestoreService.addToken(sessionId || 'test-session', npcToken);
+        console.log('✅ NPC placed successfully:', npcToken.name);
+        
+        // Clear placement mode
+        setSelectedNPCType(null);
+        setIsPlacingNPC(false);
+      } catch (error) {
+        console.error('❌ Failed to place NPC:', error);
+        alert('Failed to place NPC. Please try again.');
+      }
+      return;
+    }
   };
 
 
@@ -724,6 +798,13 @@ const handleResetSession = async () => {
                 <div>NPCs: {tokens.filter(t => t.type === 'npc').length}</div>
                 <div>Total: {tokens.length}</div>
               </div>
+
+              <NPCPanel
+                npcs={tokens.filter(t => t.type === 'npc')}
+                isGMView={true}
+                onRemoveNPC={handleRemoveNPC}
+                onEditHP={handleEditNPCHP}
+              />
             </div>
           </div>
         </div>
@@ -735,9 +816,6 @@ const handleResetSession = async () => {
             <StormIndicator stormState={stormState} />
           </div>
         )}
-
-        {/* ADD THIS: Enemy Panel for GM */}
-
 
         {/* Combat Status */}
       <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow mt-4">
@@ -967,62 +1045,101 @@ const handleResetSession = async () => {
               </div>
             )}
 
-            
-           {/* NEW: Enemy placement status */}
-          {isPlacingEnemy && selectedEnemyType && (
-            <div className="mb-4 p-3 bg-clair-warning text-clair-shadow-900 rounded-lg">
-              <div className="flex justify-between items-center">
-                <div>
-                  <p className="font-bold text-sm">Placing: {selectedEnemyType.name}</p>
-                  <p className="text-xs">Click on battle map to place enemy</p>
+            {/* Placement status indicator */}
+            {(isPlacingEnemy || isPlacingNPC) && (
+              <div className="mb-3 p-2 bg-yellow-900 border border-yellow-600 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-yellow-200">
+                    {isPlacingEnemy && (
+                      <>
+                        <Target className="w-4 h-4 inline mr-1" />
+                        Placing: {selectedEnemyType?.name}
+                      </>
+                    )}
+                    {isPlacingNPC && (
+                      <>
+                        <Users className="w-4 h-4 inline mr-1" />
+                        Placing: {selectedNPCType?.name}
+                      </>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (isPlacingEnemy) handleCancelEnemyPlacement();
+                      if (isPlacingNPC) handleCancelNPCPlacement();
+                    }}
+                    className="text-yellow-300 hover:text-yellow-100"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={handleCancelEnemyPlacement}
-                  className="text-clair-shadow-900 hover:text-red-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <p className="text-xs text-yellow-300 mt-1">
+                  Click on the battle map to place the token
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="flex items-center justify-between">
-            {/* NEW: Enhanced Add Enemy Button */}
-            <button
-              onClick={() => setShowEnemyModal(true)}
-              disabled={isPlacingEnemy}
-              className={`flex items-center justify-center px-4 py-2 rounded-lg font-bold transition-colors ${
-                isPlacingEnemy
-                  ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
-                  : 'bg-green-500 hover:bg-green-600 text-white'
-              }`}
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {isPlacingEnemy ? 'Placing Enemy...' : 'Add Enemy'}
-            </button>
-            
-            <div className="flex items-center space-x-6 text-sm text-clair-gold-300">
-              <div>
-                <span className="font-bold">Players:</span> {tokens.filter((t) => t.type === 'player').length}
-              </div>
-              <div>
-                <span className="font-bold">Enemies:</span> {tokens.filter((t) => t.type === 'enemy').length}
-              </div>
-              <div>
-                <span className="font-bold">Turrets:</span> {activeTurrets.length}
-              </div>
-              <div>
-                <span className="font-bold">Total:</span> {tokens.length}
+            {/* Main Controls Row */}
+            <div className="flex items-center justify-between mb-3">
+              {/* Enemy Add Button (Left) */}
+              <button
+                onClick={() => setShowEnemyModal(true)}
+                disabled={isPlacingEnemy || isPlacingNPC}
+                className="flex items-center justify-center px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Add Enemy
+              </button>
+
+              {/* Token Counts (Center) */}
+              <div className="flex items-center space-x-4 text-sm text-clair-gold-300">
+                <div>
+                  <span className="font-bold">Players:</span> {tokens.filter((t) => t.type === 'player').length}
+                </div>
+                <div>
+                  <span className="font-bold">Enemies:</span> {tokens.filter((t) => t.type === 'enemy').length}
+                </div>
+                <div>
+                  <span className="font-bold">Turrets:</span> {activeTurrets.length}
+                </div>
+                <div>
+                  <span className="font-bold">Total:</span> {tokens.length}
+                </div>
               </div>
             </div>
-          </div>
-            <div className="flex-1 max-w-sm">
+
+            {/* Map Selector Row with NPC buttons */}
+            <div className="flex items-center gap-2">
+              {/* Map Selector (Left) */}
+              <div className="flex-1 max-w-sm">
                 <MapSelector
                   currentMapId={currentMap.id}
                   onMapChange={handleMapChange}
                   disabled={isPlacingEnemy}
                 />
               </div>
+
+              {/* NPC Controls (Right) */}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowNPCModal(true)}
+                  disabled={isPlacingEnemy || isPlacingNPC}
+                  className="flex items-center justify-center px-3 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Expeditioner
+                </button>
+
+                <button
+                  onClick={handleClearAllNPCs}
+                  className="flex items-center justify-center px-3 py-2 bg-green-800 hover:bg-green-900 text-white rounded-lg font-bold text-sm transition-colors"
+                >
+                  <X className="w-4 h-4 mr-1" />
+                  Clear NPCs
+                </button>
+              </div>
+            </div>
+
             {/* Show active turrets if any */}
             {activeTurrets.length > 0 && (
               <div className="mt-3 p-3 bg-red-800/30 rounded border border-red-500">

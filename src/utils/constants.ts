@@ -1,3 +1,6 @@
+// src/utils/constants.ts
+import type { Stats, Position } from '../types';
+
 export const GRID_SIZE = 40; // pixels per grid square
 export const DEFAULT_MAP_SIZE = { width: 20, height: 15 };
 export const DEFAULT_SESSION_ID = 'test-session';
@@ -28,9 +31,7 @@ export const STANCES = {
   AGILE: 'agile'
 } as const;
 
-// utils/helpers.ts
-import type { Stats, Position } from '../types';
-
+// Helper functions
 export function calculateModifier(score: number): number {
   return Math.floor((score - 10) / 2);
 }

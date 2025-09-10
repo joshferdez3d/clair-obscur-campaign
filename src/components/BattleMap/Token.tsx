@@ -32,61 +32,50 @@ export function Token({
   const left = (token.position.x * gridSize) + coordinateOffset.x;
   const top = (token.position.y * gridSize) + coordinateOffset.y;
 
-  const getCharacterImage = (characterId: string) => {
-    const imageMap: { [key: string]: string } = {
-      'gustave': '/tokens/characters/gustave.jpg', // Image 2
-      'lune': '/tokens/characters/lune.jpg',       // Image 3  
-      'maelle': '/tokens/characters/maelle.jpg',   // Image 4
-      'sciel': '/tokens/characters/sciel.jpg'      // Image 5
-    };
-    return imageMap[characterId?.toLowerCase()] || null;
-  };
+  // const getCharacterImage = (characterId: string) => {
+  //   const imageMap: { [key: string]: string } = {
+  //     'gustave': '/tokens/characters/gustave.jpg', // Image 2
+  //     'lune': '/tokens/characters/lune.jpg',       // Image 3  
+  //     'maelle': '/tokens/characters/maelle.jpg',   // Image 4
+  //     'sciel': '/tokens/characters/sciel.jpg'      // Image 5
+  //   };
+  //   return imageMap[characterId?.toLowerCase()] || null;
+  // };
 
-  const getTokenColor = () => {
+  const getTokenColor = (token: BattleToken): string => {
     if (token.color) return token.color;
     
-    switch (token.characterId?.toLowerCase()) {
-      case 'maelle':
-        return '#3B82F6'; // NEW: Royal blue (was #6B46C1 purple)
-      case 'gustave':
-        return '#800020'; // Burgundy
-      case 'lune':
-        return '#581C87'; // Deep purple (unchanged)
-      case 'sciel':
-        return '#355E3B'; // Forest green
+    switch (token.type) {
+      case 'player':
+        return '#4f46e5'; // Blue
+      case 'enemy':
+        return '#dc2626'; // Red
+      case 'npc':
+        return '#16a34a'; // Green
       default:
-        switch (token.type) {
-          case 'player':
-            return '#4f46e5';
-          case 'enemy':
-            return '#dc2626';
-          case 'npc':
-            return '#16a34a';
-          default:
-            return '#6b7280';
-        }
+        return '#6b7280'; // Gray
     }
   };
 
-  const getEnemyImage = (enemyName: string) => {
+  // const getEnemyImage = (enemyName: string) => {
     
-    // Normalize the enemy name to match your image file names
-    const normalizedName = enemyName.toLowerCase().replace(/[^a-z]/g, '');
+  //   // Normalize the enemy name to match your image file names
+  //   const normalizedName = enemyName.toLowerCase().replace(/[^a-z]/g, '');
     
-    const enemyImageMap: { [key: string]: string } = {
-      'bnisseur': '/tokens/enemies/Benisseur_Image.png',     // Fixed: was 'benisseur' 
-      'brler': '/tokens/enemies/Bruler_Image.png',          // Fixed: was 'bruler'
-      'lancelier': '/tokens/enemies/Lancelier_Image.png',
-      'noirharbinger': '/tokens/enemies/Noir_Harbinger_Image.png',
-      'portier': '/tokens/enemies/Portier_Image.png',
-      'volester': '/tokens/enemies/Volester_Image.png'
-    };
+  //   const enemyImageMap: { [key: string]: string } = {
+  //     'bnisseur': '/tokens/enemies/Benisseur_Image.png',     // Fixed: was 'benisseur' 
+  //     'brler': '/tokens/enemies/Bruler_Image.png',          // Fixed: was 'bruler'
+  //     'lancelier': '/tokens/enemies/Lancelier_Image.png',
+  //     'noirharbinger': '/tokens/enemies/Noir_Harbinger_Image.png',
+  //     'portier': '/tokens/enemies/Portier_Image.png',
+  //     'volester': '/tokens/enemies/Volester_Image.png'
+  //   };
     
-    const imagePath = enemyImageMap[normalizedName] || null;
-    console.log('🎭 Image path:', imagePath);
+  //   const imagePath = enemyImageMap[normalizedName] || null;
+  //   console.log('🎭 Image path:', imagePath);
     
-    return imagePath;
-  };
+  //   return imagePath;
+  // };
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
@@ -128,22 +117,34 @@ export function Token({
     }
   };
 
-const getTokenImage = () => {
-    // For player characters, use character ID
-    if (token.characterId) {
-      return getCharacterImage(token.characterId);
+  const getTokenImage = (token: BattleToken): string | null => {
+    // For player tokens
+    if (token.type === 'player' && token.characterId) {
+      const imagePath = `/tokens/characters/${token.characterId}.jpg`;
+      return imagePath;
     }
     
-    // For enemy tokens, use enemy name
-    if (token.type === 'enemy') {
-      return getEnemyImage(token.name);
+    // For enemy tokens
+    if (token.type === 'enemy' && token.id) {
+      // Try to extract the base enemy ID from the token ID
+      // Token IDs are like "enemy-1234567-xyz" but the image might be "kobold.png"
+      const enemyType = token.name?.toLowerCase().replace(/\s+/g, '-') || 'default-enemy';
+      const imagePath = `/tokens/enemies/${enemyType}.png`;
+      return imagePath;
     }
     
-    // For NPCs or other types, no image
+    // For NPC tokens
+    if (token.type === 'npc' && token.id) {
+      // NPCs use their name for the image file
+      const npcType = token.name?.toLowerCase().replace(/\s+/g, '-').replace('the-', '') || 'default-npc';
+      const imagePath = `/tokens/npc/${npcType}.png`;
+      return imagePath;
+    }
+    
     return null;
   };
 
-  const tokenImage = getTokenImage();
+  const tokenImage = getTokenImage(token);
 
   return (
     <div
@@ -169,7 +170,7 @@ const getTokenImage = () => {
           isSelected ? 'ring-2 ring-white ring-opacity-60' : ''
         }`}
         style={{
-          backgroundColor: getTokenColor(),
+          backgroundColor: getTokenColor(token),
           boxShadow: isSelected
             ? '0 0 20px rgba(255, 255, 255, 0.5)'
             : '0 4px 8px rgba(0, 0, 0, 0.3)',
