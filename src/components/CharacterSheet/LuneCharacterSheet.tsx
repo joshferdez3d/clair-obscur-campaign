@@ -5,6 +5,7 @@ import { FirestoreService } from '../../services/firestoreService';
 import { HPSyncService } from '../../services/HPSyncService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
+import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -37,8 +38,8 @@ interface LuneCharacterSheetProps {
   sessionId?: string;
   allTokens?: BattleToken[];
   
-  // NEW: Combat state tracking for ultimate reset
-  session?: any; // For accessing luneElementalGenesisUsed from session
+  // Combat state tracking for ultimate reset
+  session?: any;
 }
 
 type ElementType = 'fire' | 'ice' | 'nature' | 'light';
@@ -78,7 +79,6 @@ const STATUS_EFFECTS = {
   light: 'Blind: Miss next attack'
 };
 
-// Ultimate element effects
 const ULTIMATE_EFFECTS = {
   fire: {
     name: 'Inferno Terrain',
@@ -127,6 +127,7 @@ export function LuneCharacterSheet({
   const [elementRoll, setElementRoll] = useState<string>('');
   const [selectedUltimateElement, setSelectedUltimateElement] = useState<ElementType | null>(null);
   const [healAmount, setHealAmount] = useState<string>('');
+  const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
 
@@ -151,7 +152,7 @@ export function LuneCharacterSheet({
 
   // Get valid targets (Lune's abilities are all ranged)
   const getValidTargets = () => {
-    return availableEnemies; // All enemies are valid for Lune's ranged attacks
+    return availableEnemies;
   };
 
   // Get available healing targets (allies + self)
@@ -169,7 +170,7 @@ export function LuneCharacterSheet({
 
   // Add stain to collection
   const addStain = (element: ElementType) => {
-    if (elementalStains.length >= 5) return; // Max 5 stains
+    if (elementalStains.length >= 5) return;
     const newStains = [...elementalStains, element];
     onStainsChange?.(newStains);
   };
@@ -200,7 +201,6 @@ export function LuneCharacterSheet({
     range: 'Unlimited',
   };
 
-  // UPDATED ABILITIES - Replace Genesis Spark with Nature's Balm
   const abilities = [
     {
       type: 'ability' as const,
@@ -221,7 +221,6 @@ export function LuneCharacterSheet({
       multiTarget: true,
       range: 'Unlimited',
     },
-    // NEW: Nature's Balm - Replace Genesis Spark
     {
       type: 'heal' as const,
       id: 'natures_balm',
@@ -256,7 +255,7 @@ export function LuneCharacterSheet({
       }
     }
 
-    // NEW: Check healing ability requirements
+    // Check healing ability requirements
     if (action.type === 'heal' && action.cost) {
       if (elementalStains.length < action.cost) {
         alert(`Not enough stains! Need ${action.cost}, have ${elementalStains.length}`);
@@ -307,7 +306,7 @@ export function LuneCharacterSheet({
     setSelectedUltimateElement(element);
   };
 
-  // NEW: Handle heal amount confirmation
+  // Handle heal amount confirmation
   const handleConfirmHeal = async () => {
     if (!selectedAction || selectedAction.id !== 'natures_balm') return;
     if (!selectedTarget || !healAmount) {
@@ -322,7 +321,6 @@ export function LuneCharacterSheet({
     }
 
     try {
-      // Find the target ally
       const allies = getAvailableAllies();
       const targetAlly = allies.find(ally => ally.id === selectedTarget);
       if (!targetAlly) {
@@ -330,13 +328,9 @@ export function LuneCharacterSheet({
         return;
       }
 
-      // Apply healing using HPSyncService
       await HPSyncService.applyHealing(targetAlly.id, sessionId, healValue);
-
-      // Consume stains
       consumeStains(2);
 
-      // Mark action as taken
       if (onTargetSelect) {
         onTargetSelect('action_taken', 0, 'heal', 'natures_balm');
       }
@@ -357,59 +351,35 @@ export function LuneCharacterSheet({
     console.log(`🌟 Starting Elemental Genesis - ${element}`);
 
     try {
-      // Trigger the ultimate video
       await triggerUltimate('lune', 'Elemental Genesis');
     } catch (error) {
-      console.error('🔧 EARLY DEBUG: Ultimate video failed:', error);
+      console.error('Ultimate video failed:', error);
     }
 
-    // Consume one stain of the selected element
     const newStains = [...elementalStains];
     const elementIndex = newStains.indexOf(element);
     if (elementIndex !== -1) {
       newStains.splice(elementIndex, 1);
       onStainsChange?.(newStains);
-      console.log('🔧 EARLY DEBUG: Stains consumed successfully');
-    } else {
-      console.log('🔧 EARLY DEBUG: Element not found in stains');
     }
 
-    // Mark ultimate as used in session (not local state)
     try {
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
         'luneElementalGenesisUsed': true,
         updatedAt: serverTimestamp()
       });
-      console.log('🔧 EARLY DEBUG: Session updated successfully');
     } catch (error) {
-      console.error('🔧 EARLY DEBUG: Session update failed:', error);
+      console.error('Session update failed:', error);
     }
 
-    // Trigger appropriate effect
-    console.log('🔧 EARLY DEBUG: About to call onTargetSelect');
     if (onTargetSelect) {
       onTargetSelect('action_taken', 999, 'ability', 'elemental_genesis');
-      console.log('🔧 EARLY DEBUG: onTargetSelect called successfully');
-    } else {
-      console.log('🔧 EARLY DEBUG: onTargetSelect is null/undefined');
     }
 
     const needsGMInteraction = element === 'fire' || element === 'ice';
-    console.log('🔧 DEBUG: About to create ultimate action with payload:', {
-      playerId: character.id,
-      ultimateType: 'elemental_genesis',
-      element: element,
-      effectName: ULTIMATE_EFFECTS[element].name,
-      description: ULTIMATE_EFFECTS[element].description,
-      needsGMInteraction: needsGMInteraction,
-      sessionId: sessionId
-    });
 
-    // Create specific ultimate action for GM
     try {
-      console.log('🔧 DEBUG: Calling FirestoreService.createUltimateAction...');
-      
       const action = await FirestoreService.createUltimateAction(sessionId, {
         playerId: character.id,
         ultimateType: 'elemental_genesis',
@@ -426,35 +396,10 @@ export function LuneCharacterSheet({
         }))
       });
       
-      console.log('🔧 DEBUG: Ultimate action created successfully:', action);
-      
-      // 🔧 DEBUG: For light ultimates, check if immediate execution should have happened
-      if (element === 'light') {
-        console.log('🔧 DEBUG: Light ultimate should execute immediately');
-        console.log('🔧 DEBUG: needsGMInteraction should be false:', needsGMInteraction);
-        
-        // Wait a moment then check the session for light effects
-        setTimeout(async () => {
-          try {
-            const session = await FirestoreService.getBattleSession(sessionId);
-            console.log('🔧 DEBUG: Session after ultimate:', {
-              lightBlindEffects: session?.lightBlindEffects,
-              lightEffectCount: session?.lightBlindEffects?.length || 0
-            });
-          } catch (error) {
-            console.error('🔧 DEBUG: Failed to check session after ultimate:', error);
-          }
-        }, 2000);
-      }
+      console.log('Ultimate action created successfully:', action);
       
     } catch (error) {
-      console.error('❌ Failed to create ultimate action:', error);
-      // Fix TypeScript error by properly handling unknown error type
-      if (error instanceof Error) {
-        console.error('❌ Error details:', error.message, error.stack);
-      } else {
-        console.error('❌ Error details:', String(error));
-      }
+      console.error('Failed to create ultimate action:', error);
     }
   };
 
@@ -462,7 +407,11 @@ export function LuneCharacterSheet({
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
 
-    // NEW: Handle Nature's Balm healing
+    if (sessionId) {
+      FirestoreService.clearTargetingState(sessionId);
+    }
+
+    // Handle Nature's Balm healing
     if (selectedAction.id === 'natures_balm') {
       await handleConfirmHeal();
       return;
@@ -516,24 +465,20 @@ export function LuneCharacterSheet({
 
     try {
       if (selectedAction.multiTarget) {
-        // Handle multi-target abilities like Twin Catalyst
         for (const targetId of selectedTargets) {
           if (onTargetSelect) {
             onTargetSelect(targetId, acRollNum, selectedAction.type, selectedAction.id);
           }
         }
         
-        // Consume stains for the ability
         if (selectedAction.cost && typeof selectedAction.cost === 'number') {
           consumeStains(selectedAction.cost);
         }
       } else {
-        // Handle single-target abilities
         if (onTargetSelect) {
           onTargetSelect(selectedTarget, acRollNum, selectedAction.type, selectedAction.id);
         }
         
-        // Consume stains for the ability
         if (selectedAction.cost && typeof selectedAction.cost === 'number') {
           consumeStains(selectedAction.cost);
         }
@@ -544,12 +489,22 @@ export function LuneCharacterSheet({
       setSelectedTargets([]);
       setACRoll('');
       setElementRoll('');
+      setShowTargetingModal(false);
     } catch (error) {
       console.error('Error executing action:', error);
       alert('Failed to execute action. Please try again.');
     }
   };
 
+  const handleCancelAction = () => {
+    setSelectedAction(null);
+    setSelectedTarget('');
+    setSelectedTargets([]);
+    setACRoll('');
+    setElementRoll('');
+    setShowTargetingModal(false);
+    onCancelTargeting?.();
+  };
   
   return (
     <div className="min-h-screen bg-clair-shadow-900">
@@ -785,7 +740,7 @@ export function LuneCharacterSheet({
                       Apply Healing
                     </button>
                     <button
-                      onClick={() => setSelectedAction(null)}
+                      onClick={handleCancelAction}
                       className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
                     >
                       Cancel
@@ -829,7 +784,7 @@ export function LuneCharacterSheet({
                       Unleash Genesis
                     </button>
                     <button
-                      onClick={() => setSelectedAction(null)}
+                      onClick={handleCancelAction}
                       className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
                     >
                       Cancel
@@ -839,111 +794,103 @@ export function LuneCharacterSheet({
               )}
 
               {/* Regular Target Selection for other abilities */}
-              {selectedAction.type === 'basic' || (selectedAction.type === 'ability' && !selectedAction.isHealing) ? (
+              {(selectedAction.type === 'basic' || (selectedAction.type === 'ability' && !selectedAction.isHealing)) && (
                 <div className="space-y-3">
-                  {/* Target Selection */}
-                  <div>
-                    <label className="block text-sm font-bold text-red-300 mb-2">
-                      {selectedAction.multiTarget ? 'Select Targets:' : 'Select Target:'}
-                    </label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto">
-                      {getValidTargets().map((enemy) => (
-                        <button
-                          key={enemy.id}
-                          onClick={() => handleTargetToggle(enemy.id)}
-                          className={`w-full p-2 rounded text-left text-sm transition-colors ${
-                            selectedAction.multiTarget
-                              ? selectedTargets.includes(enemy.id)
-                                ? 'bg-red-600 text-white border-2 border-red-400'
-                                : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600'
-                              : selectedTarget === enemy.id
-                              ? 'bg-red-600 text-white border-2 border-red-400'
-                              : 'bg-gray-700 text-gray-200 border border-gray-600 hover:bg-gray-600'
-                          }`}
-                        >
-                          <div className="flex justify-between items-center">
-                            <span className="font-medium">{enemy.name}</span>
-                            <span className="text-xs">
-                              AC {enemy.ac} • {enemy.hp}/{enemy.maxHp} HP
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* AC Roll Input */}
-                  <div className="flex space-x-2">
-                    <div className="flex-1">
-                      <label className="block text-sm font-bold text-gray-300 mb-1">AC Roll (1d20):</label>
-                      <input
-                        type="number"
-                        value={acRoll}
-                        onChange={(e) => setACRoll(e.target.value)}
-                        placeholder="Enter d20 roll"
-                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
-                        min="1"
-                        max="20"
-                      />
-                    </div>
-
-                    {/* Element Roll for basic attacks */}
-                    {selectedAction.needsElement && (
-                      <div className="flex-1">
-                        <label className="block text-sm font-bold text-gray-300 mb-1">Element (1d4):</label>
-                        <input
-                          type="number"
-                          value={elementRoll}
-                          onChange={(e) => setElementRoll(e.target.value)}
-                          placeholder="1-4"
-                          className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
-                          min="1"
-                          max="4"
-                        />
-                      </div>
+                  {/* Modal Trigger for Target Selection */}
+                  <button
+                    onClick={() => setShowTargetingModal(true)}
+                    className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
+                  >
+                    <Target className="w-5 h-5 mr-2" />
+                    Select Target{selectedAction.multiTarget ? 's' : ''}
+                    {selectedTarget && !selectedAction.multiTarget && (
+                      <span className="ml-2 text-sm">
+                        ({availableEnemies.find(e => e.id === selectedTarget)?.name})
+                      </span>
                     )}
-                  </div>
+                    {selectedTargets.length > 0 && selectedAction.multiTarget && (
+                      <span className="ml-2 text-sm">
+                        ({selectedTargets.length} selected)
+                      </span>
+                    )}
+                  </button>
 
-                  {/* Element Preview */}
-                  {selectedAction.needsElement && elementRoll && (
-                    <div className="p-2 bg-clair-mystical-900 bg-opacity-30 rounded border border-clair-mystical-600">
-                      <div className="flex items-center text-sm">
-                        <span className="text-clair-mystical-300 mr-2">Element:</span>
-                        <span className={`font-bold ${ELEMENT_TEXT_COLORS[ELEMENT_MAP[parseInt(elementRoll)]] || 'text-white'}`}>
-                          {ELEMENT_NAMES[ELEMENT_MAP[parseInt(elementRoll)]] || 'Invalid'}
-                        </span>
-                        {ELEMENT_MAP[parseInt(elementRoll)] && (
-                          <span className="text-xs text-gray-400 ml-2">
-                            ({STATUS_EFFECTS[ELEMENT_MAP[parseInt(elementRoll)]]})
-                          </span>
+                  {/* AC Roll and Element Roll Input */}
+                  {(selectedTarget || selectedTargets.length > 0) && (
+                    <div className="space-y-3">
+                      <div className="flex space-x-2">
+                        <div className="flex-1">
+                          <label className="block text-sm font-bold text-gray-300 mb-1">AC Roll (1d20):</label>
+                          <input
+                            type="number"
+                            value={acRoll}
+                            onChange={(e) => setACRoll(e.target.value)}
+                            placeholder="Enter d20 roll"
+                            className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
+                            min="1"
+                            max="20"
+                          />
+                        </div>
+
+                        {/* Element Roll for basic attacks */}
+                        {selectedAction.needsElement && (
+                          <div className="flex-1">
+                            <label className="block text-sm font-bold text-gray-300 mb-1">Element (1d4):</label>
+                            <input
+                              type="number"
+                              value={elementRoll}
+                              onChange={(e) => setElementRoll(e.target.value)}
+                              placeholder="1-4"
+                              className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-clair-gold-500"
+                              min="1"
+                              max="4"
+                            />
+                          </div>
                         )}
+                      </div>
+
+                      {/* Element Preview */}
+                      {selectedAction.needsElement && elementRoll && (
+                        <div className="p-2 bg-clair-mystical-900 bg-opacity-30 rounded border border-clair-mystical-600">
+                          <div className="flex items-center text-sm">
+                            <span className="text-clair-mystical-300 mr-2">Element:</span>
+                            <span className={`font-bold ${ELEMENT_TEXT_COLORS[ELEMENT_MAP[parseInt(elementRoll)]] || 'text-white'}`}>
+                              {ELEMENT_NAMES[ELEMENT_MAP[parseInt(elementRoll)]] || 'Invalid'}
+                            </span>
+                            {ELEMENT_MAP[parseInt(elementRoll)] && (
+                              <span className="text-xs text-gray-400 ml-2">
+                                ({STATUS_EFFECTS[ELEMENT_MAP[parseInt(elementRoll)]]})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={handleConfirmAction}
+                          disabled={
+                            (!selectedAction.multiTarget && !selectedTarget) ||
+                            (selectedAction.multiTarget && selectedTargets.length === 0) ||
+                            !acRoll ||
+                            (selectedAction.needsElement && !elementRoll)
+                          }
+                          className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-2 rounded font-bold transition-colors"
+                        >
+                          Execute Action
+                        </button>
+                        <button
+                          onClick={handleCancelAction}
+                          className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
+                        >
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   )}
-
-                  {/* Action Buttons */}
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={handleConfirmAction}
-                      disabled={
-                        (!selectedAction.multiTarget && !selectedTarget) ||
-                        (selectedAction.multiTarget && selectedTargets.length === 0) ||
-                        !acRoll ||
-                        (selectedAction.needsElement && !elementRoll)
-                      }
-                      className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-2 rounded font-bold transition-colors"
-                    >
-                      Execute Action
-                    </button>
-                    <button
-                      onClick={() => setSelectedAction(null)}
-                      className="px-4 bg-gray-600 hover:bg-gray-700 text-white p-2 rounded transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
                 </div>
-              ) : null}
+              )}
             </div>
           )}
         </div>
@@ -979,6 +926,31 @@ export function LuneCharacterSheet({
           </div>
         </div>
       </div>
+
+      {/* Enemy Targeting Modal */}
+      <EnemyTargetingModal
+        isOpen={showTargetingModal}
+        onClose={() => setShowTargetingModal(false)}
+        enemies={availableEnemies}
+        playerPosition={playerPosition}
+        onSelectEnemy={(enemy) => {
+          if (selectedAction?.multiTarget) {
+            handleTargetToggle(enemy.id);
+          } else {
+            setSelectedTarget(enemy.id);
+            if (sessionId) {
+              FirestoreService.updateTargetingState(sessionId, {
+                selectedEnemyId: enemy.id,
+                playerId: character.id
+              });
+            }
+          }
+          // Don't close modal here - wait for confirmation
+        }}
+        selectedEnemyId={selectedAction?.multiTarget ? undefined : selectedTarget}
+        abilityName={selectedAction?.name}
+        abilityRange={999} // Lune has unlimited range
+      />
     </div>
   );
 }

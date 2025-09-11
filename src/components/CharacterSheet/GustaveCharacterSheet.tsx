@@ -1,9 +1,10 @@
 // src/components/CharacterSheet/GustaveCharacterSheet.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { User, Sword, Zap, Target, Eye, Shield, Sparkles, Circle, Wrench } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
+import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character, Ability, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 
@@ -61,18 +62,17 @@ export function GustaveCharacterSheet({
   overchargePoints = 0,
   sessionId = 'test-session',
   allTokens = [],
-  session, // ADD THIS
-
-    // ADD THESE MISSING PROPS:
+  session,
   activeTurretId,
   turretsDeployedThisBattle,
   onSelfDestructTurret,
 }: GustaveCharacterSheetProps) {
-  const [selectedTarget, setSelectedTarget] = React.useState<string>('');
-  const [acRoll, setACRoll] = React.useState<string>('');
+  const [selectedTarget, setSelectedTarget] = useState<string>('');
+  const [acRoll, setACRoll] = useState<string>('');
   const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
+  const [showTargetingModal, setShowTargetingModal] = useState(false);
 
-  const [selectedAction, setSelectedAction] = React.useState<{
+  const [selectedAction, setSelectedAction] = useState<{
     type: 'melee' | 'ranged' | 'ability';
     id: string;
     name: string;
@@ -112,7 +112,6 @@ export function GustaveCharacterSheet({
     });
   };
 
-  // 2. Update handleActionSelect to check turret deployment limits
   const handleActionSelect = (action: any) => {
     if (hasActedThisTurn) return;
 
@@ -145,11 +144,13 @@ export function GustaveCharacterSheet({
     setACRoll('');
   };
 
-  // Confirm action
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
 
-    // 1) Deploy Turret - Create GM placement action
+    if (sessionId) {
+      FirestoreService.clearTargetingState(sessionId);
+    }
+
     if (selectedAction.id === 'deploy_turret') {
       try {
         await FirestoreService.createTurretPlacementAction(sessionId, {
@@ -158,12 +159,10 @@ export function GustaveCharacterSheet({
           turretName: "Gustave's Turret"
         });
 
-        // Mark action as taken
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'deploy_turret');
         }
 
-        // Spend ability points
         onAbilityPointsChange?.(-3);
         
         console.log('Turret placement action created for GM');
@@ -178,7 +177,6 @@ export function GustaveCharacterSheet({
 
     if (selectedAction.id === 'self_destruct_turret' && activeTurretId) {
       try {
-        // Find the turret token to get its position
         const turret = allTokens.find(t => t.id === activeTurretId);
         if (!turret) {
           alert('Turret not found!');
@@ -192,7 +190,6 @@ export function GustaveCharacterSheet({
           turretPosition: turret.position
         });
 
-        // Mark action as taken
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'self_destruct_turret');
         }
@@ -207,7 +204,6 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    // 3) NEW: Leader's Sacrifice
     if (selectedAction.id === 'leaders_sacrifice') {
       try {
         await FirestoreService.createLeadersSacrificePAction(sessionId, {
@@ -216,15 +212,12 @@ export function GustaveCharacterSheet({
           currentRound: session?.combatState?.round || 1
         });
 
-        // Mark action as taken and END TURN IMMEDIATELY
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
         }
 
-        // Spend ability points
         onAbilityPointsChange?.(-1);
         
-        // END TURN IMMEDIATELY
         if (onEndTurn) {
           onEndTurn();
         }
@@ -239,20 +232,15 @@ export function GustaveCharacterSheet({
       return;
     }
 
-
-    // 2) Overcharge Burst -> create ONE AoE GM action
     if (selectedAction.id === 'overcharge_burst') {
-        console.log('🚀 Starting Overcharge Burst handling...');
+      console.log('🚀 Starting Overcharge Burst handling...');
 
-        try {
-          // Trigger the ultimate video
-          await triggerUltimate('gustave', 'Overcharge Burst');
-        } catch (error) {
-          console.error('Failed to trigger ultimate video:', error);
-          // Continue with ultimate anyway
-        }
+      try {
+        await triggerUltimate('gustave', 'Overcharge Burst');
+      } catch (error) {
+        console.error('Failed to trigger ultimate video:', error);
+      }
 
-      // Build affected list: within 30 ft of Gustave OR within 5 ft of any turret
       const enemies = allTokens.filter((t) => t.type === 'enemy' && (t.hp || 0) > 0);
       const activeTurrets = allTokens.filter(
         (t) => t.type === 'npc' && (t.hp || 0) > 0 && /turret/i.test(t.name)
@@ -270,29 +258,19 @@ export function GustaveCharacterSheet({
       });
 
       const targets = Array.from(affected.values());
-        console.log('🎯 Found targets:', targets.length);
+      console.log('🎯 Found targets:', targets.length);
 
       if (targets.length === 0) {
         alert('No enemies in range of Overcharge Burst!');
         setSelectedAction(null);
         return;
       }
-  console.log('📞 About to call onTargetSelect with action_taken');
 
       if (onTargetSelect) {
-        console.log('✅ onTargetSelect exists, calling it now');
-
         onTargetSelect('action_taken', 999, 'ability', 'overcharge_burst');
-            console.log('✅ onTargetSelect call completed');
-
-      } else {
-            console.log('❌ onTargetSelect is undefined!');
-
       }
 
       try {
-            console.log('🔥 Starting Firestore operation...');
-
         await FirestoreService.createAoEAction(sessionId, {
           playerId: character.id,
           abilityName: 'Overcharge Burst (6d6 lightning)',
@@ -300,18 +278,15 @@ export function GustaveCharacterSheet({
           targetNames: targets.map((t) => t.name),
           center: playerPosition,
           radius: 30,
-          acRoll: 999, // label only
+          acRoll: 999,
         });
 
-        // Spend overcharge
         onOverchargePointsChange?.(-3);
-        // (Optionally) mark acted this turn elsewhere in your flow
 
         console.log(`Overcharge Burst created AoE popup for ${targets.length} target(s).`);
       } catch (e) {
         console.error('Failed to create Overcharge Burst AoE action:', e);
         alert('Failed to create Overcharge Burst action. Please try again.');
-            // ❌ If the action failed, reset the acted state
         if (onTargetSelect) {
           onTargetSelect('action_failed', 0, 'ability', 'overcharge_burst');
         }
@@ -323,7 +298,6 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    // 3) Normal single-target attacks
     if (selectedTarget && acRoll && onTargetSelect) {
       let finalAC = parseInt(acRoll, 10);
 
@@ -337,7 +311,6 @@ export function GustaveCharacterSheet({
 
       onTargetSelect(selectedTarget, finalAC, selectedAction.type, selectedAction.id);
 
-      // Spend ability points for ability actions
       if (selectedAction.type === 'ability' && selectedAction.cost) {
         onAbilityPointsChange?.(-selectedAction.cost);
       }
@@ -352,6 +325,7 @@ export function GustaveCharacterSheet({
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
+    setShowTargetingModal(false);
     onCancelTargeting?.();
   };
 
@@ -397,7 +371,6 @@ export function GustaveCharacterSheet({
       cost: 1,
       range: 'Any ally',
     },
-    // Dynamic turret ability based on current state
     activeTurretId 
     ? {
         type: 'ability' as const,
@@ -613,36 +586,36 @@ export function GustaveCharacterSheet({
               </div>
 
               {selectedAction.id === 'deploy_turret' ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-orange-900 bg-opacity-30 rounded-lg">
-                  <p className="text-orange-200 text-sm">
-                    GM will click on the map to place your turret within 5ft of your position.
-                  </p>
-                  <p className="text-orange-300 text-xs mt-1">
-                    Turrets deployed this battle: {turretsDeployedThisBattle}/2
-                  </p>
+                <div className="space-y-3">
+                  <div className="p-3 bg-orange-900 bg-opacity-30 rounded-lg">
+                    <p className="text-orange-200 text-sm">
+                      GM will click on the map to place your turret within 5ft of your position.
+                    </p>
+                    <p className="text-orange-300 text-xs mt-1">
+                      Turrets deployed this battle: {turretsDeployedThisBattle}/2
+                    </p>
+                  </div>
+                  <button 
+                    onClick={handleConfirmAction} 
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-bold transition-colors"
+                  >
+                    Request Turret Deployment
+                  </button>
                 </div>
-                <button 
-                  onClick={handleConfirmAction} 
-                  className="w-full bg-orange-600 hover:bg-orange-700 text-white p-3 rounded-lg font-bold transition-colors"
-                >
-                  Request Turret Deployment
-                </button>
-              </div>
-            ) : selectedAction.id === 'self_destruct_turret' ? (
-              <div className="space-y-3">
-                <div className="p-3 bg-red-900 bg-opacity-30 rounded-lg">
-                  <p className="text-red-200 text-sm">
-                    Destroy your turret, dealing 2d6 fire damage to all enemies within 10ft.
-                  </p>
+              ) : selectedAction.id === 'self_destruct_turret' ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-red-900 bg-opacity-30 rounded-lg">
+                    <p className="text-red-200 text-sm">
+                      Destroy your turret, dealing 2d6 fire damage to all enemies within 10ft.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={handleConfirmAction} 
+                    className="w-full bg-red-600 hover:bg-red-700 text-white p-3 rounded-lg font-bold transition-colors"
+                  >
+                    Self Destruct Turret
+                  </button>
                 </div>
-                <button 
-                  onClick={handleConfirmAction} 
-                  className="w-full bg-red-600 hover:bg-red-700 text-white p-3 rounded-lg font-bold transition-colors"
-                >
-                  Self Destruct Turret
-                </button>
-              </div>
               ) : selectedAction.id === 'leaders_sacrifice' ? (
                 <div className="space-y-3">
                   <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
@@ -682,87 +655,49 @@ export function GustaveCharacterSheet({
                 </div>
               ) : (
                 <>
-                  {/* Enemy Selection */}
-                  <div className="space-y-2">
-                    {getValidTargets(getActionRange(selectedAction.type, selectedAction.id), selectedAction.type).map(
-                      (enemy) => {
-                        const distance = calculateDistance(playerPosition, enemy.position);
-                        let displayAC = enemy.ac;
+                  {/* NEW: Modal Trigger for Enemy Selection */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setShowTargetingModal(true)}
+                      className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
+                    >
+                      <Target className="w-5 h-5 mr-2" />
+                      Select Target
+                      {selectedTarget && (
+                        <span className="ml-2 text-sm">
+                          ({availableEnemies.find(e => e.id === selectedTarget)?.name})
+                        </span>
+                      )}
+                    </button>
 
-                        if (selectedAction.type === 'ranged' && distance > 20) {
-                          const penalty = Math.floor((distance - 20) / 5) * 2;
-                          displayAC = Math.max(1, enemy.ac - penalty);
-                        }
-
-                        return (
-                          <button
-                            key={enemy.id}
-                            onClick={() => setSelectedTarget(enemy.id)}
-                            className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                              selectedTarget === enemy.id
-                                ? 'border-clair-gold-400 bg-clair-gold-900 bg-opacity-30'
-                                : 'border-clair-shadow-400 bg-clair-shadow-700 hover:border-clair-gold-600'
-                            }`}
-                          >
-                            <div className="flex justify-between items-center">
-                              <div>
-                                <div className="font-bold text-clair-gold-200">{enemy.name}</div>
-                                <div className="text-sm text-clair-gold-300">
-                                  Distance: {distance}ft
-                                  {selectedAction.type === 'ranged' && distance > 20 && (
-                                    <span className="text-yellow-400 ml-2">
-                                      (Range penalty: -{Math.floor((distance - 20) / 5) * 2})
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-sm text-clair-gold-400">
-                                  AC: {enemy.ac}
-                                  {selectedAction.type === 'ranged' && distance > 20 && (
-                                    <span className="text-yellow-400"> → {displayAC}</span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-red-400">
-                                  {enemy.hp}/{enemy.maxHp} HP
-                                </div>
-                              </div>
-                            </div>
-                          </button>
-                        );
-                      }
+                    {selectedTarget && (
+                      <div className="space-y-3">
+                        {/* AC Roll Input */}
+                        <div>
+                          <label className="block text-sm font-bold text-clair-gold-300 mb-2">
+                            Roll d20 + modifiers:
+                          </label>
+                          <input
+                            type="number"
+                            value={acRoll}
+                            onChange={(e) => setACRoll(e.target.value)}
+                            className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
+                            placeholder="Enter your attack roll"
+                            min="1"
+                            max="30"
+                          />
+                        </div>
+                        
+                        <button
+                          onClick={handleConfirmAction}
+                          disabled={!acRoll}
+                          className="w-full p-3 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white rounded-lg font-bold"
+                        >
+                          Confirm Attack
+                        </button>
+                      </div>
                     )}
                   </div>
-
-                  {/* AC Roll Input */}
-                  {selectedTarget && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-bold mb-2 text-clair-gold-300">
-                          Roll d20 + modifiers:
-                        </label>
-                        <input
-                          type="number"
-                          value={acRoll}
-                          onChange={(e) => setACRoll(e.target.value)}
-                          placeholder="Enter your attack roll total"
-                          className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                          min={1}
-                          max={30}
-                        />
-                      </div>
-                      <button
-                        onClick={handleConfirmAction}
-                        disabled={!acRoll}
-                        className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
-                      >
-                        Confirm Attack
-                      </button>
-                    </div>
-                  )}
-
-                  {getValidTargets(getActionRange(selectedAction.type, selectedAction.id), selectedAction.type).length ===
-                    0 && <div className="text-center text-clair-gold-400 py-4">No enemies in range</div>}
                 </>
               )}
             </div>
@@ -798,6 +733,27 @@ export function GustaveCharacterSheet({
           </div>
         </div>
       </div>
+
+      {/* Enemy Targeting Modal */}
+      <EnemyTargetingModal
+        isOpen={showTargetingModal}
+        onClose={() => setShowTargetingModal(false)}
+        enemies={availableEnemies}
+        playerPosition={playerPosition}
+        onSelectEnemy={(enemy) => {
+          setSelectedTarget(enemy.id);
+          if (sessionId) {
+            FirestoreService.updateTargetingState(sessionId, {
+              selectedEnemyId: enemy.id,
+              playerId: character.id
+            });
+          }
+          setShowTargetingModal(false);
+        }}
+        selectedEnemyId={selectedTarget}
+        abilityName={selectedAction?.name}
+        abilityRange={getActionRange(selectedAction?.type || '', selectedAction?.id)}
+      />
     </div>
   );
 }

@@ -14,6 +14,8 @@ interface TokenProps {
   onDragStart?: (token: BattleToken, event: React.DragEvent) => void;
   onDragEnd?: (token: BattleToken) => void;
   coordinateOffset?: Position; // New prop for coordinate padding
+  isHighlighted?: boolean;
+
 }
 
 export function Token({ 
@@ -26,6 +28,7 @@ export function Token({
   onClick,
   onDragStart,
   onDragEnd,
+  isHighlighted = false,
   coordinateOffset = { x: 0, y: 0 } // Default to no offset
 }: TokenProps) {
   const tokenSize = gridSize * (token.size || 1);
@@ -179,7 +182,9 @@ export function Token({
         isSelected ? 'z-30 scale-110' : 'z-20'
       } ${isDragging ? 'opacity-60' : ''} ${
         isValidTarget ? 'ring-4 ring-purple-400 ring-opacity-80' : ''
-      } ${isCurrentTurn ? 'ring-2 ring-yellow-400 ring-opacity-90' : ''}`}
+      } ${isCurrentTurn ? 'ring-2 ring-yellow-400 ring-opacity-90' : ''} 
+        ${isHighlighted ? 'ring-4 ring-red-500 ring-opacity-100 animate-pulse' : '' 
+      }`}
       style={{
         left: `${left}px`,
         top: `${top}px`,
@@ -195,13 +200,15 @@ export function Token({
       <div
         className={`w-full h-full rounded-full border-4 ${getTokenBorder()} shadow-lg relative overflow-hidden ${
           isSelected ? 'ring-2 ring-white ring-opacity-60' : ''
-        }`}
-        style={{
-          backgroundColor: getTokenColor(token),
-          boxShadow: isSelected
-            ? '0 0 20px rgba(255, 255, 255, 0.5)'
-            : '0 4px 8px rgba(0, 0, 0, 0.3)',
-        }}
+          } ${isHighlighted ? 'border-red-500 border-opacity-100' : ''}`}
+          style={{
+              backgroundColor: getTokenColor(token),
+              boxShadow: isHighlighted
+                ? '0 0 30px rgba(239, 68, 68, 0.8)'
+                : isSelected
+                ? '0 0 20px rgba(255, 255, 255, 0.5)'
+                : '0 4px 8px rgba(0, 0, 0, 0.3)',
+            }}
       >
         {/* Character Image */}
         {tokenImage ? (

@@ -36,6 +36,7 @@ export function PlayerView() {
   const [bonusActionCooldown, setBonusActionCooldown] = useState(0);
   const [activeTurretId, setActiveTurretId] = useState<string | null>(null);
   const [turretsDeployedThisBattle, setTurretsDeployedThisBattle] = useState<number>(0);
+  const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
 
   const currentTurnRef = useRef<string>('');
 
@@ -272,6 +273,7 @@ export function PlayerView() {
     _abilityId?: string
   ) => {
     console.log('handleTargetSelect called with:', { targetId, acRoll, attackType, _abilityId });
+    setSelectedEnemyId(targetId);
 
     if (!characterId || !session || !playerToken) {
       console.log('Missing required data:', { characterId, session: !!session, playerToken: !!playerToken });
@@ -347,12 +349,17 @@ export function PlayerView() {
     }
   };
 
+  const handleEnemySelection = (enemyId: string) => {
+    setSelectedEnemyId(enemyId);
+  };
+
   const handleEndTurn = async () => {
     setHasActedThisTurn(false);
     await nextTurn();
   };
 
   const handleCancelTargeting = () => {
+    setSelectedEnemyId(null);
     cancelTargeting();
   };
 

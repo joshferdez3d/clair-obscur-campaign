@@ -11,11 +11,13 @@ import { EnemyPanel } from '../components/Combat/EnemyPanel';
 import { AVAILABLE_MAPS } from '../components/GM/MapSelector';
 import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
 import { useUltimateVideo } from '../hooks/useUltimateVideo';
+import { FirestoreService } from '../services/firestoreService';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { currentEvent, clearUltimate, hasActiveUltimate } = useUltimateVideo(sessionId || 'test-session');
+  const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
 
   // Use the combat hook to get real-time session data
   const {
@@ -59,6 +61,22 @@ export function BattleMapView() {
   const handleVideoClose = useCallback(() => {
     clearUltimate();
   }, [clearUltimate]);
+
+  useEffect(() => {
+    if (sessionId) {
+      const unsubscribe = FirestoreService.subscribeToTargetingState(
+        sessionId,
+        (targetingState) => {
+          if (targetingState?.selectedEnemyId) {
+            setSelectedEnemyId(targetingState.selectedEnemyId);
+          } else {
+            setSelectedEnemyId(null);
+          }
+        }
+      );
+      return unsubscribe;
+    }
+  }, [sessionId]);
 
   // Auto-refresh every 10 seconds as fallback (increased from 5s)
   useEffect(() => {
@@ -288,6 +306,7 @@ export function BattleMapView() {
               console.log(`Grid position: ${letter}${number}`);
             }}
             targetingMode={undefined}
+            selectedEnemyId={selectedEnemyId} 
             maxMovementRange={30}
           />
         </div>

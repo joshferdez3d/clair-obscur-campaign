@@ -68,6 +68,7 @@ interface BattleMapProps {
   currentTurn?: string;
   combatActive?: boolean;
   session?: BattleSession; // Now properly typed
+  selectedEnemyId?: string | null;
 
   onTokenMove?: (tokenId: string, newPosition: Position) => Promise<boolean>;
   onTokenSelect?: (token: BattleToken | null) => void;
@@ -96,6 +97,7 @@ export function BattleMap({
   session, // Add session to destructured props
   onTokenMove,
   onTokenSelect,
+  selectedEnemyId,
   onGridClick,
   targetingMode,
   maxMovementRange = 30,
@@ -465,6 +467,7 @@ export function BattleMap({
               isDragging={draggedToken?.id === token.id}
               isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
               isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
+              isHighlighted={selectedEnemyId === token.id} // Add this new prop
               onClick={handleTokenClick}
               onDragStart={handleTokenDragStart}
               onDragEnd={handleTokenDragEnd}

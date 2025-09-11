@@ -1,9 +1,10 @@
-// src/components/CharacterSheet/ScielCharacterSheet.tsx - Fixed Storm Integration
+// src/components/CharacterSheet/ScielCharacterSheet.tsx
 import React, { useState } from 'react';
 import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
+import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import { useStormSystem } from '../../hooks/useStormSystem';
 import { StormService } from '../../services/StormService';
 import { StormIndicator } from '../Combat/StormIndicator';
@@ -68,6 +69,7 @@ export function ScielCharacterSheet({
 }: ScielCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
+  const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId);
 
   const [selectedAction, setSelectedAction] = useState<{
@@ -91,7 +93,7 @@ export function ScielCharacterSheet({
     return Math.max(dx, dy) * 5;
   };
 
-  // Apply range penalty for attacks beyond 30ft (same as Lune)
+  // Apply range penalty for attacks beyond 30ft
   const applyRangePenalty = (baseAC: number, distance: number): number => {
     if (distance <= 30) return baseAC;
     const extraDistance = distance - 30;
@@ -215,15 +217,17 @@ export function ScielCharacterSheet({
   // Handle confirming actions
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
+    
+    if (sessionId) {
+      FirestoreService.clearTargetingState(sessionId);
+    }
 
     // Handle Bonus Action (Guiding Cards)
     if (selectedAction.isBonusAction) {
-      // No targeting needed - player tells GM who to apply it to
       if (onTargetSelect) {
         onTargetSelect('bonus_action_used', 0, 'bonus', selectedAction.id);
       }
       
-      // Set cooldown to 3 rounds
       onBonusActionCooldownChange?.(3);
       
       setSelectedAction(null);
@@ -253,13 +257,12 @@ export function ScielCharacterSheet({
         // If Foretell Chain is charged, apply stacks to nearby enemies
         if (foretellChainCharged) {
           const nearbyEnemies = findEnemiesInRange(enemy.position, 20)
-            .filter(e => e.id !== selectedTarget) // Exclude primary target
+            .filter(e => e.id !== selectedTarget)
             .sort((a, b) => calculateDistance(enemy.position, a.position) - calculateDistance(enemy.position, b.position))
-            .slice(0, 2); // Take closest 2
+            .slice(0, 2);
 
           nearbyEnemies.forEach(nearbyEnemy => {
-            // Check if Sciel's AC beats nearby enemy's AC
-              addForetellStack(nearbyEnemy.id);
+            addForetellStack(nearbyEnemy.id);
           });
 
           // Consume the chain charge
@@ -274,6 +277,7 @@ export function ScielCharacterSheet({
       setSelectedAction(null);
       setSelectedTarget('');
       setACRoll('');
+      setShowTargetingModal(false);
       setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
       return;
     }
@@ -282,7 +286,6 @@ export function ScielCharacterSheet({
     if (selectedAction.id === 'foretell_chain') {
       onAbilityPointsChange?.(-selectedAction.cost!);
       onChainChargedChange?.(true);
-        // FIXED: Foretell Chain now ends Sciel's turn
       if (onTargetSelect) {
         onTargetSelect('foretell_chain_charged', 0, 'ability', selectedAction.id);
       }
@@ -304,7 +307,6 @@ export function ScielCharacterSheet({
         return;
       }
 
-      // Check each enemy's AC against the roll
       const baseAC = parseInt(acRoll);
       const hitEnemies: string[] = [];
 
@@ -342,13 +344,14 @@ export function ScielCharacterSheet({
     setSelectedTarget('');
     setACRoll('');
     setShowBonusAction(false);
+    setShowTargetingModal(false);
     onCancelTargeting?.();
   };
 
   const abilityPoints = character.charges || 0;
   const totalStacks = Object.values(foretellStacks).reduce((sum, stacks) => sum + stacks, 0);
 
-  // Define Sciel's actions - REMOVED Crescendo of Fate from regular abilities
+  // Define Sciel's actions
   const basicAttack = {
     type: 'basic' as const,
     id: 'card_toss',
@@ -359,7 +362,6 @@ export function ScielCharacterSheet({
     range: 'Unlimited',
   };
 
-  // Updated abilities - Crescendo of Fate removed from here
   const abilities = [
     {
       type: 'ability' as const,
@@ -689,95 +691,51 @@ export function ScielCharacterSheet({
                 </div>
               )}
 
-              {/* Card Toss - Target selection */}
+              {/* Card Toss - Target selection with modal */}
               {selectedAction.id === 'card_toss' && (
                 <>
-                  {/* Enemy Selection */}
-                  <div className="space-y-2">
-                    {getValidTargets().map(enemy => {
-                      const distance = calculateDistance(playerPosition, enemy.position);
-                      const stacks = foretellStacks[enemy.id] || 0;
-                      let displayAC = enemy.ac;
-                      let showPenalty = false;
+                  {/* Modal Trigger Button */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setShowTargetingModal(true)}
+                      className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
+                    >
+                      <Target className="w-5 h-5 mr-2" />
+                      Select Target
+                      {selectedTarget && (
+                        <span className="ml-2 text-sm">
+                          ({availableEnemies.find(e => e.id === selectedTarget)?.name})
+                        </span>
+                      )}
+                    </button>
 
-                      if (distance > 30) {
-                        const penalty = Math.floor((distance - 30) / 5) * 2;
-                        displayAC = Math.max(1, enemy.ac - penalty);
-                        showPenalty = true;
-                      }
-
-                      return (
+                    {/* AC Roll Input and Confirm Button */}
+                    {selectedTarget && (
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-sm font-bold mb-2 text-clair-gold-300">
+                            Roll d20 + modifiers:
+                          </label>
+                          <input
+                            type="number"
+                            value={acRoll}
+                            onChange={(e) => setACRoll(e.target.value)}
+                            placeholder="Enter your attack roll total"
+                            className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
+                            min={1}
+                            max={30}
+                          />
+                        </div>
                         <button
-                          key={enemy.id}
-                          onClick={() => setSelectedTarget(enemy.id)}
-                          className={`w-full p-3 rounded-lg border-2 text-left transition-all ${
-                            selectedTarget === enemy.id
-                              ? 'border-clair-gold-400 bg-clair-gold-900 bg-opacity-30'
-                              : 'border-clair-shadow-400 bg-clair-shadow-700 hover:border-clair-gold-600'
-                          }`}
+                          onClick={handleConfirmAction}
+                          disabled={!acRoll}
+                          className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
                         >
-                          <div className="flex justify-between items-center">
-                            <div>
-                              <div className="font-bold text-clair-gold-200 flex items-center">
-                                {enemy.name}
-                                {stacks > 0 && (
-                                  <div className="ml-2 flex space-x-1">
-                                    {Array.from({ length: stacks }).map((_, i) => (
-                                      <div key={i} className="w-2 h-2 bg-green-400 rounded-full"></div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="text-sm text-clair-gold-300">
-                                Distance: {distance}ft • Stacks: {stacks}/3
-                                {showPenalty && (
-                                  <span className="text-yellow-400 ml-2">
-                                    (Range penalty: -{Math.floor((distance - 30) / 5) * 2})
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm text-clair-gold-400">
-                                AC: {enemy.ac}
-                                {showPenalty && (
-                                  <span className="text-yellow-400"> → {displayAC}</span>
-                                )}
-                              </div>
-                              <div className="text-sm text-red-400">{enemy.hp}/{enemy.maxHp} HP</div>
-                            </div>
-                          </div>
+                          Throw Card
                         </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* AC Roll Input */}
-                  {selectedTarget && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className="block text-sm font-bold mb-2 text-clair-gold-300">
-                          Roll d20 + modifiers:
-                        </label>
-                        <input
-                          type="number"
-                          value={acRoll}
-                          onChange={(e) => setACRoll(e.target.value)}
-                          placeholder="Enter your attack roll total"
-                          className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                          min={1}
-                          max={30}
-                        />
                       </div>
-                      <button
-                        onClick={handleConfirmAction}
-                        disabled={!acRoll}
-                        className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
-                      >
-                        Throw Card
-                      </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
 
                   {getValidTargets().length === 0 && (
                     <div className="text-center text-clair-gold-400 py-4">No enemies available</div>
@@ -812,6 +770,27 @@ export function ScielCharacterSheet({
           </div>
         </div>
       </div>
+
+      {/* Enemy Targeting Modal */}
+      <EnemyTargetingModal
+        isOpen={showTargetingModal}
+        onClose={() => setShowTargetingModal(false)}
+        enemies={availableEnemies}
+        playerPosition={playerPosition}
+        onSelectEnemy={(enemy) => {
+          setSelectedTarget(enemy.id);
+          if (sessionId) {
+            FirestoreService.updateTargetingState(sessionId, {
+              selectedEnemyId: enemy.id,
+              playerId: character.id
+            });
+          }
+          // Don't close modal here - wait for confirmation
+        }}
+        selectedEnemyId={selectedTarget}
+        abilityName={selectedAction?.name}
+        abilityRange={999} // Sciel has unlimited range
+      />
     </div>
   );
 }

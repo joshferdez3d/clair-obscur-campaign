@@ -1,9 +1,12 @@
+// src/components/CharacterSheet/MaelleCharacterSheet.tsx
 import React, { useState } from 'react';
 import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } from 'lucide-react';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
+import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character } from '../../types/character';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
+import { FirestoreService } from '../../services/firestoreService';
 
 interface MaelleCharacterSheetProps {
   character: Character;
@@ -30,8 +33,7 @@ interface MaelleCharacterSheetProps {
   onAfterimageChange?: (stacks: number) => void;
   phantomStrikeAvailable?: boolean;
   onPhantomStrikeUse?: () => void;
-  sessionId?: string; // Add this line
-
+  sessionId?: string;
 }
 
 export function MaelleCharacterSheet({
@@ -51,8 +53,7 @@ export function MaelleCharacterSheet({
   onAfterimageChange,
   phantomStrikeAvailable = true,
   onPhantomStrikeUse,
-  sessionId, // Add this line
-
+  sessionId,
 }: MaelleCharacterSheetProps) {
   
   const [selectedAction, setSelectedAction] = useState<{
@@ -66,6 +67,7 @@ export function MaelleCharacterSheet({
   } | null>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
+  const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
 
   // Calculate distance for range validation
@@ -111,8 +113,12 @@ export function MaelleCharacterSheet({
   };
 
   // Handle confirming action
-  const handleConfirmAction = async () => {  // Add async here
+  const handleConfirmAction = async () => {
     if (!selectedAction) return;
+
+    if (sessionId) {
+      FirestoreService.clearTargetingState(sessionId);
+    }
 
     // Handle Phantom Strike (no targeting needed)
     if (selectedAction.type === 'ultimate') {
@@ -125,26 +131,16 @@ export function MaelleCharacterSheet({
         alert('No enemies within 50ft for Phantom Strike!');
         return;
       }
-    // ADD THIS SECTION HERE:
+      
       try {
-        // Trigger the ultimate video
         await triggerUltimate('maelle', 'Phantom Strike');
       } catch (error) {
         console.error('Failed to trigger ultimate video:', error);
-        // Continue with ultimate anyway
-        // Use the ultimate
-        onPhantomStrikeUse?.();
-        
-        // Reset afterimage stacks (consumed by ultimate)
-        onAfterimageChange?.(0);
       }
-      // Use the ultimate
-      onPhantomStrikeUse?.();
       
-      // Reset afterimage stacks (consumed by ultimate)
+      onPhantomStrikeUse?.();
       onAfterimageChange?.(0);
       
-      // Add stacks back based on enemies hit
       const stacksGained = Math.ceil(enemiesInRange.length / 2);
       setTimeout(() => onAfterimageChange?.(stacksGained), 100);
 
@@ -154,7 +150,6 @@ export function MaelleCharacterSheet({
 
     // Handle abilities that don't need targeting
     if (selectedAction.id === 'spectral_feint' || selectedAction.id === 'mirror_step') {
-      // These abilities don't need targeting, they're reactive/positional
       if (selectedAction.cost) {
         onAfterimageChange?.(Math.max(0, afterimageStacks - selectedAction.cost));
       }
@@ -171,24 +166,22 @@ export function MaelleCharacterSheet({
 
       // Handle Afterimage stacks
       if (selectedAction.type === 'basic') {
-        // Basic attacks gain stacks on hit
         const enemy = availableEnemies.find(e => e.id === selectedTarget);
         const hit = parseInt(acRoll) >= (enemy?.ac || 10);
         if (hit) {
-          // Check for critical hit (natural 20)
           const rollValue = parseInt(acRoll);
           const criticalHit = rollValue === 20;
           const stacksGained = criticalHit ? 2 : 1;
           onAfterimageChange?.(Math.min(5, afterimageStacks + stacksGained));
         }
       } else if (selectedAction.cost) {
-        // Abilities consume stacks
         onAfterimageChange?.(Math.max(0, afterimageStacks - selectedAction.cost));
       }
 
       setSelectedAction(null);
       setSelectedTarget('');
       setACRoll('');
+      setShowTargetingModal(false);
     }
   };
 
@@ -196,6 +189,7 @@ export function MaelleCharacterSheet({
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
+    setShowTargetingModal(false);
     onCancelTargeting?.();
   };
 
@@ -368,13 +362,12 @@ export function MaelleCharacterSheet({
                 <div className="space-y-2">
                   {abilities.map((ability) => {
                     const canAfford = afterimageStacks >= (ability.cost || 0);
-                    const displayCost = ability.id === 'crescendo_strike' ? afterimageStacks : ability.cost;
                     
                     return (
                       <button
                         key={ability.id}
                         onClick={() => handleActionSelect(ability)}
-                        disabled={!isMyTurn || !combatActive || hasActedThisTurn || !canAfford || (ability.cost === 0 && ability.id === 'crescendo_strike')}
+                        disabled={!isMyTurn || !combatActive || hasActedThisTurn || !canAfford}
                         className="w-full bg-clair-mystical-600 hover:bg-clair-mystical-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                       >
                         <div className="flex items-center justify-between">
@@ -382,9 +375,9 @@ export function MaelleCharacterSheet({
                             <Circle className="w-4 h-4 mr-2" />
                             <span className="font-bold">{ability.name}</span>
                           </div>
-                          {displayCost > 0 && (
+                          {ability.cost > 0 && (
                             <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                              {displayCost} STACK{displayCost > 1 ? 'S' : ''}
+                              {ability.cost} STACK{ability.cost > 1 ? 'S' : ''}
                             </span>
                           )}
                         </div>
@@ -434,64 +427,56 @@ export function MaelleCharacterSheet({
 
               {selectedAction.needsTarget ? (
                 <>
-                  {/* AC Roll Input */}
-                  <div>
-                    <label className="block text-sm font-bold text-clair-royal-300 mb-2">
-                      Attack Roll (d20 + modifiers):
-                    </label>
-                    <input
-                      type="number"
-                      value={acRoll}
-                      onChange={(e) => setACRoll(e.target.value)}
-                      className="w-full bg-clair-shadow-700 border border-clair-royal-500 rounded-lg px-3 py-2 text-white"
-                      placeholder="Enter your total attack roll"
-                      min="1"
-                      max="30"
-                    />
-                  </div>
+                  {/* Modal Trigger for Enemy Selection */}
+                  <div className="space-y-3">
+                    <button
+                      onClick={() => setShowTargetingModal(true)}
+                      className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
+                    >
+                      <Target className="w-5 h-5 mr-2" />
+                      Select Target
+                      {selectedTarget && (
+                        <span className="ml-2 text-sm">
+                          ({availableEnemies.find(e => e.id === selectedTarget)?.name})
+                        </span>
+                      )}
+                    </button>
 
-                  {/* Target Selection */}
-                  <div>
-                    <label className="block text-sm font-bold text-clair-royal-300 mb-2">
-                      Select Target:
-                    </label>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {getValidTargets().map((enemy) => (
+                    {selectedTarget && (
+                      <div className="space-y-3">
+                        {/* AC Roll Input */}
+                        <div>
+                          <label className="block text-sm font-bold text-clair-royal-300 mb-2">
+                            Attack Roll (d20 + modifiers):
+                          </label>
+                          <input
+                            type="number"
+                            value={acRoll}
+                            onChange={(e) => setACRoll(e.target.value)}
+                            className="w-full bg-clair-shadow-700 border border-clair-royal-500 rounded-lg px-3 py-2 text-white"
+                            placeholder="Enter your total attack roll"
+                            min="1"
+                            max="30"
+                          />
+                        </div>
+                        
+                        {/* Confirm Button */}
                         <button
-                          key={enemy.id}
-                          onClick={() => setSelectedTarget(enemy.id)}
-                          className={`w-full p-3 rounded-lg text-left transition-colors border-2 ${
-                            selectedTarget === enemy.id
-                              ? 'bg-clair-royal-600 border-clair-gold-400 text-white'
-                              : 'bg-clair-shadow-700 border-clair-shadow-500 text-gray-300 hover:border-clair-royal-600'
-                          }`}
+                          onClick={handleConfirmAction}
+                          disabled={!acRoll}
+                          className="w-full bg-clair-royal-600 hover:bg-clair-royal-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
                         >
-                          <div className="flex justify-between items-center">
-                            <span className="font-bold">{enemy.name}</span>
-                            <span className="text-sm">AC {enemy.ac}</span>
-                          </div>
-                          <div className="text-xs opacity-80">
-                            HP: {enemy.hp}/{enemy.maxHp}
-                          </div>
+                          Execute {selectedAction.name}
                         </button>
-                      ))}
-                    </div>
-
-                    {getValidTargets().length === 0 && (
-                      <div className="text-center text-clair-gold-400 py-4">
-                        No enemies in melee range (5ft)
                       </div>
                     )}
                   </div>
 
-                  {/* Confirm Button */}
-                  <button
-                    onClick={handleConfirmAction}
-                    disabled={!selectedTarget || !acRoll}
-                    className="w-full bg-clair-royal-600 hover:bg-clair-royal-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors"
-                  >
-                    Execute {selectedAction.name}
-                  </button>
+                  {getValidTargets().length === 0 && (
+                    <div className="text-center text-clair-gold-400 py-4">
+                      No enemies in melee range (5ft)
+                    </div>
+                  )}
                 </>
               ) : (
                 /* Non-targeting abilities */
@@ -546,6 +531,27 @@ export function MaelleCharacterSheet({
           </div>
         </div>
       </div>
+
+      {/* Enemy Targeting Modal */}
+      <EnemyTargetingModal
+        isOpen={showTargetingModal}
+        onClose={() => setShowTargetingModal(false)}
+        enemies={getValidTargets()}
+        playerPosition={playerPosition}
+        onSelectEnemy={(enemy) => {
+          setSelectedTarget(enemy.id);
+          if (sessionId) {
+            FirestoreService.updateTargetingState(sessionId, {
+              selectedEnemyId: enemy.id,
+              playerId: character.id
+            });
+          }
+          // Don't close modal here - wait for confirmation
+        }}
+        selectedEnemyId={selectedTarget}
+        abilityName={selectedAction?.name}
+        abilityRange={5} // Maelle is melee only
+      />
     </div>
   );
 }

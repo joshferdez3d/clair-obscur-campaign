@@ -7,7 +7,9 @@ import {
   updateDoc,
   onSnapshot,
   serverTimestamp,
-  arrayUnion
+  arrayUnion,
+  deleteField  // Add this import
+
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -1088,6 +1090,43 @@ export class FirestoreService {
     });
 
     return action;
+  }
+
+  // src/services/firestoreService.ts
+
+  // Add these methods to the FirestoreService class
+
+  static async updateTargetingState(
+    sessionId: string,
+    targetingState: { selectedEnemyId: string; playerId: string }
+  ): Promise<void> {
+    const sessionRef = doc(db, 'battleSessions', sessionId);  // Changed from 'sessions' to 'battleSessions'
+    await updateDoc(sessionRef, {
+      targetingState,
+      updatedAt: serverTimestamp()
+    });
+  }
+
+  static subscribeToTargetingState(
+    sessionId: string,
+    callback: (targetingState: any) => void
+  ): () => void {
+    const sessionRef = doc(db, 'battleSessions', sessionId);  // Changed from 'sessions' to 'battleSessions'
+    
+    const unsubscribe = onSnapshot(sessionRef, (snapshot) => {
+      const data = snapshot.data();
+      callback(data?.targetingState || null);
+    });
+    
+    return unsubscribe;
+  }
+
+  static async clearTargetingState(sessionId: string): Promise<void> {
+    const sessionRef = doc(db, 'battleSessions', sessionId);  // Changed from 'sessions' to 'battleSessions'
+    await updateDoc(sessionRef, {
+      targetingState: deleteField(),
+      updatedAt: serverTimestamp()
+    });
   }
 
   // Create self destruct action - destroys turret and damages nearby enemies
