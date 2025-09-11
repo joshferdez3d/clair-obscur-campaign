@@ -124,21 +124,48 @@ export function Token({
       return imagePath;
     }
     
-    // For enemy tokens
-    if (token.type === 'enemy' && token.id) {
-      // Try to extract the base enemy ID from the token ID
-      // Token IDs are like "enemy-1234567-xyz" but the image might be "kobold.png"
-      const enemyType = token.name?.toLowerCase().replace(/\s+/g, '-') || 'default-enemy';
-      const imagePath = `/tokens/enemies/${enemyType}.png`;
-      return imagePath;
+    // For enemy tokens - Manual mapping
+    if (token.type === 'enemy' && token.name) {
+      const enemyImageMap: { [key: string]: string } = {
+        'Bénisseur': 'Benisseur_Image.png',
+        'Brûler': 'Bruler_Image.png',
+        'Lancelier': 'Lancelier_Image.png',
+        'Noir Harbinger': 'Noir_Harbinger_Image.png',
+        'Portier': 'Portier_Image.png',
+        'Volester': 'Volester_Image.png',
+        // Add any other enemies here as you add them to the game
+      };
+      
+      const filename = enemyImageMap[token.name];
+      if (filename) {
+        return `/tokens/enemies/${filename}`;
+      }
+      
+      // Fallback to a default enemy image if not in mapping
+      return '/tokens/enemies/default-enemy.png';
     }
     
-    // For NPC tokens
-    if (token.type === 'npc' && token.id) {
-      // NPCs use their name for the image file
-      const npcType = token.name?.toLowerCase().replace(/\s+/g, '-').replace('the-', '') || 'default-npc';
-      const imagePath = `/tokens/npc/${npcType}.png`;
-      return imagePath;
+    // For NPC tokens - Manual mapping
+    if (token.type === 'npc' && token.name) {
+      const npcImageMap: { [key: string]: string } = {
+        'The Child of the Gommage': 'childofgommage.png',
+        'The Farmhand Turned Fighter': 'farmhand-fighter.png',
+        'The Gambler': 'gambler.png',
+        'The New Recruit': 'new-recruit.png',
+        'The Zealot': 'zealot.png',
+        'The Veteran': 'veteran.png',
+        'The Scholar\'s Apprentice': 'apprentice.png',
+        'The Lost Lover': 'lover.png',
+        "Gustave's Turret": 'turret.png',
+      };
+      
+      const filename = npcImageMap[token.name];
+      if (filename) {
+        return `/tokens/npc/${filename}`;
+      }
+      
+      // Fallback to a default NPC image if not in mapping
+      return '/tokens/npc/default-npc.png';
     }
     
     return null;

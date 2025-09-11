@@ -753,6 +753,13 @@ const handleResetSession = async () => {
         onSelectEnemy={handleEnemySelected}
       />
 
+      {/* Expedition NPC Modal - ADD THIS */}
+      <ExpeditionNPCModal
+        isOpen={showNPCModal}
+        onClose={() => setShowNPCModal(false)}
+        onSelectNPC={handleNPCSelected}
+      />
+
       {/* Left Panel - GM Controls (NO Character Health) */}
       <div className="w-80 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
         <div className="mb-6">
