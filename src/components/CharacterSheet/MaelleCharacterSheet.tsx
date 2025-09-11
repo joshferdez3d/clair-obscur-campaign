@@ -1,4 +1,3 @@
-// src/components/CharacterSheet/MaelleCharacterSheet.tsx
 import React, { useState } from 'react';
 import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } from 'lucide-react';
 import { HPTracker } from './HPTracker';
@@ -69,6 +68,19 @@ export function MaelleCharacterSheet({
   const [acRoll, setACRoll] = useState<string>('');
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
+
+  const getCharacterPortrait = (name: string) => {
+    const portraitMap: { [key: string]: string } = {
+      'gustave': '/tokens/characters/gustave.jpg',
+      'lune': '/tokens/characters/lune.jpg',
+      'maelle': '/tokens/characters/maelle.jpg',
+      'sciel': '/tokens/characters/sciel.jpg'
+    };
+    return portraitMap[name.toLowerCase()] || null;
+  };
+
+  const portraitUrl = getCharacterPortrait(character.name);
+
 
   // Calculate distance for range validation
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -251,28 +263,58 @@ export function MaelleCharacterSheet({
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
-      {/* CHARACTER HEADER */}
-      <div className="relative px-4 pt-6 pb-4 text-white bg-gradient-to-br from-clair-royal-600 to-clair-royal-800 shadow-shadow border-b border-clair-gold-600">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-12 h-12 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400">
-              <User className="w-6 h-6 text-clair-gold-200" />
-            </div>
-            <div>
-              <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
-              <p className="font-serif italic text-clair-gold-200 text-sm">Phantom Blade Duelist</p>
-            </div>
+    {/* CHARACTER HEADER */}
+    <div className="relative px-4 pt-6 pb-4 text-white bg-gradient-to-br from-clair-royal-600 to-clair-royal-800 shadow-shadow border-b border-clair-gold-600">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
+            {portraitUrl ? (
+              <img 
+                src={portraitUrl} 
+                alt={character.name}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  console.error(`Failed to load image for ${character.name}`);
+                  const target = e.target as HTMLImageElement;
+                  target.style.display = 'none';
+                }}
+              />
+            ) : (
+              <User className="w-8 h-8 text-clair-gold-200" />
+            )}
           </div>
-
-          {isMyTurn && combatActive && (
-            <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
-              Your Turn
-            </div>
-          )}
+          <div>
+            <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
+            <p className="font-serif italic text-clair-gold-200 text-sm">{character.role}</p>
+          </div>
         </div>
+        
+        {/* Turn Indicator */}
+        {isMyTurn && combatActive && (
+          <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
+            Your Turn
+          </div>
+        )}
       </div>
+    </div>
+
 
       <div className="px-4 pt-4">
+        {portraitUrl && (
+        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
+          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
+          <div className="flex justify-center">
+            <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
+              <img 
+                src={portraitUrl} 
+                alt={`${character.name} portrait`}
+                className="w-full h-full object-cover"
+                style={{ imageRendering: 'crisp-edges' }}  // Fixed: use valid value
+              />
+            </div>
+          </div>
+        </div>
+      )}
         {/* Action Status */}
         {isMyTurn && combatActive && hasActedThisTurn && (
           <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
