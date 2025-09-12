@@ -784,14 +784,12 @@ export function GustaveCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={availableEnemies}
         playerPosition={playerPosition}
+        sessionId={sessionId} // Add this
+        playerId={character.id} // Add this
         onSelectEnemy={(enemy) => {
           setSelectedTarget(enemy.id);
-          if (sessionId) {
-            FirestoreService.updateTargetingState(sessionId, {
-              selectedEnemyId: enemy.id,
-              playerId: character.id
-            });
-          }
+          // Remove the FirestoreService.updateTargetingState call here
+          // since it's now handled inside the modal
           setShowTargetingModal(false);
         }}
         selectedEnemyId={selectedTarget}

@@ -130,6 +130,7 @@ export function LuneCharacterSheet({
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
+  const [twinCatalystSelections, setTwinCatalystSelections] = useState<Record<string, number>>({});
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate' | 'heal';
@@ -300,14 +301,33 @@ export function LuneCharacterSheet({
 
   // Handle target selection for multi-target abilities
   const handleTargetToggle = (targetId: string) => {
-    if (selectedAction?.multiTarget) {
+    if (selectedAction?.multiTarget && selectedAction.id === 'twin_catalyst') {
+      // Special handling for Twin Catalyst - use count-based selection
+      const currentCount = twinCatalystSelections[targetId] || 0;
+      const totalSelections = Object.values(twinCatalystSelections).reduce((sum, count) => sum + count, 0);
+      
+      if (totalSelections < 2) {
+        // Can add another selection
+        const newSelections = {
+          ...twinCatalystSelections,
+          [targetId]: currentCount + 1
+        };
+        setTwinCatalystSelections(newSelections);
+        
+        // Convert to array format for selectedTargets display
+        const targetArray: string[] = [];
+        Object.entries(newSelections).forEach(([enemyId, count]) => {
+          for (let i = 0; i < count; i++) {
+            targetArray.push(enemyId);
+          }
+        });
+        setSelectedTargets(targetArray);
+      }
+    } else if (selectedAction?.multiTarget) {
+      // Other multi-target abilities (if any)
       if (selectedTargets.includes(targetId)) {
         setSelectedTargets(selectedTargets.filter(id => id !== targetId));
       } else {
-        if (selectedAction.id === 'twin_catalyst' && selectedTargets.length >= 2) {
-          alert('Twin Catalyst can only target up to 2 enemies');
-          return;
-        }
         setSelectedTargets([...selectedTargets, targetId]);
       }
     } else {
@@ -514,6 +534,7 @@ export function LuneCharacterSheet({
     setSelectedAction(null);
     setSelectedTarget('');
     setSelectedTargets([]);
+    setTwinCatalystSelections({}); // Add this line
     setACRoll('');
     setElementRoll('');
     setShowTargetingModal(false);
@@ -977,23 +998,21 @@ export function LuneCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={availableEnemies}
         playerPosition={playerPosition}
+        sessionId={sessionId}
+        playerId={character.id}
         onSelectEnemy={(enemy) => {
           if (selectedAction?.multiTarget) {
             handleTargetToggle(enemy.id);
           } else {
             setSelectedTarget(enemy.id);
-            if (sessionId) {
-              FirestoreService.updateTargetingState(sessionId, {
-                selectedEnemyId: enemy.id,
-                playerId: character.id
-              });
-            }
           }
-          // Don't close modal here - wait for confirmation
         }}
         selectedEnemyId={selectedAction?.multiTarget ? undefined : selectedTarget}
+        selectedTargets={selectedTargets} // ADD THIS LINE
         abilityName={selectedAction?.name}
-        abilityRange={999} // Lune has unlimited range
+        abilityRange={999}
+        multiTarget={selectedAction?.multiTarget} // ADD THIS LINE
+        maxTargets={selectedAction?.id === 'twin_catalyst' ? 2 : undefined} // ADD THIS LINE
       />
     </div>
   );

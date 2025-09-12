@@ -822,14 +822,10 @@ export function ScielCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={availableEnemies}
         playerPosition={playerPosition}
+        sessionId={sessionId} // Add this
+        playerId={character.id} // Add this
         onSelectEnemy={(enemy) => {
           setSelectedTarget(enemy.id);
-          if (sessionId) {
-            FirestoreService.updateTargetingState(sessionId, {
-              selectedEnemyId: enemy.id,
-              playerId: character.id
-            });
-          }
           // Don't close modal here - wait for confirmation
         }}
         selectedEnemyId={selectedTarget}
