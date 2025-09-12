@@ -28,6 +28,8 @@ import { EnemyPanel } from '../components/Combat/EnemyPanel';
 import { MapSelector, AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
 import { NPCPanel } from '../components/Combat/NPCPanel';
 import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
+import { BattlePresetManager } from '../components/GM/BattlePresetManager';
+import type { BattleMapPreset } from '../types';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -199,6 +201,13 @@ export function GMView() {
     } catch (e) {
       console.error('Error applying damage:', e);
     }
+  };
+
+  const handlePresetLoad = (preset: BattleMapPreset) => {
+    console.log(`Loading preset: ${preset.name}`);
+    // The FirestoreService.loadBattleMapPreset already updates the session
+    // The real-time listener will automatically update the local state
+    // You could add a toast notification here if desired
   };
 
   const handleMapChange = async (map: MapConfig) => {
@@ -1152,6 +1161,16 @@ const handleResetSession = async () => {
                   currentMapId={currentMap.id}
                   onMapChange={handleMapChange}
                   disabled={isPlacingEnemy}
+                />
+              </div>
+              {/* Battle Map Presets - ADD THIS SECTION */}
+              <div className="mt-4">
+                <BattlePresetManager
+                  sessionId={sessionId || 'test-session'}
+                  currentMap={currentMap}
+                  tokens={tokens}
+                  onLoadPreset={handlePresetLoad}
+                  disabled={isPlacingEnemy || isPlacingNPC}
                 />
               </div>
 

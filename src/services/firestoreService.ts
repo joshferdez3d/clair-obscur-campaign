@@ -8,8 +8,13 @@ import {
   onSnapshot,
   serverTimestamp,
   arrayUnion,
-  deleteField  // Add this import
-
+  deleteField,
+  collection,
+  getDocs,
+  deleteDoc,
+  query,
+  where,
+  orderBy
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -24,7 +29,7 @@ import type {
   GMCombatAction // Import from types file
 } from '../types';
 import { StatusEffectService } from './statusEffectService';
-
+import type { BattleMapPreset, PresetSaveData } from '../types';
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
   static async resetBattleSession(sessionId: string) {
@@ -78,6 +83,135 @@ export class FirestoreService {
       throw error;
     }
   }
+
+  // ========== BATTLE MAP PRESET MANAGEMENT ==========
+
+  /**
+   * Save a battle map preset
+   */
+  static async saveBattleMapPreset(sessionId: string, presetData: PresetSaveData): Promise<string> {
+    try {
+      const presetId = `preset_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const presetRef = doc(db, 'battleMapPresets', presetId);
+      
+      const preset: BattleMapPreset = {
+        id: presetId,
+        name: presetData.name,
+        description: presetData.description || '',
+        mapId: presetData.mapId,
+        tokens: presetData.tokens,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        createdBy: sessionId // Using sessionId as creator identifier
+      };
+
+      await setDoc(presetRef, preset);
+      console.log(`✅ Battle map preset saved: ${presetData.name}`);
+      return presetId;
+    } catch (error) {
+      console.error('❌ Failed to save battle map preset:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load all presets for a specific map
+   */
+  static async getBattleMapPresets(mapId?: string): Promise<BattleMapPreset[]> {
+    try {
+      const presetsRef = collection(db, 'battleMapPresets');
+      let presetsQuery;
+      
+      if (mapId) {
+        presetsQuery = query(
+          presetsRef, 
+          where('mapId', '==', mapId),
+          orderBy('createdAt', 'desc')
+        );
+      } else {
+        presetsQuery = query(presetsRef, orderBy('createdAt', 'desc'));
+      }
+      
+      const snapshot = await getDocs(presetsQuery);
+      const presets: BattleMapPreset[] = [];
+      
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        presets.push({
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date()
+        } as BattleMapPreset);
+      });
+      
+      console.log(`✅ Retrieved ${presets.length} presets${mapId ? ` for map ${mapId}` : ''}`);
+      return presets;
+    } catch (error) {
+      console.error('❌ Failed to get battle map presets:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Load a battle map preset onto the current session
+   */
+  static async loadBattleMapPreset(sessionId: string, presetId: string): Promise<void> {
+    try {
+      const presetsRef = collection(db, 'battleMapPresets');
+      const snapshot = await getDocs(query(presetsRef, where('id', '==', presetId)));
+      
+      if (snapshot.empty) {
+        throw new Error(`Preset ${presetId} not found`);
+      }
+      
+      const presetData = snapshot.docs[0].data() as BattleMapPreset;
+      const sessionRef = doc(db, 'battleSessions', sessionId);
+      
+      // Clear existing tokens and load preset tokens
+      await updateDoc(sessionRef, {
+        tokens: presetData.tokens,
+        currentMap: { id: presetData.mapId },
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log(`✅ Loaded battle map preset: ${presetData.name}`);
+    } catch (error) {
+      console.error('❌ Failed to load battle map preset:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a battle map preset
+   */
+  static async deleteBattleMapPreset(presetId: string): Promise<void> {
+    try {
+      const presetRef = doc(db, 'battleMapPresets', presetId);
+      await deleteDoc(presetRef);
+      console.log(`✅ Deleted battle map preset: ${presetId}`);
+    } catch (error) {
+      console.error('❌ Failed to delete battle map preset:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing battle map preset
+   */
+  static async updateBattleMapPreset(presetId: string, updates: Partial<PresetSaveData>): Promise<void> {
+    try {
+      const presetRef = doc(db, 'battleMapPresets', presetId);
+      await updateDoc(presetRef, {
+        ...updates,
+        updatedAt: new Date()
+      });
+      console.log(`✅ Updated battle map preset: ${presetId}`);
+    } catch (error) {
+      console.error('❌ Failed to update battle map preset:', error);
+      throw error;
+    }
+  }
+
 
   // ========== Characters ==========
   static async getCharacter(characterId: string): Promise<Character | null> {

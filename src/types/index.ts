@@ -58,6 +58,24 @@ export interface BattleToken {
   };
 }
 
+export interface BattleMapPreset {
+  id: string;
+  name: string;
+  description?: string;
+  mapId: string; // References the map this preset is for
+  tokens: Record<string, BattleToken>; // Snapshot of token positions
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string; // GM who created the preset
+}
+
+export interface PresetSaveData {
+  name: string;
+  description?: string;
+  mapId: string;
+  tokens: Record<string, BattleToken>;
+}
+
 // Enhanced enemy data interface
 export interface EnemyData {
   id: string;
