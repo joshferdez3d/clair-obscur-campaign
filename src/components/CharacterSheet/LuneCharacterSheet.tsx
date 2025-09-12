@@ -592,7 +592,7 @@ export function LuneCharacterSheet({
             // Apply the status effect directly to the token
             const updateData: any = {};
             const effectKey = consumedElement === 'light' ? 'blind' : consumedElement;
-            updateData[`tokens.${selectedTarget}.statusEffects.${consumedElement}`] = statusEffect;
+            updateData[`tokens.${selectedTarget}.statusEffects.${effectKey}`] = statusEffect;
             
             await FirestoreService.updateBattleSession(sessionId, updateData);
             
