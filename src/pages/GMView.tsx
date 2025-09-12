@@ -30,6 +30,7 @@ import { NPCPanel } from '../components/Combat/NPCPanel';
 import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 import { BattlePresetManager } from '../components/GM/BattlePresetManager';
 import type { BattleMapPreset } from '../types';
+import { useAudio } from '../hooks/useAudio';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -70,6 +71,13 @@ export function GMView() {
     setInitiativeOrder,
     isCombatActive,
   } = useCombat(sessionId || '');
+
+    const { 
+    playBattleMusic, 
+    stopBattleMusic, 
+    isBattleMusicPlaying,
+    isLoading: audioLoading 
+  } = useAudio();
 
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
@@ -637,15 +645,26 @@ const handleResetSession = async () => {
 
 
   const handleStartCombat = async (order: InitiativeEntry[]) => {
-    try {
-      await startCombat(order);
-    } catch (e) {
-      console.error('Failed to start combat:', e);
-    }
-  };
+      try {
+        // Start battle music first
+        await playBattleMusic();
+        console.log('🎵 Battle music started');
+        
+        // Then start combat
+        await startCombat(order);
+      } catch (e) {
+        console.error('Failed to start combat:', e);
+        // If music fails, still try to start combat
+        try {
+          await startCombat(order);
+        } catch (combatError) {
+          console.error('Combat start also failed:', combatError);
+        }
+      }
+    };
 
   // REPLACE the existing handleEndCombat function with this enhanced version:
-  const handleEndCombat = async () => {
+ const handleEndCombat = async () => {
     try {
       await endCombat();
       
@@ -661,6 +680,10 @@ const handleResetSession = async () => {
       } catch (error) {
         console.error('Failed to reset Lune ultimate:', error);
       }
+      
+      // Stop battle music with fade out
+      await stopBattleMusic();
+      console.log('🎵 Battle music stopped');
       
     } catch (e) {
       console.error('Failed to end combat:', e);
@@ -892,6 +915,16 @@ const handleResetSession = async () => {
                     <span className="text-clair-gold-300">Storm:</span>
                     <span className="text-purple-300 font-bold">
                       Turn {stormState?.currentTurn} / {stormState?.totalTurns}
+                    </span>
+                  </div>
+                )}
+
+                {/* Music status - add this in your Combat Status div */}
+                {combatActive && (
+                  <div className="flex justify-between">
+                    <span className="text-clair-gold-300">Music:</span>
+                    <span className={isBattleMusicPlaying ? 'text-green-400' : 'text-clair-gold-400'}>
+                      {isBattleMusicPlaying ? '🎵 Playing' : '🔇 Silent'}
                     </span>
                   </div>
                 )}
