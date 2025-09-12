@@ -73,7 +73,7 @@ const ELEMENT_NAMES = {
 };
 
 const STATUS_EFFECTS = {
-  fire: 'Burn: +2 damage/turn for 3 rounds',
+  fire: 'Burn: +5 damage/turn for 3 rounds',
   ice: 'Freeze: Can\'t move for 1 round',
   nature: 'Push: 15ft pushback',
   light: 'Blind: Miss next attack'
@@ -193,14 +193,15 @@ export function LuneCharacterSheet({
   };
 
   // Remove oldest stains
-  const consumeStains = (count: number) => {
+// Remove oldest stains
+  const consumeStains = (count: number): ElementType[] => {
     if (elementalStains.length < count) return [];
     const consumed = elementalStains.slice(0, count);
     const remaining = elementalStains.slice(count);
+    console.log('🔄 Consuming stains:', consumed, 'Remaining:', remaining);
     onStainsChange?.(remaining);
     return consumed;
   };
-
   // Get unique available elements for ultimate
   const getAvailableElements = (): ElementType[] => {
     return Array.from(new Set(elementalStains));
@@ -280,7 +281,11 @@ export function LuneCharacterSheet({
   // Handle action selection
   const handleActionSelect = (action: any) => {
     if (hasActedThisTurn) return;
-
+    // Check if Elemental Strike is on cooldown
+    if (action.id === 'elemental_strike' && hasActiveElementalStrikeEffect()) {
+      alert('Elemental Strike is on cooldown! Wait for the current status effect to expire.');
+      return;
+    }
     // Check if we have enough stains for abilities
     if (action.type === 'ability' && action.cost) {
       if (elementalStains.length < action.cost) {
@@ -542,25 +547,59 @@ export function LuneCharacterSheet({
       const rolledElement = ELEMENT_MAP[elementRollNum];
       addStain(rolledElement);
     }
-
     try {
+      // Track which element was consumed for Elemental Strike BEFORE consuming
+      let consumedElement: ElementType | null = null;
+      
+      if (selectedAction.id === 'elemental_strike' && elementalStains.length > 0) {
+        // Get the first (oldest) stain that will be consumed
+        consumedElement = elementalStains[0];
+        console.log('🎯 Elemental Strike will consume:', consumedElement, 'from stains:', elementalStains);
+      }
+
       if (selectedAction.multiTarget) {
         for (const targetId of selectedTargets) {
           if (onTargetSelect) {
             onTargetSelect(targetId, acRollNum, selectedAction.type, selectedAction.id);
           }
         }
-        
-        if (selectedAction.cost && typeof selectedAction.cost === 'number') {
-          consumeStains(selectedAction.cost);
-        }
       } else {
         if (onTargetSelect) {
           onTargetSelect(selectedTarget, acRollNum, selectedAction.type, selectedAction.id);
         }
+      }
+
+      // Consume stains AFTER recording which element was consumed
+      if (selectedAction.cost && typeof selectedAction.cost === 'number') {
+        const consumedStains = consumeStains(selectedAction.cost);
+        console.log('✨ Consumed stains:', consumedStains);
+      }
+
+      // Apply status effect for Elemental Strike (only for single target)
+      if (selectedAction.id === 'elemental_strike' && consumedElement && selectedTarget) {
+        console.log('🔮 Applying status effect:', consumedElement, 'to target:', selectedTarget);
         
-        if (selectedAction.cost && typeof selectedAction.cost === 'number') {
-          consumeStains(selectedAction.cost);
+        const statusEffectMap: Record<ElementType, any> = {
+          fire: { turnsRemaining: 3, damage: 5, appliedOnRound: session?.combatState?.round || 1 },
+          ice: { turnsRemaining: 2, appliedOnRound: session?.combatState?.round || 1 },
+          light: { turnsRemaining: 2, appliedOnRound: session?.combatState?.round || 1 },
+          nature: null // Nature doesn't apply a lasting effect
+        };
+
+        if (consumedElement !== 'nature') {
+          const statusEffect = statusEffectMap[consumedElement];
+          if (statusEffect && selectedTarget) {
+            // Apply the status effect directly to the token
+            const updateData: any = {};
+            const effectKey = consumedElement === 'light' ? 'blind' : consumedElement;
+            updateData[`tokens.${selectedTarget}.statusEffects.${consumedElement}`] = statusEffect;
+            
+            await FirestoreService.updateBattleSession(sessionId, updateData);
+            
+            console.log(`✅ Applied ${consumedElement} status effect to ${selectedTarget}`);
+          }
+        } else {
+          console.log('🌿 Nature element - push effect will be handled by GM');
         }
       }
 
@@ -574,6 +613,19 @@ export function LuneCharacterSheet({
       console.error('Error executing action:', error);
       alert('Failed to execute action. Please try again.');
     }
+  };
+
+  const hasActiveElementalStrikeEffect = (): boolean => {
+    if (!allTokens || allTokens.length === 0) return false;
+    
+    // Check all enemy tokens for status effects
+    const enemiesWithEffects = allTokens.filter(token => 
+      token.type === 'enemy' && 
+      token.statusEffects && 
+      (token.statusEffects.fire || token.statusEffects.ice || token.statusEffects.blind)
+    );
+    
+    return enemiesWithEffects.length > 0;
   };
 
   const handleCancelAction = () => {
@@ -731,42 +783,56 @@ export function LuneCharacterSheet({
                 <h4 className="text-sm font-bold text-clair-mystical-300 mb-2">Abilities</h4>
                 <div className="space-y-2">
                   {abilities.map((ability) => {
-                    // Create the condition once to use in both places
-                    const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
-                      (ability.requiresSpecificStain 
-                        ? !hasStainType(ability.requiresSpecificStain)
-                        : elementalStains.length < (typeof ability.cost === 'number' ? ability.cost : 0)
-                      );
-
-                    return (
-                      <button
-                        key={ability.id}
-                        onClick={() => handleActionSelect(ability)}
-                        disabled={isDisabled}
-                        className={`w-full p-3 rounded-lg transition-colors text-left border ${
-                          isDisabled
-                            ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
-                            : ability.isHealing 
-                              ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
-                              : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
-                        }`}
-                      >
-                        <div className="flex items-center">
-                          {ability.isHealing ? (
-                            <Heart className="w-4 h-4 mr-2" />
-                          ) : (
-                            <Zap className="w-4 h-4 mr-2" />
-                          )}
-                          <span className="font-bold">{ability.name}</span>
-                          <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                            {ability.requiresSpecificStain ? `${ability.requiresSpecificStain} stain` : `${ability.cost} stains`}
-                          </span>
-                        </div>
-                        <div className="text-sm opacity-90 mt-1">{ability.description}</div>
-                        <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
-                      </button>
+                  // Check if Elemental Strike is on cooldown
+                  const isElementalStrikeOnCooldown = ability.id === 'elemental_strike' && hasActiveElementalStrikeEffect();
+                  
+                  // Create the condition once to use in both places
+                  const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
+                    isElementalStrikeOnCooldown ||
+                    (ability.requiresSpecificStain 
+                      ? !hasStainType(ability.requiresSpecificStain)
+                      : elementalStains.length < (typeof ability.cost === 'number' ? ability.cost : 0)
                     );
-                  })}
+
+                  return (
+                    <button
+                      key={ability.id}
+                      onClick={() => handleActionSelect(ability)}
+                      disabled={isDisabled}
+                      className={`w-full p-3 rounded-lg transition-colors text-left border ${
+                        isDisabled
+                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
+                          : ability.isHealing 
+                            ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
+                            : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        {ability.isHealing ? (
+                          <Heart className="w-4 h-4 mr-2" />
+                        ) : (
+                          <Zap className="w-4 h-4 mr-2" />
+                        )}
+                        <span className="font-bold">{ability.name}</span>
+                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                          {ability.requiresSpecificStain ? `${ability.requiresSpecificStain} stain` : `${ability.cost} stains`}
+                        </span>
+                        {isElementalStrikeOnCooldown && (
+                          <span className="ml-2 text-xs bg-red-900 text-red-200 px-2 py-1 rounded">
+                            ON COOLDOWN
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm opacity-90 mt-1">
+                        {isElementalStrikeOnCooldown 
+                          ? 'Wait for current status effect to expire'
+                          : ability.description
+                        }
+                      </div>
+                      <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
+                    </button>
+                  );
+                })}
                 </div>
               </div>
 

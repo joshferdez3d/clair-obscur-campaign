@@ -69,6 +69,42 @@ code {
   transition: none !important;
 }
 
+/* Status Effect Animations */
+@keyframes burnPulse {
+  0%, 100% { 
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.6);
+    transform: scale(1);
+  }
+  50% { 
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.8);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes freezeShimmer {
+  0% { filter: hue-rotate(0deg) brightness(1.1); }
+  50% { filter: hue-rotate(20deg) brightness(1.3); }
+  100% { filter: hue-rotate(0deg) brightness(1.1); }
+}
+
+@keyframes blindFlash {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+
+.token-fire-effect {
+  animation: burnPulse 1.5s ease-in-out infinite;
+}
+
+.token-ice-effect {
+  animation: freezeShimmer 3s ease-in-out infinite;
+  filter: brightness(1.2) contrast(1.1);
+}
+
+.token-blind-effect {
+  animation: blindFlash 2s ease-in-out infinite;
+}
+
 /* Mobile viewport handling */
 @supports (height: 100dvh) {
   .min-h-screen {

@@ -41,6 +41,21 @@ export interface BattleToken {
   size?: number;
   color?: string;
   ac?: number; // Make sure this exists for enemy tokens
+  statusEffects?: {
+    fire?: {
+      turnsRemaining: number;
+      damage: number;
+      appliedOnRound: number;
+    };
+    ice?: {
+      turnsRemaining: number;
+      appliedOnRound: number;
+    };
+    blind?: {
+      turnsRemaining: number;
+      appliedOnRound: number;
+    };
+  };
 }
 
 // Enhanced enemy data interface

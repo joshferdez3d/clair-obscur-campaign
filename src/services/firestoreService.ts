@@ -23,6 +23,7 @@ import type {
   InitiativeEntry,
   GMCombatAction // Import from types file
 } from '../types';
+import { StatusEffectService } from './statusEffectService';
 
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
@@ -1279,6 +1280,13 @@ export class FirestoreService {
     const nextRound = cur + 1 >= turnOrder.length ? round + 1 : round;
     const nextTurn = turnOrder[nextIndex];
 
+    if (nextTurn === 'lune') {
+      await StatusEffectService.processBurnDamage(sessionId, nextTurn);
+    }
+    if (nextIndex === 0) {
+      await StatusEffectService.updateStatusEffectDurations(sessionId);
+    }
+
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       'combatState.currentTurn': nextTurn,
@@ -1291,6 +1299,9 @@ export class FirestoreService {
       }),
       updatedAt: serverTimestamp()
     });
+
+
+
 
     // 🔧 FIX: Clean up expired terrain effects after turn advancement
     await this.cleanupExpiredTerrain(sessionId);

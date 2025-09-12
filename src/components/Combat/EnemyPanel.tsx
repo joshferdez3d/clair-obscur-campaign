@@ -150,22 +150,26 @@ export function EnemyPanel({ enemies, isGMView = false, onRemoveEnemy, onEditHP 
                 </div>
               )}
 
-              {/* Status Effects - COMMENTED OUT until implemented */}
-              {/* TODO: Add statusEffects to BattleToken type when needed */}
-              {/*
-              {enemy.statusEffects && enemy.statusEffects.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {enemy.statusEffects.map((effect, index) => (
-                    <span 
-                      key={index}
-                      className="text-xs bg-purple-800 text-purple-200 px-2 py-1 rounded"
-                    >
-                      {effect}
+              {/* Status Effects */}
+              {enemy.statusEffects && Object.keys(enemy.statusEffects).length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {enemy.statusEffects.fire && (
+                    <span className="text-xs bg-red-800 text-red-200 px-2 py-0.5 rounded flex items-center gap-1">
+                      🔥 Burning ({enemy.statusEffects.fire.turnsRemaining})
                     </span>
-                  ))}
+                  )}
+                  {enemy.statusEffects.ice && (
+                    <span className="text-xs bg-blue-800 text-blue-200 px-2 py-0.5 rounded flex items-center gap-1">
+                      ❄️ Frozen ({enemy.statusEffects.ice.turnsRemaining})
+                    </span>
+                  )}
+                  {enemy.statusEffects.blind && (
+                    <span className="text-xs bg-yellow-800 text-yellow-200 px-2 py-0.5 rounded flex items-center gap-1">
+                      👁️ Blinded ({enemy.statusEffects.blind.turnsRemaining})
+                    </span>
+                  )}
                 </div>
               )}
-              */}
             </div>
           );
         })}

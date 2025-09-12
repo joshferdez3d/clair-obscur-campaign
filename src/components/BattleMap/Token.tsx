@@ -248,18 +248,48 @@ export function Token({
         </div>
       )}
 
-      {/* Name Label - REMOVED to save screen space */}
-      {/* 
-      <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 whitespace-nowrap">
-        <div className="bg-gray-900 bg-opacity-80 text-white text-xs px-2 py-1 rounded border border-gray-600">
-          {token.name}
-        </div>
-      </div>
-      */}
-
       {/* Targeting Indicator */}
       {isValidTarget && (
         <div className="absolute inset-0 rounded-full bg-purple-400 bg-opacity-30 border-2 border-purple-400 animate-pulse" />
+      )}
+
+      {/* Status Effect Indicators */}
+      {token.statusEffects && (
+        <div className="absolute -top-2 -left-2 flex gap-1">
+          {token.statusEffects.fire && (
+            <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" title={`Burning (${token.statusEffects.fire.turnsRemaining} turns)`}>
+              <span className="text-white text-xs font-bold">🔥</span>
+            </div>
+          )}
+          {token.statusEffects.ice && (
+            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center" title={`Frozen (${token.statusEffects.ice.turnsRemaining} turns)`}>
+              <span className="text-white text-xs font-bold">❄️</span>
+            </div>
+          )}
+          {token.statusEffects.blind && (
+            <div className="w-5 h-5 bg-yellow-300 rounded-full flex items-center justify-center animate-pulse" title={`Blinded (${token.statusEffects.blind.turnsRemaining} turns)`}>
+              <span className="text-gray-800 text-xs font-bold">👁️</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Visual Overlay Effects */}
+      {token.statusEffects?.fire && (
+        <div className="absolute inset-0 rounded-full pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-t from-red-500/30 to-orange-500/20 rounded-full animate-pulse" />
+        </div>
+      )}
+      {token.statusEffects?.ice && (
+        <div className="absolute inset-0 rounded-full pointer-events-none">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-300/40 to-cyan-400/30 rounded-full" />
+          <div className="absolute inset-0 border-2 border-cyan-400/50 rounded-full" />
+        </div>
+      )}
+      {token.statusEffects?.blind && (
+        <div className="absolute inset-0 rounded-full pointer-events-none">
+          <div className="absolute inset-0 bg-yellow-200/20 rounded-full animate-pulse" />
+        </div>
       )}
     </div>
   );
