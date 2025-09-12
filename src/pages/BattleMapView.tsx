@@ -1,4 +1,4 @@
-// src/pages/BattleMapView.tsx - Fixed duplicate variable declaration
+// src/pages/BattleMapView.tsx - Fixed type conversion issue
 import React, { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { BattleMap } from '../components/BattleMap/BattleMap';
@@ -6,9 +6,9 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { useCombat } from '../hooks/useCombat';
 import { useStormSystem } from '../hooks/useStormSystem';
 import { useBattleSession } from '../hooks/useBattleSession';
-import type { BattleToken } from '../types';
+import type { BattleToken, BattleMap as BattleMapType } from '../types';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
-import { AVAILABLE_MAPS } from '../components/GM/MapSelector';
+import { AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
 import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
 import { useUltimateVideo } from '../hooks/useUltimateVideo';
 import { FirestoreService } from '../services/firestoreService';
@@ -134,18 +134,44 @@ export function BattleMapView() {
 
   // Get current turn information
   const currentTurn = currentSession.combatState?.currentTurn;
-  // REMOVED: Duplicate combatActive declaration - already declared above
-  const getCurrentMap = () => {
+
+  // FIXED: Convert MapConfig to BattleMapType
+  const getCurrentMap = (): BattleMapType => {
     if (currentSession?.currentMap) {
-      return currentSession.currentMap;
+      // Convert MapConfig to BattleMapType
+      const sessionMap = currentSession.currentMap;
+      return {
+        id: sessionMap.id,
+        name: sessionMap.name,
+        backgroundImage: sessionMap.backgroundImage,
+        gridSize: sessionMap.gridSize,
+        gridVisible: sessionMap.gridVisible,
+      };
     }
 
-    return AVAILABLE_MAPS[0];
+    // Convert MapConfig to BattleMapType for default map
+    const defaultMapConfig = AVAILABLE_MAPS[0];
+    if (!defaultMapConfig) {
+      // Fallback if AVAILABLE_MAPS is empty
+      return {
+        id: 'default',
+        name: 'Default Map',
+        backgroundImage: undefined,
+        gridSize: { width: 20, height: 15 },
+        gridVisible: true,
+      };
+    }
 
-  }
+    return {
+      id: defaultMapConfig.id,
+      name: defaultMapConfig.name,
+      backgroundImage: defaultMapConfig.backgroundImage,
+      gridSize: defaultMapConfig.gridSize,
+      gridVisible: defaultMapConfig.gridVisible,
+    };
+  };
 
   const currentMap = getCurrentMap();
-
 
   return (
     <div className="fixed inset-0 bg-clair-shadow-900 flex">

@@ -167,20 +167,28 @@ export class FirestoreService {
       const presetData = snapshot.docs[0].data() as BattleMapPreset;
       const sessionRef = doc(db, 'battleSessions', sessionId);
       
-      // Clear existing tokens and load preset tokens
+      // Get existing session to preserve map configuration
+      const existingSession = await this.getBattleSession(sessionId);
+      if (!existingSession) {
+        throw new Error('Session not found');
+      }
+      
+      // FIXED: Only update tokens, preserve existing map configuration
       await updateDoc(sessionRef, {
         tokens: presetData.tokens,
-        currentMap: { id: presetData.mapId },
+        // Don't overwrite currentMap - preserve existing map with background image
+        // currentMap: { id: presetData.mapId }, // ❌ REMOVED THIS LINE
         updatedAt: serverTimestamp()
       });
       
       console.log(`✅ Loaded battle map preset: ${presetData.name}`);
+      console.log(`📍 Loaded ${Object.keys(presetData.tokens).length} tokens`);
+      console.log(`🗺️ Preserved existing map configuration`);
     } catch (error) {
       console.error('❌ Failed to load battle map preset:', error);
       throw error;
     }
   }
-
   /**
    * Delete a battle map preset
    */

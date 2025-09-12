@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { Token } from './Token';
 import { Grid } from './Grid';
-import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types'; // Add BattleSession import
+import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types';
 
 interface FireTerrainOverlayProps {
   gridSize: number;
@@ -15,10 +15,8 @@ const FireTerrainOverlay: React.FC<FireTerrainOverlayProps> = ({
   turnsRemaining = 3,
   intensity = 'medium'
 }) => {
-  // Calculate opacity based on remaining turns (fade out as it expires)
   const opacity = Math.max(0.4, turnsRemaining / 3);
   
-  // Different fire scales based on intensity
   const fireScale = {
     low: 0.8,
     medium: 1.0,
@@ -33,20 +31,19 @@ const FireTerrainOverlay: React.FC<FireTerrainOverlayProps> = ({
         height: gridSize,
         opacity,
         transform: `scale(${fireScale[intensity]})`,
-        zIndex: 5, // Above grid but below tokens
+        zIndex: 5,
       }}
     >
       <img
-        src="/gifs/fire.gif" // Make sure your gif is named "fire.gif" in public/gifs/
+        src="/gifs/fire.gif"
         alt="Fire terrain"
         className="w-full h-full object-cover"
         style={{
-          imageRendering: 'pixelated', // For crisp pixel art
-          mixBlendMode: 'screen' // Helps with transparency
+          imageRendering: 'pixelated',
+          mixBlendMode: 'screen'
         }}
       />
       
-      {/* Optional glow effect */}
       <div 
         className="absolute inset-0 rounded-sm"
         style={{
@@ -58,7 +55,6 @@ const FireTerrainOverlay: React.FC<FireTerrainOverlayProps> = ({
   );
 };
 
-
 type BattleMapMode = 'player' | 'gm';
 
 interface BattleMapProps {
@@ -67,7 +63,7 @@ interface BattleMapProps {
   isGM?: boolean;
   currentTurn?: string;
   combatActive?: boolean;
-  session?: BattleSession; // Now properly typed
+  session?: BattleSession;
   selectedEnemyId?: string | null;
 
   onTokenMove?: (tokenId: string, newPosition: Position) => Promise<boolean>;
@@ -76,15 +72,12 @@ interface BattleMapProps {
 
   targetingMode?: {
     active: boolean;
-    sourcePosition?: Position; // grid coords
-    range: number;             // feet, 5ft per cell
-    validTargets?: string[];   // token ids that are valid
+    sourcePosition?: Position;
+    range: number;
+    validTargets?: string[];
   };
 
-  /** Max movement in feet for a creature on its turn (default 30ft) */
   maxMovementRange?: number;
-
-  /** Controls layout behavior: 'player' (fullscreen) | 'gm' (embedded) */
   mode?: BattleMapMode;
 }
 
@@ -94,7 +87,7 @@ export function BattleMap({
   isGM = false,
   currentTurn,
   combatActive = false,
-  session, // Add session to destructured props
+  session,
   onTokenMove,
   onTokenSelect,
   selectedEnemyId,
@@ -108,7 +101,14 @@ export function BattleMap({
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [hoveredPosition, setHoveredPosition] = useState<Position | null>(null);
 
-  // --- Layout sizing ---------------------------------------------------------
+  // DEFENSIVE PROGRAMMING: Ensure map has valid gridSize
+  const safeMap = {
+    ...map,
+    gridSize: map?.gridSize || { width: 20, height: 15 },
+    name: map?.name || 'Battle Map',
+    gridVisible: map?.gridVisible ?? true
+  };
+
   // Space around the board for the coordinate labels we draw
   const coordinatePadding = 24;
 
@@ -125,7 +125,6 @@ export function BattleMap({
         const r = containerRef.current.getBoundingClientRect();
         setContainerSize({ width: r.width, height: r.height });
       } else {
-        // For player mode, use available space instead of full window
         if (containerRef.current) {
           const r = containerRef.current.getBoundingClientRect();
           setContainerSize({ width: r.width, height: r.height });
@@ -146,18 +145,19 @@ export function BattleMap({
   const viewportWidth = containerSize.width - coordinatePadding;
   const viewportHeight = containerSize.height - coordinatePadding;
 
-  const maxGridSizeByWidth = Math.floor((viewportWidth - 80) / map.gridSize.width);
-  const maxGridSizeByHeight = Math.floor((viewportHeight - 120) / map.gridSize.height);
+  // FIXED: Use safeMap instead of map to prevent undefined errors
+  const maxGridSizeByWidth = Math.floor((viewportWidth - 80) / safeMap.gridSize.width);
+  const maxGridSizeByHeight = Math.floor((viewportHeight - 120) / safeMap.gridSize.height);
   const gridSize = Math.max(8, Math.min(maxGridSizeByWidth, maxGridSizeByHeight, 60));
 
-  const totalWidth = map.gridSize.width * gridSize;
-  const totalHeight = map.gridSize.height * gridSize;
+  const totalWidth = safeMap.gridSize.width * gridSize;
+  const totalHeight = safeMap.gridSize.height * gridSize;
   const boardWidth = totalWidth + coordinatePadding;
   const boardHeight = totalHeight + coordinatePadding;
 
   // --- Helpers ---------------------------------------------------------------
   const getChessNotation = (pos: Position): string => {
-    const letter = String.fromCharCode(65 + pos.x); // A, B, C...
+    const letter = String.fromCharCode(65 + pos.x);
     const number = pos.y + 1;
     return `${letter}${number}`;
   };
@@ -165,7 +165,6 @@ export function BattleMap({
   const calculateDistance = (a: Position, b: Position): number => {
     const dx = Math.abs(a.x - b.x);
     const dy = Math.abs(a.y - b.y);
-    // Manhattan distance (5 ft per square)
     return (dx + dy) * 5;
   };
 
@@ -189,7 +188,6 @@ export function BattleMap({
 
   // --- Handlers --------------------------------------------------------------
   const handleTokenClick = useCallback((token: BattleToken) => {
-    // Targeting mode first
     if (targetingMode?.active && isValidTarget(token.id) && targetingMode && onTokenSelect) {
       onTokenSelect(token);
       return;
@@ -243,7 +241,8 @@ export function BattleMap({
     const x = Math.floor((ev.clientX - rect.left - coordinatePadding) / gridSize);
     const y = Math.floor((ev.clientY - rect.top - coordinatePadding) / gridSize);
 
-    if (x < 0 || x >= map.gridSize.width || y < 0 || y >= map.gridSize.height) {
+    // FIXED: Use safeMap instead of map
+    if (x < 0 || x >= safeMap.gridSize.width || y < 0 || y >= safeMap.gridSize.height) {
       setDraggedToken(null);
       return;
     }
@@ -257,7 +256,7 @@ export function BattleMap({
 
     await handleTokenMove(draggedToken.id, dest);
     setDraggedToken(null);
-  }, [draggedToken, gridSize, map.gridSize.width, map.gridSize.height, combatActive, isGM, handleTokenMove]);
+  }, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove]);
 
   const handleGridHover = useCallback((pos: Position | null) => {
     setHoveredPosition(pos);
@@ -282,7 +281,7 @@ export function BattleMap({
               top: pixelY,
               width: gridSize,
               height: gridSize,
-              zIndex: 5, // Above grid, below tokens
+              zIndex: 5,
             }}
           >
             <FireTerrainOverlay
@@ -298,7 +297,6 @@ export function BattleMap({
     return <>{overlays}</>;
   }, [session?.fireTerrainZones, gridSize, coordinatePadding]);
 
-  // UPDATED: Combined grid cell class function with terrain effects
   const getGridCellClass = useCallback((pos: Position) => {
     const classes: string[] = [];
 
@@ -349,6 +347,7 @@ export function BattleMap({
         classes.push('light-blind');
       }
     }
+
     // Add hover effect
     if (hoveredPosition && hoveredPosition.x === pos.x && hoveredPosition.y === pos.y) {
       classes.push('hover');
@@ -385,9 +384,9 @@ export function BattleMap({
       {/* Top status bar */}
       <div className="flex-shrink-0 p-2">
         <div className="flex justify-between items-center">
-          {/* Map Info - Simplified, removed duplicate grid info */}
+          {/* Map Info */}
           <div className="bg-clair-shadow-800/95 backdrop-blur-sm border border-clair-gold-600 text-clair-gold-50 px-4 py-2 rounded-lg shadow-shadow">
-            <h2 className="font-display text-lg font-bold text-clair-gold-400">{map.name ?? 'Battle Map'}</h2>
+            <h2 className="font-display text-lg font-bold text-clair-gold-400">{safeMap.name}</h2>
           </div>
 
           {/* Current Turn */}
@@ -410,7 +409,7 @@ export function BattleMap({
         </div>
       </div>
 
-      {/* Board container - flex-1 to take remaining space */}
+      {/* Board container */}
       <div className="flex-1 flex items-center justify-center p-2">
         <div
           className="relative"
@@ -428,26 +427,25 @@ export function BattleMap({
               height: totalHeight,
             }}
           >
-            {map.backgroundImage ? (
+            {safeMap.backgroundImage ? (
               <img
-                src={map.backgroundImage}
-                alt={map.name ?? 'Battle map background'}
+                src={safeMap.backgroundImage}
+                alt={safeMap.name}
                 className="w-full h-full object-cover select-none pointer-events-none"
                 draggable={false}
               />
             ) : (
               <div className="w-full h-full bg-slate-800" />
             )}
-            {/* Optional overlay tint */}
             <div className="absolute inset-0 bg-black/10 pointer-events-none" />
           </div>
 
           {/* Grid & coordinates */}
           <Grid
-            width={map.gridSize.width}
-            height={map.gridSize.height}
+            width={safeMap.gridSize.width}
+            height={safeMap.gridSize.height}
             gridSize={gridSize}
-            showGrid={!!map.gridVisible}
+            showGrid={!!safeMap.gridVisible}
             showCoordinates={true}
             onGridClick={handleGridClick}
             onGridHover={handleGridHover}
@@ -467,7 +465,7 @@ export function BattleMap({
               isDragging={draggedToken?.id === token.id}
               isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
               isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
-              isHighlighted={selectedEnemyId === token.id} // Add this new prop
+              isHighlighted={selectedEnemyId === token.id}
               onClick={handleTokenClick}
               onDragStart={handleTokenDragStart}
               onDragEnd={handleTokenDragEnd}
