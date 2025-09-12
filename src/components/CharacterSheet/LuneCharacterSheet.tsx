@@ -143,6 +143,7 @@ export function LuneCharacterSheet({
     needsElement?: boolean;
     multiTarget?: boolean;
     isHealing?: boolean;
+    requiresSpecificStain?: ElementType;
   } | null>(null);
 
     const getCharacterPortrait = (name: string) => {
@@ -205,6 +206,22 @@ export function LuneCharacterSheet({
     return Array.from(new Set(elementalStains));
   };
 
+  // Check for specific stain types
+  const hasStainType = (stainType: ElementType): boolean => {
+    return elementalStains.includes(stainType);
+  };
+
+  // Consume specific stain type
+  const consumeSpecificStain = (stainType: ElementType): boolean => {
+    const stainIndex = elementalStains.indexOf(stainType);
+    if (stainIndex === -1) return false;
+    
+    const newStains = [...elementalStains];
+    newStains.splice(stainIndex, 1);
+    onStainsChange?.(newStains);
+    return true;
+  };
+
   // Define Lune's actions
   const basicAttack = {
     type: 'basic' as const,
@@ -241,11 +258,12 @@ export function LuneCharacterSheet({
       type: 'heal' as const,
       id: 'natures_balm',
       name: "Nature's Balm",
-      description: 'Heal an ally (or yourself) for 2d6 HP',
+      description: 'Heal an ally (or yourself) for 2d6 HP (requires nature stain)',
       damage: '2d6 healing',
-      cost: 2,
+      cost: 'nature',
       range: 'Unlimited',
       isHealing: true,
+      requiresSpecificStain: 'nature' as ElementType,
     },
   ];
 
@@ -271,8 +289,12 @@ export function LuneCharacterSheet({
       }
     }
 
-    // Check healing ability requirements
-    if (action.type === 'heal' && action.cost) {
+    if (action.type === 'heal' && action.requiresSpecificStain) {
+      if (!hasStainType(action.requiresSpecificStain as ElementType)) {
+        alert(`Need a ${action.requiresSpecificStain} stain to use ${action.name}!`);
+        return;
+      }
+    } else if (action.type === 'heal' && action.cost) {
       if (elementalStains.length < action.cost) {
         alert(`Not enough stains! Need ${action.cost}, have ${elementalStains.length}`);
         return;
@@ -297,7 +319,7 @@ export function LuneCharacterSheet({
     setACRoll('');
     setElementRoll('');
     setSelectedUltimateElement(null);
-    setSelectedIceWallOrientation(null); // ADD THIS LINE
+    setSelectedIceWallOrientation(null);
     setHealAmount('');
   };
 
@@ -356,6 +378,12 @@ export function LuneCharacterSheet({
       return;
     }
 
+    // Check for nature stain specifically
+    if (!hasStainType('nature')) {
+      alert('Need a nature stain to use Nature\'s Balm!');
+      return;
+    }
+
     try {
       const allies = getAvailableAllies();
       const targetAlly = allies.find(ally => ally.id === selectedTarget);
@@ -365,13 +393,18 @@ export function LuneCharacterSheet({
       }
 
       await HPSyncService.applyHealing(targetAlly.id, sessionId, healValue);
-      consumeStains(2);
+      
+      // Consume only the nature stain
+      const consumed = consumeSpecificStain('nature');
+      if (!consumed) {
+        console.error('Failed to consume nature stain');
+      }
 
       if (onTargetSelect) {
         onTargetSelect('action_taken', 0, 'heal', 'natures_balm');
       }
 
-      console.log(`Nature's Balm: Healed ${targetAlly.name} for ${healValue} HP`);
+      console.log(`Nature's Balm: Healed ${targetAlly.name} for ${healValue} HP using nature stain`);
       
       setSelectedAction(null);
       setSelectedTarget('');
@@ -466,11 +499,10 @@ export function LuneCharacterSheet({
         alert('Please select an element for your Genesis!');
         return;
       }
-      // ADD THIS CHECK for ice wall orientation:
-        if (selectedUltimateElement === 'ice' && !selectedIceWallOrientation) {
-          alert('Please select row or column for your Ice Wall!');
-          return;
-        }
+      if (selectedUltimateElement === 'ice' && !selectedIceWallOrientation) {
+        alert('Please select row or column for your Ice Wall!');
+        return;
+      }
       await executeUltimate(selectedUltimateElement);
       setSelectedAction(null);
       return;
@@ -548,8 +580,8 @@ export function LuneCharacterSheet({
     setSelectedAction(null);
     setSelectedTarget('');
     setSelectedTargets([]);
-    setTwinCatalystSelections({}); // Add this line
-    setSelectedIceWallOrientation(null); // ADD THIS LINE
+    setTwinCatalystSelections({});
+    setSelectedIceWallOrientation(null);
     setACRoll('');
     setElementRoll('');
     setShowTargetingModal(false);
@@ -604,7 +636,7 @@ export function LuneCharacterSheet({
                 src={portraitUrl} 
                 alt={`${character.name} portrait`}
                 className="w-full h-full object-cover"
-                style={{ imageRendering: 'crisp-edges' }}  // Fixed: use valid value
+                style={{ imageRendering: 'crisp-edges' }}
               />
             </div>
           </div>
@@ -698,34 +730,43 @@ export function LuneCharacterSheet({
               <div>
                 <h4 className="text-sm font-bold text-clair-mystical-300 mb-2">Abilities</h4>
                 <div className="space-y-2">
-                  {abilities.map((ability) => (
-                    <button
-                      key={ability.id}
-                      onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)}
-                      className={`w-full p-3 rounded-lg transition-colors text-left border ${
-                        !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < (ability.cost || 0)
-                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
-                          : ability.isHealing 
-                            ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
-                            : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
-                      }`}
-                    >
-                      <div className="flex items-center">
-                        {ability.isHealing ? (
-                          <Heart className="w-4 h-4 mr-2" />
-                        ) : (
-                          <Zap className="w-4 h-4 mr-2" />
-                        )}
-                        <span className="font-bold">{ability.name}</span>
-                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.cost} stains
-                        </span>
-                      </div>
-                      <div className="text-sm opacity-90 mt-1">{ability.description}</div>
-                      <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
-                    </button>
-                  ))}
+                  {abilities.map((ability) => {
+                    // Create the condition once to use in both places
+                    const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
+                      (ability.requiresSpecificStain 
+                        ? !hasStainType(ability.requiresSpecificStain)
+                        : elementalStains.length < (typeof ability.cost === 'number' ? ability.cost : 0)
+                      );
+
+                    return (
+                      <button
+                        key={ability.id}
+                        onClick={() => handleActionSelect(ability)}
+                        disabled={isDisabled}
+                        className={`w-full p-3 rounded-lg transition-colors text-left border ${
+                          isDisabled
+                            ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
+                            : ability.isHealing 
+                              ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
+                              : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
+                        }`}
+                      >
+                        <div className="flex items-center">
+                          {ability.isHealing ? (
+                            <Heart className="w-4 h-4 mr-2" />
+                          ) : (
+                            <Zap className="w-4 h-4 mr-2" />
+                          )}
+                          <span className="font-bold">{ability.name}</span>
+                          <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                            {ability.requiresSpecificStain ? `${ability.requiresSpecificStain} stain` : `${ability.cost} stains`}
+                          </span>
+                        </div>
+                        <div className="text-sm opacity-90 mt-1">{ability.description}</div>
+                        <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -855,7 +896,7 @@ export function LuneCharacterSheet({
                     </div>
                   </div>
 
-                  {/* Ice Wall Orientation Selection - NEW SECTION */}
+                  {/* Ice Wall Orientation Selection */}
                   {selectedUltimateElement === 'ice' && (
                     <div>
                       <label className="block text-sm font-bold text-blue-300 mb-2">Ice Wall Orientation:</label>
@@ -1037,7 +1078,7 @@ export function LuneCharacterSheet({
               <li>• Abilities consume oldest stains first</li>
               <li>• Fire burns, Ice freezes, Nature pushes, Light blinds</li>
               <li>• Twin Catalyst can target same enemy twice</li>
-              <li>• Nature's Balm heals allies for 2d6 HP (costs 2 stains)</li>
+              <li>• Nature's Balm heals allies for 2d6 HP (requires nature stain)</li>
               <li>• 🌟 Elemental Genesis: Fire=terrain, Ice=wall, Nature=heal, Light=blinds</li>
             </ul>
           </div>
@@ -1060,11 +1101,11 @@ export function LuneCharacterSheet({
           }
         }}
         selectedEnemyId={selectedAction?.multiTarget ? undefined : selectedTarget}
-        selectedTargets={selectedTargets} // ADD THIS LINE
+        selectedTargets={selectedTargets}
         abilityName={selectedAction?.name}
         abilityRange={999}
-        multiTarget={selectedAction?.multiTarget} // ADD THIS LINE
-        maxTargets={selectedAction?.id === 'twin_catalyst' ? 2 : undefined} // ADD THIS LINE
+        multiTarget={selectedAction?.multiTarget}
+        maxTargets={selectedAction?.id === 'twin_catalyst' ? 2 : undefined}
       />
     </div>
   );
