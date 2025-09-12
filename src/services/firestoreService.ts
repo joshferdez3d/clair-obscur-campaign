@@ -518,6 +518,7 @@ export class FirestoreService {
       effectName: string;
       description: string;
       needsGMInteraction: boolean; // Fire and Ice need GM clicks
+      wallType?: 'row' | 'column'; // ADD THIS LINE
       allPlayerTokens?: Array<{
         id: string;
         name: string;
@@ -555,6 +556,10 @@ export class FirestoreService {
       effectName: payload.effectName,
       description: payload.description,
       needsGMInteraction: payload.needsGMInteraction,
+
+      ...(payload.element === 'ice' && payload.wallType && {
+        wallType: payload.wallType
+      }),
       
       // For Nature element - healing data
       ...(payload.element === 'nature' && {

@@ -423,19 +423,48 @@ const handleResetSession = async () => {
           console.log('🧊 Ice wall placement clicked at:', position);
           // For ice wall, we need to let GM choose row or column
           // For simplicity, let's make it create a horizontal wall at clicked row
+
+            const pendingUltimate = session?.pendingActions?.find(action => 
+              action.id === ultimateInteractionMode.actionId && 
+              action.ultimateType === 'elemental_genesis' && 
+              action.element === 'ice'
+            );
+
+            if (!pendingUltimate) {
+              console.error('Could not find pending ice wall action');
+              return;
+            }
+
+          const wallType = pendingUltimate.wallType || 'row';
+          console.log('🧊 Wall type from action:', pendingUltimate.wallType); // ADD THIS LINE  
+          console.log('🧊 Final wall type (with fallback):', wallType); // ADD THIS LINE
+  
           const wallSquares: Array<{ x: number; y: number }> = [];
+          let wallIndex: number;
+
           
-          // Create horizontal wall across entire row
-          for (let x = 0; x < 20; x++) {
-            wallSquares.push({ x, y: position.y });
+          if (wallType === 'row') {
+            // Create horizontal wall across entire row
+            wallIndex = position.y;
+            for (let x = 0; x < 20; x++) {
+              wallSquares.push({ x, y: position.y });
+            }
+            console.log(`🧊 Creating HORIZONTAL ice wall at row ${position.y}`);
+          } else {
+            // Create vertical wall down entire column
+            wallIndex = position.x;
+            for (let y = 0; y < 15; y++) {
+              wallSquares.push({ x: position.x, y });
+            }
+            console.log(`🧊 Creating VERTICAL ice wall at column ${position.x}`);
           }
           
           await FirestoreService.createIceWall(
             sessionId || 'test-session',
             ultimateInteractionMode.actionId,
             {
-              type: 'row',
-              index: position.y,
+              type: wallType,
+              index: wallIndex,
               squares: wallSquares
             }
           );
@@ -1035,11 +1064,11 @@ const handleResetSession = async () => {
                   <div>
                     <p className="font-bold text-purple-200 text-sm">
                       {ultimateInteractionMode.type === 'fire_terrain' && '🔥 Fire Genesis: Click to Place Fire Terrain'}
-                      {ultimateInteractionMode.type === 'ice_wall' && '🧊 Ice Genesis: Click Row for Ice Wall'}
+                      {ultimateInteractionMode.type === 'ice_wall' && '🧊 Ice Genesis: Click to Place Ice Wall'}
                     </p>
                     <p className="text-purple-300 text-xs">
                       {ultimateInteractionMode.type === 'fire_terrain' && 'Click any square to create 15ft fire terrain'}
-                      {ultimateInteractionMode.type === 'ice_wall' && 'Click any square to create ice wall across that row'}
+                      {ultimateInteractionMode.type === 'ice_wall' && 'Click any square - wall will use your selected orientation'}
                     </p>
                   </div>
                   <button

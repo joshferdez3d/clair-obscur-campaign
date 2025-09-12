@@ -131,6 +131,7 @@ export function LuneCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
   const [twinCatalystSelections, setTwinCatalystSelections] = useState<Record<string, number>>({});
+  const [selectedIceWallOrientation, setSelectedIceWallOrientation] = useState<'row' | 'column' | null>(null);
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate' | 'heal';
@@ -253,7 +254,7 @@ export function LuneCharacterSheet({
     id: 'elemental_genesis',
     name: 'Elemental Genesis',
     description: 'Choose element for powerful terrain/support effect',
-    cost: 1,
+    cost: 3,
     range: 'Battlefield',
     onePerRest: true
   };
@@ -280,8 +281,8 @@ export function LuneCharacterSheet({
 
     // Check ultimate requirements
     if (action.type === 'ultimate') {
-      if (elementalStains.length === 0) {
-        alert('Need at least 1 stain to use Elemental Genesis!');
+      if (elementalStains.length < 3) {
+        alert('Need at least 3 stain to use Elemental Genesis!');
         return;
       }
       if (elementalGenesisUsed) {
@@ -296,6 +297,7 @@ export function LuneCharacterSheet({
     setACRoll('');
     setElementRoll('');
     setSelectedUltimateElement(null);
+    setSelectedIceWallOrientation(null); // ADD THIS LINE
     setHealAmount('');
   };
 
@@ -383,6 +385,7 @@ export function LuneCharacterSheet({
 
   const executeUltimate = async (element: ElementType) => {
     console.log(`🌟 Starting Elemental Genesis - ${element}`);
+    console.log('🧊 Selected ice wall orientation:', selectedIceWallOrientation);
 
     try {
       await triggerUltimate('lune', 'Elemental Genesis');
@@ -393,8 +396,7 @@ export function LuneCharacterSheet({
     const newStains = [...elementalStains];
     const elementIndex = newStains.indexOf(element);
     if (elementIndex !== -1) {
-      newStains.splice(elementIndex, 1);
-      onStainsChange?.(newStains);
+      consumeStains(3);
     }
 
     try {
@@ -414,7 +416,7 @@ export function LuneCharacterSheet({
     const needsGMInteraction = element === 'fire' || element === 'ice';
 
     try {
-      const action = await FirestoreService.createUltimateAction(sessionId, {
+      const actionData: any = {
         playerId: character.id,
         ultimateType: 'elemental_genesis',
         element: element,
@@ -428,10 +430,17 @@ export function LuneCharacterSheet({
           maxHP: t.maxHp || 0,
           position: t.position
         }))
-      });
+      };
+
+      // Only add wallType if it's a valid value (not null)
+      if (element === 'ice' && selectedIceWallOrientation) {
+        actionData.wallType = selectedIceWallOrientation;
+      }
       
+      console.log('🧊 Action data being sent:', JSON.stringify(actionData, null, 2));
+      const action = await FirestoreService.createUltimateAction(sessionId, actionData);
       console.log('Ultimate action created successfully:', action);
-      
+
     } catch (error) {
       console.error('Failed to create ultimate action:', error);
     }
@@ -457,6 +466,11 @@ export function LuneCharacterSheet({
         alert('Please select an element for your Genesis!');
         return;
       }
+      // ADD THIS CHECK for ice wall orientation:
+        if (selectedUltimateElement === 'ice' && !selectedIceWallOrientation) {
+          alert('Please select row or column for your Ice Wall!');
+          return;
+        }
       await executeUltimate(selectedUltimateElement);
       setSelectedAction(null);
       return;
@@ -535,6 +549,7 @@ export function LuneCharacterSheet({
     setSelectedTarget('');
     setSelectedTargets([]);
     setTwinCatalystSelections({}); // Add this line
+    setSelectedIceWallOrientation(null); // ADD THIS LINE
     setACRoll('');
     setElementRoll('');
     setShowTargetingModal(false);
@@ -719,9 +734,9 @@ export function LuneCharacterSheet({
                 <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
                   <button
                     onClick={() => handleActionSelect(ultimateAbility)}
-                    disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed}
+                    disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed}
                     className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
-                      !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length === 0 || elementalGenesisUsed
+                      !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed
                         ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400'
                         : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
                     }`}
@@ -730,15 +745,15 @@ export function LuneCharacterSheet({
                     <span className="text-xl mr-2">🌟</span>
                     <span className="font-bold">{ultimateAbility.name}</span>
                     <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      1 stain
+                      3 stains
                     </span>
                     <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                   </div>
                      <div className="text-sm opacity-90 mt-1">
                       {elementalGenesisUsed 
                         ? '⚡ Already used this combat!'
-                        : elementalStains.length === 0 
-                          ? 'Need at least 1 stain to use'
+                        : elementalStains.length < 3 
+                          ? 'Need at least 3 stains to use'
                           : ultimateAbility.description
                       }
                     </div>
@@ -839,6 +854,43 @@ export function LuneCharacterSheet({
                       ))}
                     </div>
                   </div>
+
+                  {/* Ice Wall Orientation Selection - NEW SECTION */}
+                  {selectedUltimateElement === 'ice' && (
+                    <div>
+                      <label className="block text-sm font-bold text-blue-300 mb-2">Ice Wall Orientation:</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setSelectedIceWallOrientation('row')}
+                          className={`p-3 rounded-lg border text-left transition-colors ${
+                            selectedIceWallOrientation === 'row'
+                              ? 'bg-blue-600 border-blue-400 text-white font-bold'
+                              : 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-center mb-1">
+                            <span className="text-lg mr-2">↔️</span>
+                            <span className="font-bold text-sm">Horizontal Row</span>
+                          </div>
+                          <div className="text-xs opacity-80">Wall spans left to right</div>
+                        </button>
+                        <button
+                          onClick={() => setSelectedIceWallOrientation('column')}
+                          className={`p-3 rounded-lg border text-left transition-colors ${
+                            selectedIceWallOrientation === 'column'
+                              ? 'bg-blue-600 border-blue-400 text-white font-bold'
+                              : 'bg-gray-700 border-gray-600 text-gray-200 hover:bg-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-center mb-1">
+                            <span className="text-lg mr-2">↕️</span>
+                            <span className="font-bold text-sm">Vertical Column</span>
+                          </div>
+                          <div className="text-xs opacity-80">Wall spans top to bottom</div>
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex space-x-2">
                     <button
