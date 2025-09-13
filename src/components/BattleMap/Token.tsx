@@ -256,6 +256,7 @@ export function Token({
       {/* Status Effect Indicators */}
       {token.statusEffects && (
         <div className="absolute -top-2 -left-2 flex gap-1">
+          {/* Existing status effects */}
           {token.statusEffects.fire && (
             <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" title={`Burning (${token.statusEffects.fire.turnsRemaining} turns)`}>
               <span className="text-white text-xs font-bold">🔥</span>
@@ -269,6 +270,18 @@ export function Token({
           {token.statusEffects.blind && (
             <div className="w-5 h-5 bg-yellow-300 rounded-full flex items-center justify-center animate-pulse" title={`Blinded (${token.statusEffects.blind.turnsRemaining} turns)`}>
               <span className="text-gray-800 text-xs font-bold">👁️</span>
+            </div>
+          )}
+          
+          {/* NEW: Advantage/Disadvantage indicators */}
+          {token.statusEffects.advantage && (
+            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center animate-pulse border border-green-300" title={`Advantage (${token.statusEffects.advantage.turnsRemaining} turns)`}>
+              <span className="text-white text-xs font-bold">⬆️</span>
+            </div>
+          )}
+          {token.statusEffects.disadvantage && (
+            <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse border border-red-300" title={`Disadvantage (${token.statusEffects.disadvantage.turnsRemaining} turns)`}>
+              <span className="text-white text-xs font-bold">⬇️</span>
             </div>
           )}
         </div>
@@ -289,6 +302,20 @@ export function Token({
       {token.statusEffects?.blind && (
         <div className="absolute inset-0 rounded-full pointer-events-none">
           <div className="absolute inset-0 bg-yellow-200/20 rounded-full animate-pulse" />
+        </div>
+      )}
+
+      {/* NEW: Advantage/Disadvantage overlay effects */}
+      {token.statusEffects?.advantage && (
+        <div className="absolute inset-0 rounded-full pointer-events-none">
+          <div className="absolute inset-0 bg-green-300/25 rounded-full animate-pulse" />
+          <div className="absolute inset-0 border-2 border-green-400/40 rounded-full animate-pulse" />
+        </div>
+      )}
+      {token.statusEffects?.disadvantage && (
+        <div className="absolute inset-0 rounded-full pointer-events-none">
+          <div className="absolute inset-0 bg-red-300/25 rounded-full animate-pulse" />
+          <div className="absolute inset-0 border-2 border-red-400/40 rounded-full animate-pulse" />
         </div>
       )}
     </div>

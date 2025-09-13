@@ -21,19 +21,35 @@ const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
 
 
   useEffect(() => {
+    // Track all timeouts so we can clean them up properly
+    const timeouts: NodeJS.Timeout[] = [];
+    
     // Auto-dismiss buff/debuff actions that don't need damage input
     pending.forEach((a) => {
       const isBuffDebuff = a.buffType === 'advantage' || a.buffType === 'disadvantage';
       const isAoE = Array.isArray(a.targetIds) && a.targetIds.length > 0;
       const displayHit = Boolean(a.hit) || isAoE;
 
-      // Auto-dismiss if it's a miss and doesn't need damage input, or if it's a buff/debuff
-      if ((!displayHit && !a.needsDamageInput) || (isBuffDebuff && !a.needsDamageInput)) {
-        const t = setTimeout(() => onDismissMiss(a.id), isBuffDebuff ? 1000 : 2000);
-        return () => clearTimeout(t);
+      // Auto-dismiss ONLY buff/debuff actions after showing proper message
+      if (isBuffDebuff && !a.needsDamageInput && !a.resolved) {
+        const t = setTimeout(() => {
+          console.log(`Auto-dismissing ${a.abilityName} action`);
+          onDismissMiss(a.id);
+        }, 3000); // Show for 3 seconds so GM can see the message
+        timeouts.push(t); // Add to cleanup array
       }
-      return undefined;
+      
+      // Auto-dismiss missed attacks (non-buff actions) faster
+      else if (!displayHit && !a.needsDamageInput && !isBuffDebuff && !a.resolved) {
+        const t = setTimeout(() => onDismissMiss(a.id), 1500);
+        timeouts.push(t); // Add to cleanup array
+      }
     });
+
+    // Return cleanup function that clears ALL timeouts
+    return () => {
+      timeouts.forEach(timeout => clearTimeout(timeout));
+    };
   }, [pending, onDismissMiss]);
 
   const onChange = (id: string, val: string) =>
@@ -95,9 +111,21 @@ const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
     );
   };
 
+
   const getActionLabel = (action: GMCombatAction) => {
-    if (action.buffType === 'advantage') return 'ADVANTAGE GRANTED!';
-    if (action.buffType === 'disadvantage') return 'DISADVANTAGE APPLIED!';
+    // Special messages for Sciel's abilities
+    if (action.abilityName === 'Rewrite Destiny' && action.buffType === 'disadvantage') {
+      return `📜 ${action.playerName} used Rewrite Destiny - ${action.targetName} has DISADVANTAGE on their next turn!`;
+    }
+    if (action.abilityName === 'Glimpse Future' && action.buffType === 'advantage') {
+      return `🔮 ${action.playerName} used Glimpse Future - ${action.targetName} has ADVANTAGE on their next turn!`;
+    }
+    
+    // Generic buff/debuff messages
+    if (action.buffType === 'advantage') return `✨ ADVANTAGE granted to ${action.targetName}!`;
+    if (action.buffType === 'disadvantage') return `💀 DISADVANTAGE applied to ${action.targetName}!`;
+    
+    // Card effects
     if (action.cardType === 'switch') return 'SWITCH CARD!';
     if (action.cardType === 'vanish') return 'VANISH CARD!';
     if (action.cardType === 'explosive') return 'EXPLOSIVE CARD!';
@@ -109,6 +137,10 @@ const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
   };
 
   const getActionBgColor = (action: GMCombatAction) => {
+    // Special colors for Sciel's abilities
+    if (action.abilityName === 'Rewrite Destiny') return 'bg-purple-800 border-purple-500';
+    if (action.abilityName === 'Glimpse Future') return 'bg-blue-800 border-blue-500';
+    
     if (action.buffType === 'advantage') return 'bg-green-800 border-green-500';
     if (action.buffType === 'disadvantage') return 'bg-red-800 border-red-500';
     if (action.cardType === 'switch') return 'bg-blue-800 border-blue-500';
@@ -120,7 +152,7 @@ const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
     
     return displayHit ? 'bg-green-800 border-green-500' : 'bg-red-800 border-red-500';
   };
-
+  
   const getActionDescription = (action: GMCombatAction) => {
     if (action.buffType === 'advantage') {
       return `${action.targetName} gains advantage on their next roll`;

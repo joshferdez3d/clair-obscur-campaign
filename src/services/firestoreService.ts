@@ -122,71 +122,6 @@ export class FirestoreService {
     }
   }
 
-  // NEW: Create buff/debuff action (Rewrite Destiny, Glimpse Future)
-  static async createBuffAction(
-    sessionId: string,
-    payload: {
-      playerId: string;
-      targetId: string;
-      abilityName: string;
-      buffType: 'advantage' | 'disadvantage';
-      duration: number; // Number of turns
-    }
-  ): Promise<GMCombatAction> {
-    const session = await this.getBattleSession(sessionId);
-    if (!session) throw new Error('Session not found');
-
-    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
-    const targetToken = session.tokens[payload.targetId] || 
-      Object.values(session.tokens).find(t => t.characterId === payload.targetId);
-    
-    if (!playerToken) throw new Error('Player token not found');
-    if (!targetToken) throw new Error('Target token not found');
-
-    const action: GMCombatAction = {
-      id: `buff-${Date.now()}`,
-      type: 'ability',
-      playerId: payload.playerId,
-      targetId: payload.targetId,
-      sourcePosition: playerToken.position,
-      acRoll: 0, // Not relevant for buffs
-      range: 0,
-      timestamp: new Date(),
-      resolved: false,
-      hit: true, // Buffs always "hit"
-      needsDamageInput: false,
-      damageApplied: false,
-      playerName: playerToken.name,
-      targetName: targetToken.name,
-      abilityName: payload.abilityName,
-      buffType: payload.buffType,
-      duration: payload.duration
-    };
-
-    // Apply the buff immediately to session
-    const currentRound = session.combatState?.round || 1;
-    const newBuff: ActiveBuff = {
-      id: action.id,
-      type: payload.buffType,
-      targetId: payload.targetId,
-      targetName: targetToken.name,
-      sourcePlayer: payload.playerId,
-      appliedOnRound: currentRound,
-      duration: payload.duration,
-      turnsRemaining: payload.duration,
-      createdAt: Date.now()
-    };
-
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, {
-      pendingActions: arrayUnion(action),
-      activeBuffs: arrayUnion(newBuff),
-      updatedAt: serverTimestamp()
-    });
-
-    console.log(`Applied ${payload.buffType} to ${targetToken.name} for ${payload.duration} turns`);
-    return action;
-  }
 
   // NEW: Create switch card action
   static async createSwitchCardAction(
@@ -1074,6 +1009,193 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     });
 
     console.log(`AoE damage applied. ${deadEnemyIds.length} enemies removed.`);
+  }
+
+    // NEW: Create buff/debuff action with token status effect
+  static async createBuffAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      targetId: string;
+      abilityName: string;
+      buffType: 'advantage' | 'disadvantage';
+      duration: number; // Number of turns
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    const targetToken = session.tokens[payload.targetId] || 
+      Object.values(session.tokens).find(t => t.characterId === payload.targetId);
+    
+    if (!playerToken) throw new Error('Player token not found');
+    if (!targetToken) throw new Error('Target token not found');
+
+    const action: GMCombatAction = {
+      id: `buff-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      targetId: payload.targetId,
+      sourcePosition: playerToken.position,
+      acRoll: 0, // Not relevant for buffs
+      range: 0,
+      timestamp: new Date(),
+      resolved: false,
+      hit: true, // Buffs always "hit"
+      needsDamageInput: false,
+      damageApplied: false,
+      playerName: playerToken.name,
+      targetName: targetToken.name,
+      abilityName: payload.abilityName,
+      buffType: payload.buffType,
+      duration: payload.duration
+    };
+
+    // Apply the buff to activeBuffs
+    const currentRound = session.combatState?.round || 1;
+    const newBuff: ActiveBuff = {
+      id: action.id,
+      type: payload.buffType,
+      targetId: payload.targetId,
+      targetName: targetToken.name,
+      sourcePlayer: payload.playerId,
+      appliedOnRound: currentRound,
+      duration: payload.duration,
+      turnsRemaining: payload.duration,
+      createdAt: Date.now()
+    };
+
+    // IMPORTANT: Apply status effect directly to the target token
+    const updatedTokens = { ...session.tokens };
+    const targetTokenKey = payload.targetId;
+    
+    if (updatedTokens[targetTokenKey]) {
+      // Initialize statusEffects if it doesn't exist
+      if (!updatedTokens[targetTokenKey].statusEffects) {
+        updatedTokens[targetTokenKey].statusEffects = {};
+      }
+      
+      // Apply the buff as a status effect on the token (matching your structure)
+      if (payload.buffType === 'advantage') {
+        updatedTokens[targetTokenKey].statusEffects!.advantage = {
+          turnsRemaining: payload.duration,
+          source: playerToken.name,
+          appliedBy: payload.abilityName,
+          appliedOnRound: currentRound // Add this to match your existing structure
+        };
+      } else if (payload.buffType === 'disadvantage') {
+        updatedTokens[targetTokenKey].statusEffects!.disadvantage = {
+          turnsRemaining: payload.duration,
+          source: playerToken.name,
+          appliedBy: payload.abilityName,
+          appliedOnRound: currentRound // Add this to match your existing structure
+        };
+      }
+    }
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      activeBuffs: arrayUnion(newBuff),
+      tokens: updatedTokens, // Update tokens with new status effects
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`Applied ${payload.buffType} to ${targetToken.name} for ${payload.duration} turns with visual indicator`);
+    return action;
+  }
+
+// Replace the existing advanceTurnWithBuffs function with this corrected version:
+
+static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
+  const session = await this.getBattleSession(sessionId);
+  if (!session || !session.combatState) return;
+
+  // Find current turn index to determine if we're starting a new round
+  const currentTurnIndex = session.combatState.turnOrder.indexOf(session.combatState.currentTurn);
+  const nextTurnIndex = session.combatState.turnOrder.indexOf(nextPlayerId);
+  const isNewRound = nextTurnIndex === 0 && currentTurnIndex > 0;
+
+  // Update combat state - FIXED: Use 'currentTurn' instead of 'currentPlayer'
+  const updatedCombatState = {
+    ...session.combatState,
+    currentTurn: nextPlayerId, // FIXED: Changed from 'currentPlayer' to 'currentTurn'
+    round: isNewRound ? session.combatState.round + 1 : session.combatState.round
+  };
+
+  // Handle buff duration and token status effects
+  let updatedBuffs = [...(session.activeBuffs || [])];
+  const updatedTokens = { ...session.tokens };
+  let tokensChanged = false;
+
+  // Process each buff
+  updatedBuffs = updatedBuffs.map(buff => {
+    let updatedBuff = { ...buff };
+    const isTargetsTurn = buff.targetId === nextPlayerId || 
+      updatedTokens[buff.targetId]?.characterId === nextPlayerId;
+
+    // Special handling for disadvantage - expires at START of target's turn
+    if (buff.type === 'disadvantage' && isTargetsTurn) {
+      updatedBuff.turnsRemaining = 0;
+      console.log(`Disadvantage expires at start of ${buff.targetName}'s turn`);
+    } 
+    // Regular turn countdown for advantage
+    else if (buff.type === 'advantage') {
+      updatedBuff.turnsRemaining = Math.max(0, buff.turnsRemaining - 1);
+    }
+
+    // Remove status effect from token if buff expired
+    if (updatedBuff.turnsRemaining <= 0) {
+      const targetToken = updatedTokens[buff.targetId];
+      if (targetToken && targetToken.statusEffects) {
+        if (buff.type === 'advantage' && targetToken.statusEffects.advantage) {
+          delete targetToken.statusEffects.advantage;
+          tokensChanged = true;
+          console.log(`Removed advantage status from ${buff.targetName}`);
+        }
+        if (buff.type === 'disadvantage' && targetToken.statusEffects.disadvantage) {
+          delete targetToken.statusEffects.disadvantage;
+          tokensChanged = true;
+          console.log(`Removed disadvantage status from ${buff.targetName}`);
+        }
+      }
+    }
+
+    return updatedBuff;
+  });
+
+  // Filter out expired buffs
+  const activeBuffs = updatedBuffs.filter(buff => buff.turnsRemaining > 0);
+
+  // Update Firestore
+  const ref = doc(db, 'battleSessions', sessionId);
+  const updateData: any = {
+    combatState: updatedCombatState,
+    activeBuffs: activeBuffs,
+    updatedAt: serverTimestamp()
+  };
+
+  if (tokensChanged) {
+    updateData.tokens = updatedTokens;
+  }
+
+  await updateDoc(ref, updateData);
+
+  console.log(`Turn advanced to ${nextPlayerId}, ${updatedBuffs.length - activeBuffs.length} buffs expired`);
+}
+  // Helper function to check if a token has specific buffs
+  static getTokenBuffs(session: any, tokenId: string): {advantage: boolean, disadvantage: boolean} {
+    if (!session.activeBuffs) return {advantage: false, disadvantage: false};
+    
+    const tokenBuffs = session.activeBuffs.filter((buff: ActiveBuff) => 
+      buff.targetId === tokenId && buff.turnsRemaining > 0
+    );
+
+    return {
+      advantage: tokenBuffs.some((buff: ActiveBuff) => buff.type === 'advantage'),
+      disadvantage: tokenBuffs.some((buff: ActiveBuff) => buff.type === 'disadvantage')
+    };
   }
 
   // Single-target damage resolution (from GM popup)

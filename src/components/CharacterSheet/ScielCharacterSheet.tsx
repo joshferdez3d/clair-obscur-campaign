@@ -216,11 +216,13 @@ const handleConfirmAction = async () => {
     const finalAC = applyRangePenalty(parseInt(acRoll), distance);
     const hit = finalAC >= enemy.ac;
 
-    if (hit && onAbilityPointsChange) {
-      await onAbilityPointsChange(1);
-      console.log('Generated ability point for successful card toss');
-    }
-
+    // NEW CODE:
+      if (hit && onAbilityPointsChange && !chargedFateCard) {
+        await onAbilityPointsChange(1);
+        console.log('Generated ability point for successful regular card toss');
+      } else if (hit && chargedFateCard) {
+        console.log(`No ability point generated for enhanced ${chargedFateCard} card toss`);
+      }
     // ✅ FIXED: Create specialized actions for ALL charged cards (hit or miss)
     if (chargedFateCard) {
       if (chargedFateCard === 'explosive') {

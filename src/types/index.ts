@@ -64,6 +64,19 @@ export interface BattleToken {
       turnsRemaining: number;
       appliedOnRound: number;
     };
+    // NEW: Add these two properties for Sciel's abilities
+    advantage?: {
+      turnsRemaining: number;
+      source: string; // Who granted the advantage (e.g., "Sciel")
+      appliedBy: string; // Ability name (e.g., "Glimpse Future")
+      appliedOnRound: number;
+    };
+    disadvantage?: {
+      turnsRemaining: number;
+      source: string; // Who applied the disadvantage (e.g., "Sciel")
+      appliedBy: string; // Ability name (e.g., "Rewrite Destiny")
+      appliedOnRound: number;
+    };
   };
 }
 
