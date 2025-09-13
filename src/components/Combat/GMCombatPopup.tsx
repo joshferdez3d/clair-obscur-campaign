@@ -12,10 +12,13 @@ interface GMCombatPopupProps {
 }
 
 export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss, sessionId}: GMCombatPopupProps) {
-  const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
+const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
   const [applyingDamage, setApplyingDamage] = useState<Set<string>>(new Set());
 
+  // Simple filter - just get unresolved actions
+  // Firebase action IDs are unique with timestamps, so duplicates shouldn't be an issue
   const pending = actions.filter((a) => !a.resolved);
+
 
   useEffect(() => {
     // Auto-dismiss buff/debuff actions that don't need damage input
@@ -56,10 +59,16 @@ export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss, sessionId
       
       // Handle special card effects after damage is applied
       if (action.cardType === 'switch') {
-        await FirestoreService.applySwitchPositions(sessionId, id); // ✅ USE PROP
+        console.log('Applying switch effect for action:', id);
+        await FirestoreService.applySwitchPositions(sessionId, id);
+        console.log('Switch effect applied successfully');
       } else if (action.cardType === 'vanish') {
-        await FirestoreService.applyVanishEffect(sessionId, id); // ✅ USE PROP
+        console.log('Applying vanish effect for action:', id);
+        await FirestoreService.applyVanishEffect(sessionId, id);
+        console.log('Vanish effect applied successfully');
       }
+    } catch (error) {
+      console.error('Error applying card effect:', error);
     } finally {
       setApplyingDamage(prev => {
         const next = new Set(prev);

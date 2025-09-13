@@ -66,6 +66,7 @@ export function ScielCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+  const [isAbilityProcessing, setIsAbilityProcessing] = useState(false);
 
   // New state for Sciel's reworked abilities
   const [chargedFateCard, setChargedFateCard] = useState<FateCard>(null);
@@ -215,6 +216,11 @@ const handleConfirmAction = async () => {
     const finalAC = applyRangePenalty(parseInt(acRoll), distance);
     const hit = finalAC >= enemy.ac;
 
+    if (hit && onAbilityPointsChange) {
+      await onAbilityPointsChange(1);
+      console.log('Generated ability point for successful card toss');
+    }
+
     // ✅ FIXED: Create specialized actions for ALL charged cards (hit or miss)
     if (chargedFateCard) {
       if (chargedFateCard === 'explosive') {
@@ -281,7 +287,7 @@ const handleConfirmAction = async () => {
     }
 
     if (onTargetSelect) {
-      onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
+      onTargetSelect('action_taken', finalAC, 'ranged', selectedAction.id);
     }
 
     setSelectedAction(null);

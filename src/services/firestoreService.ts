@@ -296,20 +296,87 @@ export class FirestoreService {
   }
 
   // NEW: Apply switch positions after damage is applied
+// Replace the applySwitchPositions function in firestoreService.ts with this enhanced debug version:
+
 static async applySwitchPositions(sessionId: string, actionId: string): Promise<void> {
+  console.log('=== SWITCH POSITIONS DEBUG ===');
+  console.log('Session ID:', sessionId);
+  console.log('Action ID:', actionId);
+  
   const session = await this.getBattleSession(sessionId);
-  if (!session || !session.pendingActions) return;
-
+  if (!session || !session.pendingActions) {
+    console.log('❌ Session or pendingActions not found');
+    return;
+  }
+  
+  console.log('✅ Session found:', !!session);
+  console.log('✅ Pending actions count:', session?.pendingActions?.length || 0);
+  
+  // Debug: Log all pending action IDs
+  console.log('📋 All pending action IDs:');
+  session.pendingActions.forEach((a, index) => {
+    console.log(`  ${index}: ${a.id} (type: ${a.type}, resolved: ${a.resolved})`);
+  });
+  
   const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
-  if (!action || !action.switchData || action.resolved) return;
-
+  console.log('🔍 Action found:', !!action);
+  
+  if (!action) {
+    console.log('❌ PROBLEM: Action not found in pending actions');
+    return;
+  }
+  
+  console.log('📝 Action details:', {
+    id: action.id,
+    type: action.type,
+    cardType: action.cardType,
+    resolved: action.resolved,
+    hasSwitchData: !!action.switchData
+  });
+  
+  if (!action.switchData) {
+    console.log('❌ PROBLEM: Action has no switchData');
+    console.log('📋 Full action object:', action);
+    return;
+  }
+  
+  if (action.resolved) {
+    console.log('❌ PROBLEM: Action already resolved');
+    return;
+  }
+  
+  console.log('✅ Switch data present:', action.switchData);
+  
   const updatedTokens = { ...session.tokens };
   
   // Find player and target tokens
   const playerToken = Object.values(updatedTokens).find(t => t.characterId === action.playerId);
   const targetToken = updatedTokens[action.targetId!];
+  
+  console.log('🎭 Player token found:', !!playerToken, playerToken?.name);
+  console.log('🎯 Target token found:', !!targetToken, targetToken?.name);
+  
+  if (!playerToken) {
+    console.log('❌ PROBLEM: Player token not found for characterId:', action.playerId);
+    console.log('📋 Available tokens:', Object.values(updatedTokens).map(t => ({
+      id: t.id,
+      name: t.name,
+      characterId: t.characterId,
+      type: t.type
+    })));
+    return;
+  }
+  
+  if (!targetToken) {
+    console.log('❌ PROBLEM: Target token not found for targetId:', action.targetId);
+    return;
+  }
 
   if (playerToken && targetToken) {
+    console.log('🔄 BEFORE SWITCH:');
+    console.log(`  ${playerToken.name} at (${playerToken.position.x}, ${playerToken.position.y})`);
+    console.log(`  ${targetToken.name} at (${targetToken.position.x}, ${targetToken.position.y})`);
+    
     // Swap positions
     const tempPosition = { ...playerToken.position };
     playerToken.position = { ...targetToken.position };
@@ -318,7 +385,9 @@ static async applySwitchPositions(sessionId: string, actionId: string): Promise<
     updatedTokens[playerToken.id] = playerToken;
     updatedTokens[targetToken.id] = targetToken;
 
-    console.log(`Switched positions: ${playerToken.name} <-> ${targetToken.name}`);
+    console.log('🔄 AFTER SWITCH:');
+    console.log(`  ${playerToken.name} at (${playerToken.position.x}, ${playerToken.position.y})`);
+    console.log(`  ${targetToken.name} at (${targetToken.position.x}, ${targetToken.position.y})`);
   }
 
   // Mark action as resolved
@@ -326,12 +395,16 @@ static async applySwitchPositions(sessionId: string, actionId: string): Promise<
     a.id === actionId ? { ...a, resolved: true, damageApplied: true } : a
   );
 
+  console.log('💾 Updating Firestore...');
+  
   const ref = doc(db, 'battleSessions', sessionId);
   await updateDoc(ref, {
     tokens: updatedTokens,
     pendingActions: updatedActions,
     updatedAt: serverTimestamp()
   });
+  
+  console.log('✅ Firestore update completed');
 }
 
 // NEW: Apply vanish effect after damage is applied
@@ -1019,8 +1092,11 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     
     console.log(`Applying ${damageAmount} damage to ${targetToken.name}: ${currentHP} -> ${newHP}`);
 
+      const hasSpecialEffect = action.cardType === 'switch' || action.cardType === 'vanish';
+
+
     const updatedActions = session.pendingActions.map(a =>
-      a.id === actionId ? { ...a, resolved: true, damage: damageAmount, damageApplied: true } : a
+      a.id === actionId ? { ...a, resolved: hasSpecialEffect ? false : true, damage: damageAmount, damageApplied: true } : a
     );
 
     const ref = doc(db, 'battleSessions', sessionId);
