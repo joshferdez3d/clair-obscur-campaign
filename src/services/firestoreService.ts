@@ -151,6 +151,38 @@ export class FirestoreService {
       return [];
     }
   }
+  
+  static async initializeInventoryForAllCharacters(): Promise<void> {
+    try {
+      const characterIds = ['maelle', 'gustave', 'lune', 'sciel']; // Your existing character IDs
+      
+      for (const characterId of characterIds) {
+        const characterRef = doc(db, 'characters', characterId);
+        const characterSnap = await getDoc(characterRef);
+        
+        if (characterSnap.exists()) {
+          const data = characterSnap.data();
+          
+          // Only add inventory if it doesn't exist
+          if (!data.inventory) {
+            await updateDoc(characterRef, {
+              inventory: [],
+              updatedAt: serverTimestamp()
+            });
+            console.log(`✅ Added empty inventory to ${characterId}`);
+          } else {
+            console.log(`ℹ️ ${characterId} already has inventory`);
+          }
+        }
+      }
+      
+      console.log('✅ Inventory initialization completed');
+    } catch (error) {
+      console.error('❌ Failed to initialize inventories:', error);
+      throw error;
+    }
+  }
+
 
   /**
    * Load a battle map preset onto the current session

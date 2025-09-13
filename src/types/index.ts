@@ -27,6 +27,15 @@ export interface Ability {
   costsCharges?: number;
 }
 
+export interface InventoryItem {
+  id: string;
+  name: string;
+  description: string;
+  quantity: number;
+  addedBy: string; // GM who added the item
+  addedAt: Date;
+}
+
 export type Stance = 'offensive' | 'defensive' | 'agile';
 
 // Enhanced BattleToken interface to include AC
@@ -267,6 +276,7 @@ export interface Character {
   level: number;
   portraitUrl?: string;
   backgroundColor?: string;
+  inventory?: InventoryItem[]; // ADD THIS LINE
 }
 
 export interface BattleMap {
@@ -381,6 +391,8 @@ export interface CharacterDoc {
   backgroundColor?: string;
   createdAt: any;
   updatedAt: any;
+  inventory?: InventoryItem[]; // ADD THIS LINE
+
 }
 
 // Enhanced BattleSessionDoc to include terrain effects

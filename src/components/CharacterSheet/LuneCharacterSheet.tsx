@@ -1,5 +1,5 @@
 // src/components/CharacterSheet/LuneCharacterSheet.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Make sure useEffect is included
 import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPSyncService } from '../../services/HPSyncService';
@@ -10,6 +10,10 @@ import type { Character, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
+import { InventoryModal } from './InventoryModal'; // Add this import
+import { InventoryService } from '../../services/inventoryService'; // Add this import
+import type { InventoryItem } from '../../types'; // Add this import
 
 interface LuneCharacterSheetProps {
   character: Character;
@@ -132,6 +136,9 @@ export function LuneCharacterSheet({
   const elementalGenesisUsed = session?.luneElementalGenesisUsed || false;
   const [twinCatalystSelections, setTwinCatalystSelections] = useState<Record<string, number>>({});
   const [selectedIceWallOrientation, setSelectedIceWallOrientation] = useState<'row' | 'column' | null>(null);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate' | 'heal';
@@ -145,6 +152,29 @@ export function LuneCharacterSheet({
     isHealing?: boolean;
     requiresSpecificStain?: ElementType;
   } | null>(null);
+
+    const handleOpenInventory = () => {
+      setShowInventoryModal(true);
+    };  
+
+  useEffect(() => {
+    const loadInventory = async () => {
+      if (character?.id) {
+        setInventoryLoading(true);
+        try {
+          const characterData = await InventoryService.getCharacterInventory(character.id);
+          setInventory(characterData?.inventory || []);
+        } catch (error) {
+          console.error('Failed to load inventory:', error);
+        } finally {
+          setInventoryLoading(false);
+        }
+      }
+    };
+
+
+    loadInventory();
+  }, [character?.id]);
 
     const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
@@ -710,6 +740,21 @@ export function LuneCharacterSheet({
         {/* ABILITY SCORES */}
         <StatDisplay stats={character.stats} />
 
+        <div className="mb-6">
+          <button
+            onClick={handleOpenInventory}
+            className="w-full bg-clair-shadow-600 hover:bg-clair-shadow-500 border border-clair-gold-600 text-clair-gold-200 p-3 rounded-lg transition-colors flex items-center justify-center"
+          >
+            <Package className="w-5 h-5 mr-2" />
+            <span className="font-serif font-bold">Inventory</span>
+            {inventory.length > 0 && (
+              <span className="ml-2 bg-clair-gold-600 text-clair-shadow-900 px-2 py-1 rounded-full text-xs font-bold">
+                {inventory.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Elemental Stains */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-mystical-600">
           <div className="flex items-center justify-between mb-3">
@@ -1172,6 +1217,14 @@ export function LuneCharacterSheet({
         abilityRange={999}
         multiTarget={selectedAction?.multiTarget}
         maxTargets={selectedAction?.id === 'twin_catalyst' ? 2 : undefined}
+      />
+
+      <InventoryModal
+        isOpen={showInventoryModal}
+        characterName={character.name}
+        inventory={inventory}
+        isLoading={inventoryLoading}
+        onClose={() => setShowInventoryModal(false)}
       />
     </div>
   );

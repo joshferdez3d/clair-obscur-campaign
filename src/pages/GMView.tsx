@@ -10,7 +10,7 @@ import { useGMHPControl } from '../hooks/useGMHPControl';
 import { useStormSystem } from '../hooks/useStormSystem';
 import { StormService } from '../services/StormService';
 import { Plus, Users, Map, Monitor, Wrench, Sword, Zap, Target, Ship } from 'lucide-react';
-import type { Position, BattleToken, InitiativeEntry, CombatState, GMCombatAction } from '../types';
+import type { Position, BattleToken, InitiativeEntry, CombatState, GMCombatAction, Character } from '../types';
 import { GMCombatPopup } from '../components/Combat/GMCombatPopup';
 import { StormPopup } from '../components/Combat/StormPopup';
 import { StormIndicator } from '../components/Combat/StormIndicator';
@@ -31,6 +31,9 @@ import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 import { BattlePresetManager } from '../components/GM/BattlePresetManager';
 import type { BattleMapPreset } from '../types';
 import { useAudio } from '../hooks/useAudio';
+import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
+import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
+import { InventoryService } from '../services/inventoryService'; // Add this import
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -46,6 +49,8 @@ export function GMView() {
   const [showNPCModal, setShowNPCModal] = useState(false);
   const [selectedNPCType, setSelectedNPCType] = useState<BattleToken | null>(null);
   const [isPlacingNPC, setIsPlacingNPC] = useState(false);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -81,6 +86,8 @@ export function GMView() {
 
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
+  const tokens = Object.values(session?.tokens || {});
+  const players = tokens.filter((t) => t.type === 'player')
 
   // Move this hook to the top level
   const gmHPControl = useGMHPControl({ sessionId: sessionId || 'test-session' });
@@ -143,6 +150,18 @@ export function GMView() {
       await updateDoc(ref, { pendingActions: arrayUnion(action), updatedAt: serverTimestamp() });
     }
   }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
+
+   useEffect(() => {
+    const loadCharactersWithInventory = async () => {
+      if (players.length > 0) {
+        const characterIds = players.map(p => p.characterId || p.id).filter(Boolean);
+        const characters = await InventoryService.getAllCharacterInventories(characterIds);
+        setCharactersWithInventory(characters);
+      }
+    };
+
+    loadCharactersWithInventory();
+  }, [players]);
 
   // NEW: Add this useEffect to detect pending ultimate actions
   useEffect(() => {
@@ -760,7 +779,6 @@ const handleResetSession = async () => {
   }
 
   const map = { id: session.mapId, name: 'Battle Arena', gridSize: { width: 20, height: 15 }, backgroundImage: undefined, gridVisible: true };
-  const tokens = Object.values(session.tokens);
   const combatActive = isCombatActive();
 
   // Provide fully-typed mutable fallback for InitiativeTracker
@@ -785,7 +803,6 @@ const handleResetSession = async () => {
 
   const isGustavesTurn = combatState.currentTurn === 'gustave';
   const activeTurrets = tokens.filter((t) => t.name.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
-  const players = tokens.filter((t) => t.type === 'player');
   const maelleToken = players.find((t) => t.characterId === 'maelle');
   const gustaveToken = players.find((t) => t.characterId === 'gustave');
 
@@ -1061,6 +1078,14 @@ const handleResetSession = async () => {
               >
                 Full Heal All Players
               </button>
+
+              <button
+                onClick={() => setShowInventoryModal(true)}
+                className="w-full bg-clair-shadow-700 hover:bg-clair-shadow-600 border border-clair-gold-600 text-clair-gold-200 py-2 px-4 rounded-lg transition-colors flex items-center justify-center"
+              >
+                <Package className="w-4 h-4 mr-2" />
+                Manage Player Inventories
+              </button>
             </div>
           </div>
 
@@ -1288,6 +1313,13 @@ const handleResetSession = async () => {
           }}
         />
       ))}
+
+      {/* Inventory Management Modal */}
+      <GMInventoryModal
+        isOpen={showInventoryModal}
+        characters={charactersWithInventory}
+        onClose={() => setShowInventoryModal(false)}
+      />
     </div>
   );
 }
