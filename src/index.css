@@ -69,6 +69,31 @@ code {
   transition: none !important;
 }
 
+/* Storm target animation */
+@keyframes stormStrike {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  25% {
+    transform: scale(1.15);
+    filter: drop-shadow(0 0 15px rgba(255, 0, 0, 0.8));
+  }
+  50% {
+    transform: scale(1.1);
+    filter: drop-shadow(0 0 25px rgba(255, 0, 0, 1));
+  }
+  75% {
+    transform: scale(1.2);
+    filter: drop-shadow(0 0 20px rgba(255, 0, 0, 0.9));
+  }
+}
+
+.storm-target {
+  animation: stormStrike 1s ease-in-out infinite;
+  border: 2px solid rgba(255, 0, 0, 0.7) !important;
+  box-shadow: 0 0 20px rgba(255, 0, 0, 0.5) !important;
+}
 /* Status Effect Animations */
 @keyframes burnPulse {
   0%, 100% { 

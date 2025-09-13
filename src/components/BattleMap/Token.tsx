@@ -15,6 +15,7 @@ interface TokenProps {
   onDragEnd?: (token: BattleToken) => void;
   coordinateOffset?: Position; // New prop for coordinate padding
   isHighlighted?: boolean;
+  isStormTarget?: boolean;
 
 }
 
@@ -29,21 +30,13 @@ export function Token({
   onDragStart,
   onDragEnd,
   isHighlighted = false,
+  isStormTarget,
   coordinateOffset = { x: 0, y: 0 } // Default to no offset
 }: TokenProps) {
   const tokenSize = gridSize * (token.size || 1);
   const left = (token.position.x * gridSize) + coordinateOffset.x;
   const top = (token.position.y * gridSize) + coordinateOffset.y;
 
-  // const getCharacterImage = (characterId: string) => {
-  //   const imageMap: { [key: string]: string } = {
-  //     'gustave': '/tokens/characters/gustave.jpg', // Image 2
-  //     'lune': '/tokens/characters/lune.jpg',       // Image 3  
-  //     'maelle': '/tokens/characters/maelle.jpg',   // Image 4
-  //     'sciel': '/tokens/characters/sciel.jpg'      // Image 5
-  //   };
-  //   return imageMap[characterId?.toLowerCase()] || null;
-  // };
 
   const getTokenColor = (token: BattleToken): string => {
     if (token.color) return token.color;
@@ -60,25 +53,7 @@ export function Token({
     }
   };
 
-  // const getEnemyImage = (enemyName: string) => {
-    
-  //   // Normalize the enemy name to match your image file names
-  //   const normalizedName = enemyName.toLowerCase().replace(/[^a-z]/g, '');
-    
-  //   const enemyImageMap: { [key: string]: string } = {
-  //     'bnisseur': '/tokens/enemies/Benisseur_Image.png',     // Fixed: was 'benisseur' 
-  //     'brler': '/tokens/enemies/Bruler_Image.png',          // Fixed: was 'bruler'
-  //     'lancelier': '/tokens/enemies/Lancelier_Image.png',
-  //     'noirharbinger': '/tokens/enemies/Noir_Harbinger_Image.png',
-  //     'portier': '/tokens/enemies/Portier_Image.png',
-  //     'volester': '/tokens/enemies/Volester_Image.png'
-  //   };
-    
-  //   const imagePath = enemyImageMap[normalizedName] || null;
-  //   console.log('🎭 Image path:', imagePath);
-    
-  //   return imagePath;
-  // };
+
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
@@ -183,8 +158,8 @@ export function Token({
       } ${isDragging ? 'opacity-60' : ''} ${
         isValidTarget ? 'ring-4 ring-purple-400 ring-opacity-80' : ''
       } ${isCurrentTurn ? 'ring-2 ring-yellow-400 ring-opacity-90' : ''} 
-        ${isHighlighted ? 'ring-4 ring-red-500 ring-opacity-100 animate-pulse' : '' 
-      }`}
+        ${isHighlighted ? 'ring-4 ring-red-500 ring-opacity-100 animate-pulse' : ''}
+        ${isStormTarget ? 'storm-target' : ''}`} 
       style={{
         left: `${left}px`,
         top: `${top}px`,
@@ -201,6 +176,7 @@ export function Token({
         className={`w-full h-full rounded-full border-4 ${getTokenBorder()} shadow-lg relative overflow-hidden ${
           isSelected ? 'ring-2 ring-white ring-opacity-60' : ''
           } ${isHighlighted ? 'border-red-500 border-opacity-100' : ''}`}
+
           style={{
               backgroundColor: getTokenColor(token),
               boxShadow: isHighlighted

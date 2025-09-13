@@ -39,6 +39,7 @@ interface ScielCharacterSheetProps {
   hasActedThisTurn?: boolean;
   sessionId?: string;
   allTokens?: BattleToken[];
+  onActionComplete?: () => void; // Add this callback to signal turn should end
 }
 
 type FateCard = 'explosive' | 'switch' | 'vanish' | null;
@@ -59,6 +60,7 @@ export function ScielCharacterSheet({
   hasActedThisTurn = false,
   sessionId = 'test-session',
   allTokens = [],
+  onActionComplete,
 }: ScielCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
@@ -67,6 +69,7 @@ export function ScielCharacterSheet({
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
   const [isAbilityProcessing, setIsAbilityProcessing] = useState(false);
+  const [usedFatesGambit, setUsedFatesGambit] = useState(false);
 
   // New state for Sciel's reworked abilities
   const [chargedFateCard, setChargedFateCard] = useState<FateCard>(null);
@@ -117,6 +120,13 @@ export function ScielCharacterSheet({
     return Math.max(1, baseAC - penalty);
   };
 
+  // Reset usedFatesGambit when turn changes
+  useEffect(() => {
+    if (isMyTurn) {
+      setUsedFatesGambit(false);
+    }
+  }, [isMyTurn]);
+
   // Get valid targets based on ability type
   const getValidTargets = (targetType: 'enemy' | 'ally' = 'enemy') => {
     if (targetType === 'ally') {
@@ -139,15 +149,18 @@ export function ScielCharacterSheet({
     const cardTypes: FateCard[] = ['explosive', 'switch', 'vanish'];
     const randomCard = cardTypes[Math.floor(Math.random() * cardTypes.length)];
     setChargedFateCard(randomCard);
-    onAbilityPointsChange?.(-1);
+    onAbilityPointsChange?.(-2);
+    setUsedFatesGambit(true);
     
     if (onTargetSelect) {
       onTargetSelect('fate_gambit_used', 0, 'ability', 'fates_gambit');
     }
-    setShowBonusAction(hasActedThisTurn);
+    
+    setSelectedAction(null);
+    // Don't end turn - allow Card Toss to be used
   };
 
-  // Handle Crescendo of Fate activation (keeping existing logic)
+  // Handle Crescendo of Fate activation
   const handleActivateUltimate = async () => {
     if (isStormActive) {
       alert('Storm is already active!');
@@ -162,7 +175,7 @@ export function ScielCharacterSheet({
 
     try {
       await triggerUltimate('sciel', 'Crescendo of Fate');
-      await StormService.activateStorm(sessionId, 5); // Always 5-turn storm now
+      await StormService.activateStorm(sessionId, 5);
       onAbilityPointsChange?.(-3);
       
       if (onTargetSelect) {
@@ -178,7 +191,7 @@ export function ScielCharacterSheet({
 
   // Handle action selection
   const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn && !action.isBonusAction) return;
+    if (hasActedThisTurn && !action.isBonusAction && !usedFatesGambit) return;
 
     // Check ability point costs
     if (action.type === 'ability' && action.cost) {
@@ -195,168 +208,174 @@ export function ScielCharacterSheet({
   };
 
   // Handle confirming actions
-const handleConfirmAction = async () => {
-  if (!selectedAction) return;
-  
-  if (sessionId) {
-    FirestoreService.clearTargetingState(sessionId);
-  }
-
-  // Handle Card Toss (basic attack) - FIXED VERSION
-  if (selectedAction.id === 'card_toss') {
-    if (!selectedTarget || !acRoll) {
-      alert('Please select target and enter AC roll');
-      return;
+  const handleConfirmAction = async () => {
+    if (!selectedAction) return;
+    
+    if (sessionId) {
+      FirestoreService.clearTargetingState(sessionId);
     }
 
-    const enemy = availableEnemies.find(e => e.id === selectedTarget);
-    if (!enemy) return;
+    // Handle Card Toss (basic attack)
+    if (selectedAction.id === 'card_toss') {
+      if (!selectedTarget || !acRoll) {
+        alert('Please select target and enter AC roll');
+        return;
+      }
 
-    const distance = calculateDistance(playerPosition, enemy.position);
-    const finalAC = applyRangePenalty(parseInt(acRoll), distance);
-    const hit = finalAC >= enemy.ac;
+      const enemy = availableEnemies.find(e => e.id === selectedTarget);
+      if (!enemy) return;
 
-    // NEW CODE:
+      const distance = calculateDistance(playerPosition, enemy.position);
+      const finalAC = applyRangePenalty(parseInt(acRoll), distance);
+      const hit = finalAC >= enemy.ac;
+
+      // Generate ability point only for regular card toss hits
       if (hit && onAbilityPointsChange && !chargedFateCard) {
         await onAbilityPointsChange(1);
         console.log('Generated ability point for successful regular card toss');
-      } else if (hit && chargedFateCard) {
-        console.log(`No ability point generated for enhanced ${chargedFateCard} card toss`);
       }
-    // ✅ FIXED: Create specialized actions for ALL charged cards (hit or miss)
-    if (chargedFateCard) {
-      if (chargedFateCard === 'explosive') {
-        // Create AoE action for explosion - only if it hits
-        if (hit) {
-          const nearbyEnemies = availableEnemies.filter(e => {
-            if (e.id === selectedTarget) return true; // Include primary target
-            const distanceToTarget = calculateDistance(enemy.position, e.position);
-            return distanceToTarget <= 10;
-          });
 
-          if (nearbyEnemies.length > 0) {
-            await FirestoreService.createAoEAction(sessionId, {
-              playerId: character.id,
-              abilityName: `💥 Explosive Card Toss`,
-              targetIds: nearbyEnemies.map(e => e.id),
-              targetNames: nearbyEnemies.map(e => e.name),
-              center: enemy.position,
-              radius: 10,
-              acRoll: finalAC
+      // Handle different card types
+      if (chargedFateCard) {
+        if (chargedFateCard === 'explosive') {
+          // Create AoE action for explosion - only if it hits
+          if (hit) {
+            const nearbyEnemies = availableEnemies.filter(e => {
+              if (e.id === selectedTarget) return true;
+              const distanceToTarget = calculateDistance(enemy.position, e.position);
+              return distanceToTarget <= 10;
             });
+
+            if (nearbyEnemies.length > 0) {
+              await FirestoreService.createAoEAction(sessionId, {
+                playerId: character.id,
+                abilityName: `💥 Explosive Card Toss`,
+                targetIds: nearbyEnemies.map(e => e.id),
+                targetNames: nearbyEnemies.map(e => e.name),
+                center: enemy.position,
+                radius: 10,
+                acRoll: finalAC
+              });
+            }
+          } else {
+            await FirestoreService.createAttackAction(
+              sessionId,
+              character.id,
+              selectedTarget,
+              playerPosition,
+              finalAC,
+              '💥 Explosive Card Toss (Miss)'
+            );
           }
-        } else {
-          // Miss - create regular attack action to show the miss
-          await FirestoreService.createAttackAction(
-            sessionId,
-            character.id,
-            selectedTarget,
-            playerPosition,
-            finalAC,
-            '💥 Explosive Card Toss (Miss)'
-          );
+        } else if (chargedFateCard === 'switch') {
+          await FirestoreService.createSwitchCardAction(sessionId, {
+            playerId: character.id,
+            targetId: selectedTarget,
+            playerPosition: playerPosition,
+            targetPosition: enemy.position,
+            acRoll: finalAC
+          });
+        } else if (chargedFateCard === 'vanish') {
+          await FirestoreService.createVanishCardAction(sessionId, {
+            playerId: character.id,
+            targetId: selectedTarget,
+            acRoll: finalAC
+          });
         }
-      } else if (chargedFateCard === 'switch') {
-        // ✅ ALWAYS create switch card action (hit or miss)
-        await FirestoreService.createSwitchCardAction(sessionId, {
-          playerId: character.id,
-          targetId: selectedTarget,
-          playerPosition: playerPosition,
-          targetPosition: enemy.position,
-          acRoll: finalAC
-        });
-      } else if (chargedFateCard === 'vanish') {
-        // ✅ ALWAYS create vanish card action (hit or miss)
-        await FirestoreService.createVanishCardAction(sessionId, {
-          playerId: character.id,
-          targetId: selectedTarget,
-          acRoll: finalAC
-        });
+        
+        setChargedFateCard(null);
+      } else {
+        // Regular card toss
+        await FirestoreService.createAttackAction(
+          sessionId,
+          character.id,
+          selectedTarget,
+          playerPosition,
+          finalAC,
+          'Card Toss'
+        );
       }
+
+      // if (onTargetSelect) {
+      //   onTargetSelect(selectedTarget, hit ? parseInt(acRoll) : 0, 'basic', 'card_toss');
+      // }
+
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setACRoll('');
+      setShowTargetingModal(false);
+      setShowBonusAction(false);
+      setUsedFatesGambit(false);
       
-      // Consume the charged card
-      setChargedFateCard(null);
-    } else {
-      // Regular card toss - no special effects
-      await FirestoreService.createAttackAction(
-        sessionId,
-        character.id,
-        selectedTarget,
-        playerPosition,
-        finalAC,
-        'Card Toss'
-      );
-    }
-
-    if (onTargetSelect) {
-      onTargetSelect('action_taken', finalAC, 'ranged', selectedAction.id);
-    }
-
-    setSelectedAction(null);
-    setSelectedTarget('');
-    setACRoll('');
-    setShowTargetingModal(false);
-    setShowBonusAction(hasActedThisTurn);
-    return;
-  }
-
-  // 3. FIX: Use createBuffAction for Rewrite Destiny
-  if (selectedAction.id === 'rewrite_destiny') {
-    if (!selectedTarget) {
-      alert('Please select an enemy to curse with disadvantage');
+      // Signal that turn should end
+      onActionComplete?.();
+      
       return;
     }
 
-    // ✅ USE SPECIALIZED BUFF ACTION instead of createAttackAction
-    await FirestoreService.createBuffAction(sessionId, {
-      playerId: character.id,
-      targetId: selectedTarget,
-      abilityName: 'Rewrite Destiny',
-      buffType: 'disadvantage',
-      duration: 1 // Lasts 1 turn
-    });
+    // Handle Rewrite Destiny
+    if (selectedAction.id === 'rewrite_destiny') {
+      if (!selectedTarget) {
+        alert('Please select an enemy to curse with disadvantage');
+        return;
+      }
 
-    onAbilityPointsChange?.(-selectedAction.cost!);
-    if (onTargetSelect) {
-      onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
-    }
-    setSelectedAction(null);
-    setShowBonusAction(hasActedThisTurn);
-    return;
-  }
+      await FirestoreService.createBuffAction(sessionId, {
+        playerId: character.id,
+        targetId: selectedTarget,
+        abilityName: 'Rewrite Destiny',
+        buffType: 'disadvantage',
+        duration: 1
+      });
 
-  // 4. FIX: Use createBuffAction for Glimpse Future
-  if (selectedAction.id === 'glimpse_future') {
-    if (!selectedTarget) {
-      alert('Please select an ally to grant advantage');
+      onAbilityPointsChange?.(-selectedAction.cost!);
+      // REMOVED onTargetSelect to prevent duplicate action
+      
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setShowTargetingModal(false);
+      
+      // Signal turn end
+      onActionComplete?.();
+      
       return;
     }
 
-    // ✅ USE SPECIALIZED BUFF ACTION instead of createAttackAction
-    await FirestoreService.createBuffAction(sessionId, {
-      playerId: character.id,
-      targetId: selectedTarget,
-      abilityName: 'Glimpse Future',
-      buffType: 'advantage',
-      duration: 1 // Lasts 1 turn
-    });
+    // Handle Glimpse Future
+    if (selectedAction.id === 'glimpse_future') {
+      if (!selectedTarget) {
+        alert('Please select an ally to grant advantage');
+        return;
+      }
 
-    onAbilityPointsChange?.(-selectedAction.cost!);
-    if (onTargetSelect) {
-      onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
+      await FirestoreService.createBuffAction(sessionId, {
+        playerId: character.id,
+        targetId: selectedTarget,
+        abilityName: 'Glimpse Future',
+        buffType: 'advantage',
+        duration: 1
+      });
+
+      onAbilityPointsChange?.(-selectedAction.cost!);
+      // REMOVED onTargetSelect to prevent duplicate action
+      
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setShowTargetingModal(false);
+      
+      // Signal turn end
+      onActionComplete?.();
+      
+      return;
     }
-    setSelectedAction(null);
-    setShowBonusAction(hasActedThisTurn);
-    return;
-  }
 
-  // Handle Fate's Gambit (unchanged)
-  if (selectedAction.id === 'fates_gambit') {
-    handleFatesGambit();
-    setSelectedAction(null);
-    return;
-  }
-};
+    // Handle Fate's Gambit
+    if (selectedAction.id === 'fates_gambit') {
+      handleFatesGambit();
+      setSelectedAction(null);
+      return;
+    }
+  };
 
   const handleCancelAction = () => {
     setSelectedAction(null);
@@ -476,7 +495,7 @@ const handleConfirmAction = async () => {
         )}
 
         {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && (
+        {isMyTurn && combatActive && hasActedThisTurn && !usedFatesGambit && (
           <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
             <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
             <span className="font-sans text-clair-success">
@@ -532,7 +551,7 @@ const handleConfirmAction = async () => {
 
         {/* Charged Fate Card Display */}
         {chargedFateCard && (
-          <div className="bg-purple-900 bg-opacity-30 border border-purple-500 rounded-lg p-4 mb-4">
+          <div className="bg-purple-900 bg-opacity-30 border border-purple-500 rounded-lg p-4 mb-4 animate-pulse">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-purple-300 font-bold flex items-center">
                 <Shuffle className="w-5 h-5 mr-2" />
@@ -570,14 +589,20 @@ const handleConfirmAction = async () => {
                 <h4 className="text-sm font-bold text-green-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={!isMyTurn || !combatActive || (hasActedThisTurn && !showBonusAction) || isStormActive}
-                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                  disabled={!isMyTurn || !combatActive || (hasActedThisTurn && !usedFatesGambit) || isStormActive}
+                  className={`w-full ${
+                    (hasActedThisTurn && !usedFatesGambit)
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : chargedFateCard
+                        ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 animate-pulse'
+                        : 'bg-green-600 hover:bg-green-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
                 >
                   <div className="flex items-center">
                     <Circle className="w-4 h-4 mr-2" />
                     <span className="font-bold">{basicAttack.name}</span>
                     {chargedFateCard && (
-                      <span className="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">
+                      <span className="ml-2 text-xs bg-purple-600 px-2 py-1 rounded animate-pulse">
                         {chargedFateCard === 'explosive' ? '💥 EXPLOSIVE' : 
                          chargedFateCard === 'switch' ? '🔄 SWITCH' : '👻 VANISH'}
                       </span>
@@ -592,29 +617,56 @@ const handleConfirmAction = async () => {
               <div>
                 <h4 className="text-sm font-bold text-green-300 mb-2">Abilities</h4>
                 <div className="space-y-2">
-                  {abilities.map((ability) => (
-                    <button
-                      key={ability.id}
-                      onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost || (hasActedThisTurn && !showBonusAction) || isStormActive}
-                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
-                    >
-                      <div className="flex items-center">
-                        <Zap className="w-4 h-4 mr-2" />
-                        <span className="font-bold">{ability.name}</span>
-                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.cost} pts
-                        </span>
-                        {ability.targetType === 'ally' && (
-                          <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">
-                            ALLY
+                  {abilities.map((ability) => {
+                    const isDisabled = 
+                      !isMyTurn || 
+                      !combatActive || 
+                      abilityPoints < ability.cost || 
+                      (hasActedThisTurn && !showBonusAction) || 
+                      (usedFatesGambit && ability.id !== 'fates_gambit') ||
+                      isStormActive;
+                    
+                    const endsTurn = ability.id === 'rewrite_destiny' || ability.id === 'glimpse_future';
+                    const allowsCardToss = ability.id === 'fates_gambit';
+                    
+                    return (
+                      <button
+                        key={ability.id}
+                        onClick={() => handleActionSelect(ability)}
+                        disabled={isDisabled}
+                        className={`w-full ${
+                          isDisabled
+                            ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                            : 'bg-purple-600 hover:bg-purple-700'
+                        } p-3 rounded-lg transition-colors text-left text-white`}
+                      >
+                        <div className="flex items-center">
+                          <Zap className="w-4 h-4 mr-2" />
+                          <span className="font-bold">{ability.name}</span>
+                          <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                            {ability.cost} pts
                           </span>
-                        )}
-                      </div>
-                      <div className="text-sm opacity-90 mt-1">{ability.description}</div>
-                      <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
-                    </button>
-                  ))}
+                          {ability.targetType === 'ally' && (
+                            <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">
+                              ALLY
+                            </span>
+                          )}
+                          {endsTurn && (
+                            <span className="ml-2 text-xs bg-red-600 px-2 py-1 rounded">
+                              ENDS TURN
+                            </span>
+                          )}
+                          {allowsCardToss && (
+                            <span className="ml-2 text-xs bg-green-600 px-2 py-1 rounded">
+                              +CARD TOSS
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm opacity-90 mt-1">{ability.description}</div>
+                        <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -669,7 +721,8 @@ const handleConfirmAction = async () => {
                   <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg">
                     <p className="text-purple-200 text-sm">
                       This will randomly select an Explosive, Switch, or Vanish card to enhance your next Card Toss.
-                      <br/><strong>Using Fate's Gambit will end your turn.</strong>
+                      <br/><strong className="text-green-300">You can use Card Toss on the same turn!</strong>
+                      <br/><span className="text-yellow-300">Note: Other abilities will be locked after using Fate's Gambit.</span>
                     </p>
                   </div>
                   <button onClick={handleConfirmAction} className="w-full bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-lg font-bold transition-colors">
@@ -751,7 +804,7 @@ const handleConfirmAction = async () => {
           )}
 
           {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && hasActedThisTurn && !showBonusAction && (
+          {isMyTurn && combatActive && !selectedAction && hasActedThisTurn && !showBonusAction && !usedFatesGambit && (
             <button
               onClick={onEndTurn}
               className="w-full mt-4 p-3 rounded-lg font-bold transition-colors bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900"
@@ -765,12 +818,13 @@ const handleConfirmAction = async () => {
           <div className="mt-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
             <h4 className="font-serif font-bold text-green-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-green-300 space-y-1">
-              <li>• Card Toss: Ranged attack with unlimited range</li>
-              <li>• Rewrite Destiny: Enemy gets disadvantage on next turn</li>
-              <li>• Glimpse Future: Ally gets advantage on next turn</li>
-              <li>• Fate's Gambit: Random card effect for next Card Toss</li>
+              <li>• <strong>Card Toss:</strong> Basic ranged attack (ends turn)</li>
+              <li>• <strong>Rewrite Destiny:</strong> Enemy disadvantage (ends turn)</li>
+              <li>• <strong>Glimpse Future:</strong> Ally advantage (ends turn)</li>
+              <li>• <strong>Fate's Gambit:</strong> Enhance next Card Toss (allows Card Toss same turn)</li>
+              <li>• <span className="text-yellow-300">Only Fate's Gambit → Card Toss allows two actions per turn</span></li>
               <li>• Ranged attacks get -2 AC penalty per 5ft beyond 30ft</li>
-              <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on your turns)!</strong></li>
+              <li>• <strong>Crescendo of Fate:</strong> 5-turn storm (3d6 radiant on your turns)!</li>
             </ul>
           </div>
         </div>

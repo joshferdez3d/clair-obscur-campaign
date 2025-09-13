@@ -473,13 +473,11 @@ if (character.name.toLowerCase() === 'sciel') {
         onEndTurn={handleEndTurn}
         onCancelTargeting={cancelTargeting}
         hasActedThisTurn={hasActedThisTurn}
-        // REMOVED: All Foretell-related props
-        // foretellStacks={foretellStacks}
-        // onStacksChange={setForetellStacks}
-        // foretellChainCharged={foretellChainCharged}
-        // onChainChargedChange={setForetellChainCharged}
-        // bonusActionCooldown={bonusActionCooldown}
-        // onBonusActionCooldownChange={setBonusActionCooldown}
+        // ADD THIS: Implement the onActionComplete callback
+        onActionComplete={() => {
+          console.log('Sciel action completed, marking turn as acted');
+          setHasActedThisTurn(true);
+        }}
       />
     );
   }

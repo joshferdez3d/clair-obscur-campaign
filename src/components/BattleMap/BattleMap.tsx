@@ -456,22 +456,29 @@ export function BattleMap({
           {renderFireTerrainOverlays()}
 
           {/* Tokens */}
-          {tokens.map((token) => (
-            <Token
-              key={token.id}
-              token={token}
-              gridSize={gridSize}
-              isSelected={selectedToken?.id === token.id}
-              isDragging={draggedToken?.id === token.id}
-              isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
-              isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
-              isHighlighted={selectedEnemyId === token.id}
-              onClick={handleTokenClick}
-              onDragStart={handleTokenDragStart}
-              onDragEnd={handleTokenDragEnd}
-              coordinateOffset={{ x: coordinatePadding, y: coordinatePadding }}
-            />
-          ))}
+          {tokens.map((token) => {
+            // Check if this token is the current storm target
+            const isStormTarget = session?.pendingStormRoll?.isActive && 
+                                  session?.pendingStormRoll?.targetId === token.id;
+            
+            return (
+              <Token
+                key={token.id}
+                token={token}
+                gridSize={gridSize}
+                isSelected={selectedToken?.id === token.id}
+                isDragging={draggedToken?.id === token.id}
+                isCurrentTurn={!!(combatActive && token.characterId === currentTurn)}
+                isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
+                isHighlighted={selectedEnemyId === token.id}
+                isStormTarget={isStormTarget} // ADD THIS
+                onClick={handleTokenClick}
+                onDragStart={handleTokenDragStart}
+                onDragEnd={handleTokenDragEnd}
+                coordinateOffset={{ x: coordinatePadding, y: coordinatePadding }}
+              />
+            );
+          })}
         </div>
       </div>
     </div>
