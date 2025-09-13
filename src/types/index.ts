@@ -276,7 +276,8 @@ export interface Character {
   level: number;
   portraitUrl?: string;
   backgroundColor?: string;
-  inventory?: InventoryItem[]; // ADD THIS LINE
+  inventory?: InventoryItem[]; 
+  gold: number; 
 }
 
 export interface BattleMap {
@@ -392,7 +393,7 @@ export interface CharacterDoc {
   createdAt: any;
   updatedAt: any;
   inventory?: InventoryItem[]; // ADD THIS LINE
-
+  gold?: number;
 }
 
 // Enhanced BattleSessionDoc to include terrain effects
@@ -425,6 +426,14 @@ export type ElementalStain = 'fire' | 'ice' | 'nature' | 'light';
 export interface MaelleCharacter extends Character {
   stance: Stance;
   stanceChangedThisTurn: boolean;
+}
+
+
+export interface PlayerInventory {
+  characterId: string;
+  characterName: string;
+  items: InventoryItem[];
+  gold: number;
 }
 
 export interface GustaveCharacter extends Character {

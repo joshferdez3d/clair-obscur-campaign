@@ -139,6 +139,7 @@ export function LuneCharacterSheet({
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [goldAmount, setGoldAmount] = useState(0);
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate' | 'heal';
@@ -164,6 +165,8 @@ export function LuneCharacterSheet({
         try {
           const characterData = await InventoryService.getCharacterInventory(character.id);
           setInventory(characterData?.inventory || []);
+          const gold = await InventoryService.getCharacterGold(character.id);
+          setGoldAmount(gold);
         } catch (error) {
           console.error('Failed to load inventory:', error);
         } finally {
@@ -1223,6 +1226,7 @@ export function LuneCharacterSheet({
         isOpen={showInventoryModal}
         characterName={character.name}
         inventory={inventory}
+        goldAmount={goldAmount}
         isLoading={inventoryLoading}
         onClose={() => setShowInventoryModal(false)}
       />

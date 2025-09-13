@@ -87,6 +87,7 @@ export function ScielCharacterSheet({
     cost?: number;
     isBonusAction?: boolean;
   } | null>(null);
+  const [goldAmount, setGoldAmount] = useState(0);
 
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
@@ -99,6 +100,8 @@ export function ScielCharacterSheet({
         try {
           const characterData = await InventoryService.getCharacterInventory(character.id);
           setInventory(characterData?.inventory || []);
+          const gold = await InventoryService.getCharacterGold(character.id);
+          setGoldAmount(gold);
         } catch (error) {
           console.error('Failed to load inventory:', error);
         } finally {
@@ -882,6 +885,7 @@ export function ScielCharacterSheet({
         isOpen={showInventoryModal}
         characterName={character.name}
         inventory={inventory}
+        goldAmount={goldAmount}
         isLoading={inventoryLoading}
         onClose={() => setShowInventoryModal(false)}
       />

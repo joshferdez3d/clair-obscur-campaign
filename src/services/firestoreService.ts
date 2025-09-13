@@ -260,13 +260,17 @@ export class FirestoreService {
       const snap = await getDoc(ref);
       if (!snap.exists()) return null;
       const data = snap.data() as CharacterDoc;
-      return { id: snap.id, ...data };
+      return { 
+        id: snap.id, 
+        ...data,
+        gold: data.gold ?? 0 // Provide default value if gold doesn't exist
+      };
     } catch (e) {
       console.error('getCharacter error:', e);
       return null;
     }
   }
-
+  
   static async updateCharacterHP(characterId: string, newHP: number) {
     const ref = doc(db, 'characters', characterId);
     await updateDoc(ref, {
@@ -1639,7 +1643,11 @@ export class FirestoreService {
       snap => {
         if (!snap.exists()) return cb(null);
         const data = snap.data() as CharacterDoc;
-        cb({ id: snap.id, ...data });
+        cb({ 
+          id: snap.id, 
+          ...data,
+          gold: data.gold ?? 0 // Provide default value if gold doesn't exist
+        });
       },
       err => {
         console.error('Character listener error:', err);
@@ -1647,7 +1655,6 @@ export class FirestoreService {
       }
     );
   }
-
   // ========== Sample Data ==========
   static async initializeSampleData() {
     const characters = [
