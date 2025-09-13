@@ -1,121 +1,97 @@
+// src/components/CharacterSheet/ScielCharacterSheet.tsx
 import React, { useState, useEffect } from 'react';
-import { Circle, Target, Zap, Heart, Eye, Shuffle, Users } from 'lucide-react';
-import type { Character, BattleToken } from '../../types';
-import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
-import { InventoryModal } from './InventoryModal';
+import { User, Sparkles, Target, Eye, Zap, Circle, Heart, Shuffle } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
+import { HPTracker } from './HPTracker';
+import { StatDisplay } from './StatDisplay';
+import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import { useStormSystem } from '../../hooks/useStormSystem';
 import { StormService } from '../../services/StormService';
-
-interface Enemy {
-  id: string;
-  name: string;
-  position: { x: number; y: number };
-  hp: number;
-  maxHp: number;
-  ac: number;
-}
+import { StormIndicator } from '../Combat/StormIndicator';
+import type { Character, Position, BattleToken } from '../../types';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
+import { Package } from 'lucide-react';
+import { InventoryModal } from './InventoryModal';
+import { InventoryService } from '../../services/inventoryService';
+import type { InventoryItem } from '../../types';
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 
 interface ScielCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
   onAbilityPointsChange: (delta: number) => void;
-  onAbilityUse: () => void;
-  isMyTurn: boolean;
-  isLoading: boolean;
-  combatActive: boolean;
-  availableEnemies: Enemy[];
-  playerPosition: { x: number; y: number };
-  sessionId: string;
-  allTokens: BattleToken[];
-  onTargetSelect: (targetId: string, acRoll: number, attackType?: string, abilityId?: string) => void;
-  onEndTurn: () => void;
-  onCancelTargeting: () => void;
-  hasActedThisTurn: boolean;
-  foretellStacks: Record<string, number>;
-  onStacksChange: (stacks: Record<string, number>) => void;
-  foretellChainCharged: boolean;
-  onChainChargedChange: (charged: boolean) => void;
-  bonusActionCooldown: number;
-  onBonusActionCooldownChange: (rounds: number) => void;
+  onAbilityUse: (ability: any) => void;
+  isLoading?: boolean;
+  isMyTurn?: boolean;
+  combatActive?: boolean;
+  availableEnemies?: Array<{
+    id: string;
+    name: string;
+    position: { x: number; y: number };
+    hp: number;
+    maxHp: number;
+    ac: number;
+  }>;
+  playerPosition?: { x: number; y: number };
+  onTargetSelect?: (targetId: string, acRoll: number, attackType: string, abilityId?: string) => void;
+  onEndTurn?: () => void;
+  onCancelTargeting?: () => void;
+  hasActedThisTurn?: boolean;
+  sessionId?: string;
+  allTokens?: BattleToken[];
 }
 
-// Draw Fate card types
-type DrawnCard = {
-  type: 'explosive' | 'switch' | 'vanish';
-  name: string;
-  description: string;
-};
-
-const DRAW_FATE_CARDS: DrawnCard[] = [
-  {
-    type: 'explosive',
-    name: 'Explosive Card',
-    description: 'Next Card Toss hits all enemies within 10ft of target'
-  },
-  {
-    type: 'switch', 
-    name: 'Switch Card',
-    description: 'After damage, you and target swap positions'
-  },
-  {
-    type: 'vanish',
-    name: 'Vanish Card', 
-    description: 'Target is banished for 2 turns'
-  }
-];
+type FateCard = 'explosive' | 'switch' | 'vanish' | null;
 
 export function ScielCharacterSheet({
   character,
   onHPChange,
   onAbilityPointsChange,
   onAbilityUse,
-  isMyTurn,
-  isLoading,
-  combatActive,
-  availableEnemies,
-  playerPosition,
-  sessionId,
-  allTokens,
+  isLoading = false,
+  isMyTurn = false,
+  combatActive = false,
+  availableEnemies = [],
+  playerPosition = { x: 0, y: 0 },
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn,
-  foretellStacks,
-  onStacksChange,
-  foretellChainCharged,
-  onChainChargedChange,
-  bonusActionCooldown,
-  onBonusActionCooldownChange
+  hasActedThisTurn = false,
+  sessionId = 'test-session',
+  allTokens = [],
 }: ScielCharacterSheetProps) {
-  
-  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState<string>('');
+  const [acRoll, setACRoll] = useState<string>('');
   const [showTargetingModal, setShowTargetingModal] = useState(false);
-  const [selectedTarget, setSelectedTarget] = useState('');
-  const [acRoll, setACRoll] = useState('');
+  const { triggerUltimate } = useUltimateVideo(sessionId);
+  const [showInventoryModal, setShowInventoryModal] = useState(false);
+  const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+
+  // New state for Sciel's reworked abilities
+  const [chargedFateCard, setChargedFateCard] = useState<FateCard>(null);
   const [showBonusAction, setShowBonusAction] = useState(false);
-  
-  // New state for Draw Fate system
-  const [drawnCard, setDrawnCard] = useState<DrawnCard | null>(null);
-  
+
   const [selectedAction, setSelectedAction] = useState<{
-    type: string;
+    type: 'basic' | 'ability' | 'bonus';
     id: string;
     name: string;
     description: string;
-    damage: string;
-    range: string;
+    damage?: string;
     cost?: number;
-    isBonusAction?: boolean;
+    targetType?: 'enemy' | 'ally';
   } | null>(null);
 
-  // Storm system integration  
+  const handleOpenInventory = () => {
+    setShowInventoryModal(true);
+  };
+
+  // Storm system integration
   const { stormState, isStormActive } = useStormSystem(sessionId);
 
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
       'gustave': '/tokens/characters/gustave.jpg',
-      'lune': '/tokens/characters/lune.jpg', 
+      'lune': '/tokens/characters/lune.jpg',
       'maelle': '/tokens/characters/maelle.jpg',
       'sciel': '/tokens/characters/sciel.jpg'
     };
@@ -140,17 +116,37 @@ export function ScielCharacterSheet({
     return Math.max(1, baseAC - penalty);
   };
 
-  const handleOpenInventory = () => {
-    setShowInventoryModal(true);
+  // Get valid targets based on ability type
+  const getValidTargets = (targetType: 'enemy' | 'ally' = 'enemy') => {
+    if (targetType === 'ally') {
+      return allTokens
+        .filter(t => t.type === 'player' && t.id !== `token-${character.id}`)
+        .map(t => ({
+          id: t.id,
+          name: t.name,
+          position: t.position,
+          hp: t.hp || 0,
+          maxHp: t.maxHp || 100,
+          ac: 10 // Not relevant for allies
+        }));
+    }
+    return availableEnemies;
   };
 
-  // Draw a random fate card
-  const drawFateCard = (): DrawnCard => {
-    const randomIndex = Math.floor(Math.random() * DRAW_FATE_CARDS.length);
-    return DRAW_FATE_CARDS[randomIndex];
+  // Handle Fate's Gambit - randomly select a card type
+  const handleFatesGambit = () => {
+    const cardTypes: FateCard[] = ['explosive', 'switch', 'vanish'];
+    const randomCard = cardTypes[Math.floor(Math.random() * cardTypes.length)];
+    setChargedFateCard(randomCard);
+    onAbilityPointsChange?.(-1);
+    
+    if (onTargetSelect) {
+      onTargetSelect('fate_gambit_used', 0, 'ability', 'fates_gambit');
+    }
+    setShowBonusAction(hasActedThisTurn);
   };
 
-  // Handle Crescendo of Fate activation (Ultimate)
+  // Handle Crescendo of Fate activation (keeping existing logic)
   const handleActivateUltimate = async () => {
     if (isStormActive) {
       alert('Storm is already active!');
@@ -164,17 +160,15 @@ export function ScielCharacterSheet({
     }
 
     try {
-      // Activate the storm system with base damage
-      await StormService.activateStorm(sessionId, 3); // Base 3d6 damage
+      await triggerUltimate('sciel', 'Crescendo of Fate');
+      await StormService.activateStorm(sessionId, 5); // Always 5-turn storm now
+      onAbilityPointsChange?.(-3);
       
-      // Consume ability points
-      onAbilityPointsChange(-3);
+      if (onTargetSelect) {
+        onTargetSelect('storm_activated', 0, 'ultimate', 'crescendo_of_fate');
+      }
       
-      // Mark as having acted
-      onTargetSelect('action_taken', 0, 'ultimate', 'crescendo_of_fate');
-      
-      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
-      
+      setShowBonusAction(hasActedThisTurn);
     } catch (error) {
       console.error('Failed to activate Crescendo of Fate:', error);
       alert('Failed to activate storm system!');
@@ -194,25 +188,6 @@ export function ScielCharacterSheet({
       }
     }
 
-    // Check bonus action cooldown
-    if (action.isBonusAction && bonusActionCooldown > 0) {
-      alert(`Bonus action on cooldown for ${bonusActionCooldown} more rounds`);
-      return;
-    }
-
-    // Handle Draw Fate special case
-    if (action.id === 'draw_fate') {
-      const card = drawFateCard();
-      setDrawnCard(card);
-      
-      // Consume ability points and mark turn as used
-      onAbilityPointsChange(-action.cost);
-      onTargetSelect('action_taken', 0, 'ability', action.id);
-      
-      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
-      return;
-    }
-
     setSelectedAction(action);
     setSelectedTarget('');
     setACRoll('');
@@ -226,63 +201,144 @@ export function ScielCharacterSheet({
       FirestoreService.clearTargetingState(sessionId);
     }
 
-    // Handle Bonus Action (Guiding Cards)
-    if (selectedAction.isBonusAction) {
-      onTargetSelect('bonus_action_used', 0, 'bonus', selectedAction.id);
-      onBonusActionCooldownChange(3);
+    // Handle Card Toss (basic attack)
+    if (selectedAction.id === 'card_toss') {
+      if (!selectedTarget || !acRoll) {
+        alert('Please select target and enter AC roll');
+        return;
+      }
+
+      const enemy = availableEnemies.find(e => e.id === selectedTarget);
+      if (!enemy) return;
+
+      const distance = calculateDistance(playerPosition, enemy.position);
+      const finalAC = applyRangePenalty(parseInt(acRoll), distance);
+      const hit = finalAC >= enemy.ac;
+
+      if (hit && chargedFateCard) {
+        // Handle special card effects
+        if (chargedFateCard === 'explosive') {
+          // Create AoE action for explosion
+          const nearbyEnemies = availableEnemies.filter(e => {
+            if (e.id === selectedTarget) return true; // Include primary target
+            const distanceToTarget = calculateDistance(enemy.position, e.position);
+            return distanceToTarget <= 10;
+          });
+
+          if (nearbyEnemies.length > 0) {
+            await FirestoreService.createAoEAction(sessionId, {
+              playerId: character.id,
+              abilityName: `💥 Explosive Card Toss`,
+              targetIds: nearbyEnemies.map(e => e.id),
+              targetNames: nearbyEnemies.map(e => e.name),
+              center: enemy.position,
+              radius: 10,
+              acRoll: finalAC
+            });
+          }
+        } else {
+          // For switch and vanish cards, create special GM actions
+          await FirestoreService.createAttackAction(
+            sessionId,
+            character.id,
+            selectedTarget,
+            playerPosition,
+            finalAC,
+            chargedFateCard === 'switch' ? '🔄 Switch Card' : '👻 Vanish Card'
+          );
+        }
+        
+        // Consume the charged card
+        setChargedFateCard(null);
+      } else {
+        // Regular card toss
+        await FirestoreService.createAttackAction(
+          sessionId,
+          character.id,
+          selectedTarget,
+          playerPosition,
+          finalAC,
+          'Card Toss'
+        );
+      }
+
+      if (onTargetSelect) {
+        onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
+      }
+
       setSelectedAction(null);
+      setSelectedTarget('');
       setACRoll('');
-      setShowBonusAction(false);
+      setShowTargetingModal(false);
+      setShowBonusAction(hasActedThisTurn);
       return;
     }
 
-    // Handle regular abilities
-    if (selectedAction.type === 'ability') {
-      onAbilityPointsChange(-(selectedAction.cost || 0));
-      
-      const damage = selectedAction.id === 'card_toss' && drawnCard ? 
-        getDamageWithCard(drawnCard) : 0;
-      onTargetSelect(selectedTarget, parseInt(acRoll) || 0, 'ability', selectedAction.id);
-      
-      // Clear drawn card if Card Toss was used
-      if (selectedAction.id === 'card_toss' && drawnCard) {
-        setDrawnCard(null);
+    // Handle Rewrite Destiny
+    if (selectedAction.id === 'rewrite_destiny') {
+      if (!selectedTarget) {
+        alert('Please select an enemy to curse with disadvantage');
+        return;
       }
-    } else if (selectedAction.type === 'basic') {
-      const targetEnemy = availableEnemies.find(e => e.id === selectedTarget);
-      if (targetEnemy) {
-        const distance = calculateDistance(playerPosition, targetEnemy.position);
-        const effectiveAC = applyRangePenalty(targetEnemy.ac, distance);
-        const damage = drawnCard ? getDamageWithCard(drawnCard) : 0;
-        onTargetSelect(selectedTarget, parseInt(acRoll) || 0, 'attack', selectedAction.id);
+
+      await FirestoreService.createAttackAction(
+        sessionId,
+        character.id,
+        selectedTarget,
+        playerPosition,
+        0, // No AC roll needed
+        'Rewrite Destiny (Disadvantage next turn)'
+      );
+
+      onAbilityPointsChange?.(-selectedAction.cost!);
+      if (onTargetSelect) {
+        onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
       }
-      
-      // Clear drawn card after Card Toss
-      if (drawnCard) {
-        setDrawnCard(null);
-      }
+      setSelectedAction(null);
+      setShowBonusAction(hasActedThisTurn);
+      return;
     }
 
-    setSelectedAction(null);
-    setSelectedTarget('');
-    setACRoll('');
-    setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
+    // Handle Glimpse Future
+    if (selectedAction.id === 'glimpse_future') {
+      if (!selectedTarget) {
+        alert('Please select an ally to grant advantage');
+        return;
+      }
+
+      await FirestoreService.createAttackAction(
+        sessionId,
+        character.id,
+        selectedTarget,
+        playerPosition,
+        0, // No AC roll needed
+        'Glimpse Future (Advantage next turn)'
+      );
+
+      onAbilityPointsChange?.(-selectedAction.cost!);
+      if (onTargetSelect) {
+        onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
+      }
+      setSelectedAction(null);
+      setShowBonusAction(hasActedThisTurn);
+      return;
+    }
+
+    // Handle Fate's Gambit
+    if (selectedAction.id === 'fates_gambit') {
+      handleFatesGambit();
+      setSelectedAction(null);
+      return;
+    }
   };
 
-  // Get damage description with card effects
-  const getDamageWithCard = (card: DrawnCard): number => {
-    // Return 0 for now, actual damage will be calculated in game logic
-    return 0;
-  };
-
-  // Handle cancel action
   const handleCancelAction = () => {
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
     setShowBonusAction(false);
     setShowTargetingModal(false);
-    onCancelTargeting();
+    onCancelTargeting?.();
   };
 
   const abilityPoints = character.charges || 0;
@@ -292,8 +348,10 @@ export function ScielCharacterSheet({
     type: 'basic' as const,
     id: 'card_toss',
     name: 'Card Toss',
-    description: drawnCard ? `${drawnCard.description}` : 'Ranged attack with mystical cards',
-    damage: drawnCard ? `1d6 slashing + 1d4 radiant + ${drawnCard.name}` : '1d6 slashing + 1d4 radiant',
+    description: chargedFateCard 
+      ? `Enhanced with ${chargedFateCard === 'explosive' ? '💥 Explosive' : chargedFateCard === 'switch' ? '🔄 Switch' : '👻 Vanish'} Card`
+      : 'Ranged attack with magical cards',
+    damage: '1d6 slashing + 1d4 radiant',
     icon: Circle,
     range: 'Unlimited',
   };
@@ -303,39 +361,32 @@ export function ScielCharacterSheet({
       type: 'ability' as const,
       id: 'rewrite_destiny',
       name: 'Rewrite Destiny',
-      description: 'Target enemy rolls with disadvantage on their next action',
-      damage: 'Tactical debuff',
+      description: 'Curse an enemy with disadvantage on their next turn',
+      damage: 'Disadvantage debuff',
       cost: 1,
-      range: 'Any enemy in sight',
+      range: 'Any enemy',
+      targetType: 'enemy' as const,
     },
     {
       type: 'ability' as const,
-      id: 'glimpse_future', 
+      id: 'glimpse_future',
       name: 'Glimpse Future',
-      description: 'Target ally gains advantage on their next action',
-      damage: 'Tactical buff',
-      cost: 1,
-      range: 'Any ally in sight',
+      description: 'Grant an ally advantage on their next turn',
+      damage: 'Advantage buff',
+      cost: 2,
+      range: 'Any ally',
+      targetType: 'ally' as const,
     },
     {
       type: 'ability' as const,
-      id: 'draw_fate',
-      name: 'Draw Fate',
-      description: 'Draw random card to enhance next Card Toss',
-      damage: 'Enhances next attack',
-      cost: 2,
-      range: 'Self-buff',
+      id: 'fates_gambit',
+      name: "Fate's Gambit",
+      description: 'Randomly enhance your next Card Toss with a special effect',
+      damage: 'Card enhancement',
+      cost: 1,
+      range: 'Self',
     },
   ];
-
-  const bonusAction = {
-    type: 'bonus' as const,
-    id: 'guiding_cards',
-    name: 'Guiding Cards',
-    description: 'Grant an ally +1d4 to their next attack or saving throw',
-    damage: 'Support ally',
-    isBonusAction: true,
-  };
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
@@ -345,92 +396,140 @@ export function ScielCharacterSheet({
           <div className="flex items-center space-x-3">
             <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
               {portraitUrl ? (
-                <img src={portraitUrl} alt={character.name} className="w-full h-full object-cover" />
+                <img 
+                  src={portraitUrl} 
+                  alt={character.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    console.error(`Failed to load image for ${character.name}`);
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
               ) : (
-                <Circle className="w-8 h-8 text-clair-gold-400" />
+                <User className="w-8 h-8 text-clair-gold-200" />
               )}
             </div>
             <div>
-              <h1 className="font-display text-2xl font-bold text-clair-gold-400">{character.name}</h1>
-              <p className="font-serif text-clair-gold-200">Tarot Warrior</p>
+              <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
+              <p className="font-serif italic text-clair-gold-200 text-sm">{character.role}</p>
             </div>
           </div>
-          <div className="text-right">
-            <button
-              onClick={handleOpenInventory}
-              className="bg-clair-gold-600 hover:bg-clair-gold-700 px-4 py-2 rounded-lg font-bold text-clair-shadow-900 transition-colors"
-            >
-              Inventory
-            </button>
-          </div>
+          
+          {/* Turn Indicator */}
+          {isMyTurn && combatActive && (
+            <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
+              Your Turn
+            </div>
+          )}
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
-      <div className="p-4 space-y-6">
-        {/* Character Stats */}
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600">
-          <h2 className="font-display text-xl font-bold text-clair-gold-400 mb-3">Character Stats</h2>
-          <div className="grid grid-cols-2 gap-4 text-white">
-            <div>
-              <span className="font-bold">HP:</span> {character.currentHP}/{character.maxHP}
-            </div>
-            <div>
-              <span className="font-bold">AC:</span> {character.stats ? (10 + Math.floor((character.stats.dex - 10) / 2)) : 13}
-            </div>
-            <div>
-              <span className="font-bold">Ability Points:</span> {abilityPoints}/5
-            </div>
-            <div className="flex items-center">
-              <span className="font-bold mr-2">Status:</span>
-              {hasActedThisTurn ? (
-                <span className="text-red-400">Turn Used</span>
-              ) : (
-                <span className="text-green-400">Ready</span>
-              )}
-            </div>
-          </div>
-
-          {/* Ability Points Visual */}
-          <div className="mt-3">
-            <div className="flex space-x-1">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-3 h-3 rounded-full border ${
-                    i < abilityPoints 
-                      ? 'bg-clair-gold-500 border-clair-gold-400 shadow-lg' 
-                      : 'bg-clair-shadow-800 border-clair-shadow-400'
-                  }`}
+      <div className="px-4 pt-4">
+        {portraitUrl && (
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
+            <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
+                <img 
+                  src={portraitUrl} 
+                  alt={`${character.name} portrait`}
+                  className="w-full h-full object-cover"
+                  style={{ imageRendering: 'crisp-edges' }}
                 />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Drawn Card Display */}
-        {drawnCard && (
-          <div className="bg-purple-900 bg-opacity-30 border border-purple-500 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-purple-300 font-bold flex items-center">
-                <Shuffle className="w-5 h-5 mr-2" />
-                {drawnCard.name} Drawn!
-              </h3>
-            </div>
-            <p className="text-purple-200 text-sm">{drawnCard.description}</p>
-            <div className="text-xs text-purple-400 mt-1">
-              Effect will trigger on your next Card Toss
+              </div>
             </div>
           </div>
         )}
 
-        {/* Bonus Action Cooldown */}
-        {bonusActionCooldown > 0 && (
-          <div className="bg-blue-900 bg-opacity-30 border border-blue-500 rounded-lg p-3 mb-4 flex items-center">
-            <Heart className="w-5 h-5 text-blue-400 mr-3" />
-            <span className="font-sans text-blue-300">
-              <strong>Guiding Cards</strong> available in {bonusActionCooldown} rounds
+        {/* Storm Status */}
+        {stormState && isStormActive && (
+          <div className="mb-4">
+            <StormIndicator stormState={stormState} />
+          </div>
+        )}
+
+        {/* Action Status */}
+        {isMyTurn && combatActive && hasActedThisTurn && (
+          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
+            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
+            <span className="font-sans text-clair-success">
+              Action completed this turn - Click "End Turn" when ready
             </span>
+          </div>
+        )}
+
+        {/* HP TRACKER */}
+        <HPTracker currentHP={character.currentHP} maxHP={character.maxHP} onHPChange={onHPChange} isLoading={isLoading} showControls={false}/>
+
+        {/* ABILITY SCORES */}
+        <StatDisplay stats={character.stats} />
+
+        <div className="mb-6">
+          <button
+            onClick={handleOpenInventory}
+            className="w-full bg-clair-shadow-600 hover:bg-clair-shadow-500 border border-clair-gold-600 text-clair-gold-200 p-3 rounded-lg transition-colors flex items-center justify-center"
+          >
+            <Package className="w-5 h-5 mr-2" />
+            <span className="font-serif font-bold">Inventory</span>
+            {inventory.length > 0 && (
+              <span className="ml-2 bg-clair-gold-600 text-clair-shadow-900 px-2 py-1 rounded-full text-xs font-bold">
+                {inventory.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Ability Points */}
+        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-gold-600">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center">
+              <Sparkles className="w-6 h-6 text-clair-gold-500 mr-2" />
+              <h3 className="font-display text-lg font-bold text-clair-gold-400">Ability Points</h3>
+            </div>
+            <div className="font-serif text-2xl font-bold text-clair-gold-50">{abilityPoints} / 3</div>
+          </div>
+          
+          <div className="flex justify-center space-x-2 mb-2">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
+                  index < abilityPoints 
+                    ? 'bg-clair-gold-500 border-clair-gold-400 shadow-lg' 
+                    : 'bg-clair-shadow-800 border-clair-shadow-400'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Charged Fate Card Display */}
+        {chargedFateCard && (
+          <div className="bg-purple-900 bg-opacity-30 border border-purple-500 rounded-lg p-4 mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-purple-300 font-bold flex items-center">
+                <Shuffle className="w-5 h-5 mr-2" />
+                Fate Card Charged
+              </h3>
+            </div>
+            <div className="text-center">
+              <div className="text-2xl mb-2">
+                {chargedFateCard === 'explosive' && '💥'}
+                {chargedFateCard === 'switch' && '🔄'}
+                {chargedFateCard === 'vanish' && '👻'}
+              </div>
+              <div className="text-purple-200 font-bold text-lg mb-1">
+                {chargedFateCard === 'explosive' && 'Explosive Card'}
+                {chargedFateCard === 'switch' && 'Switch Card'}
+                {chargedFateCard === 'vanish' && 'Vanish Card'}
+              </div>
+              <div className="text-purple-300 text-sm">
+                {chargedFateCard === 'explosive' && 'Next Card Toss will explode, hitting all enemies within 10ft'}
+                {chargedFateCard === 'switch' && 'Next Card Toss will swap positions with the target'}
+                {chargedFateCard === 'vanish' && 'Next Card Toss will banish target for 2 rounds'}
+              </div>
+            </div>
           </div>
         )}
 
@@ -439,21 +538,22 @@ export function ScielCharacterSheet({
           <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Combat Actions</h3>
 
           {!selectedAction ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Basic Attack */}
               <div>
                 <h4 className="text-sm font-bold text-green-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={hasActedThisTurn}
+                  disabled={!isMyTurn || !combatActive || (hasActedThisTurn && !showBonusAction) || isStormActive}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                 >
                   <div className="flex items-center">
                     <Circle className="w-4 h-4 mr-2" />
                     <span className="font-bold">{basicAttack.name}</span>
-                    {drawnCard && (
+                    {chargedFateCard && (
                       <span className="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">
-                        {drawnCard.name.toUpperCase()}
+                        {chargedFateCard === 'explosive' ? '💥 EXPLOSIVE' : 
+                         chargedFateCard === 'switch' ? '🔄 SWITCH' : '👻 VANISH'}
                       </span>
                     )}
                   </div>
@@ -464,25 +564,26 @@ export function ScielCharacterSheet({
 
               {/* Abilities */}
               <div>
-                <h4 className="text-sm font-bold text-blue-300 mb-2">Abilities</h4>
-                <div className="grid gap-2">
+                <h4 className="text-sm font-bold text-green-300 mb-2">Abilities</h4>
+                <div className="space-y-2">
                   {abilities.map((ability) => (
                     <button
                       key={ability.id}
                       onClick={() => handleActionSelect(ability)}
-                      disabled={hasActedThisTurn || Boolean(ability.cost && abilityPoints < ability.cost)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost || (hasActedThisTurn && !showBonusAction) || isStormActive}
+                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center">
-                          {ability.id === 'rewrite_destiny' && <Eye className="w-4 h-4 mr-2" />}
-                          {ability.id === 'glimpse_future' && <Zap className="w-4 h-4 mr-2" />}
-                          {ability.id === 'draw_fate' && <Shuffle className="w-4 h-4 mr-2" />}
-                          <span className="font-bold">{ability.name}</span>
-                        </div>
-                        <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.cost} AP
+                      <div className="flex items-center">
+                        <Zap className="w-4 h-4 mr-2" />
+                        <span className="font-bold">{ability.name}</span>
+                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                          {ability.cost} pts
                         </span>
+                        {ability.targetType === 'ally' && (
+                          <span className="ml-2 text-xs bg-blue-600 px-2 py-1 rounded">
+                            ALLY
+                          </span>
+                        )}
                       </div>
                       <div className="text-sm opacity-90 mt-1">{ability.description}</div>
                       <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
@@ -491,56 +592,37 @@ export function ScielCharacterSheet({
                 </div>
               </div>
 
-              {/* Ultimate */}
+              {/* Ultimate Ability - Crescendo of Fate */}
               <div>
-                <h4 className="text-sm font-bold text-red-300 mb-2">Ultimate</h4>
+                <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
                 <button
                   onClick={handleActivateUltimate}
-                  disabled={abilityPoints < 3 || isStormActive}
-                  className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                  disabled={!isMyTurn || !combatActive || abilityPoints < 3 || isStormActive || (hasActedThisTurn && !showBonusAction)}
+                  className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
+                    isStormActive || abilityPoints < 3
+                      ? 'bg-gray-600 cursor-not-allowed opacity-50'
+                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+                  }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Target className="w-4 h-4 mr-2" />
-                      <span className="font-bold">Crescendo of Fate</span>
-                    </div>
-                    <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      3 AP
+                  <div className="flex items-center">
+                    <span className="text-xl mr-2">⚡</span>
+                    <span className="font-bold">Crescendo of Fate</span>
+                    <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                      3 pts
                     </span>
+                    <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                   </div>
                   <div className="text-sm opacity-90 mt-1">
                     {isStormActive 
                       ? '⚡ Storm Active - Radiant fury rages!'
-                      : '5-turn radiant storm (3d6 per turn)'
+                      : '5-turn radiant storm of destiny'
                     }
                   </div>
                   <div className="text-xs text-clair-gold-200 mt-1">
-                    Auto-targeting storm: 3d6 radiant per turn (triggers on Sciel's turns only)
+                    Auto-targeting storm: 3d6 radiant per turn (triggers on Sciel's turn only)
                   </div>
                 </button>
               </div>
-
-              {/* Bonus Action */}
-              {showBonusAction && (
-                <div>
-                  <h4 className="text-sm font-bold text-blue-300 mb-2">Bonus Action</h4>
-                  <button
-                    onClick={() => handleActionSelect(bonusAction)}
-                    disabled={bonusActionCooldown > 0}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
-                  >
-                    <div className="flex items-center">
-                      <Heart className="w-4 h-4 mr-2" />
-                      <span className="font-bold">{bonusAction.name}</span>
-                      <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                        BONUS
-                      </span>
-                    </div>
-                    <div className="text-sm opacity-90 mt-1">{bonusAction.description}</div>
-                    <div className="text-xs text-clair-gold-200 mt-1">{bonusAction.damage}</div>
-                  </button>
-                </div>
-              )}
             </div>
           ) : (
             /* Action Resolution */
@@ -555,123 +637,142 @@ export function ScielCharacterSheet({
                 </button>
               </div>
 
-              {/* Show action-specific UI */}
-              {(selectedAction.id === 'rewrite_destiny' || selectedAction.id === 'glimpse_future') && (
+              {/* Fate's Gambit - No targeting needed */}
+              {selectedAction.id === 'fates_gambit' && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
-                    <p className="text-blue-200 text-sm">
-                      {selectedAction.id === 'rewrite_destiny' 
-                        ? 'Select an enemy to curse with disadvantage on their next action.'
-                        : 'Select an ally to bless with advantage on their next action.'
-                      }
+                  <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg">
+                    <p className="text-purple-200 text-sm">
+                      This will randomly select an Explosive, Switch, or Vanish card to enhance your next Card Toss.
+                      <br/><strong>Using Fate's Gambit will end your turn.</strong>
                     </p>
                   </div>
-                  <button
-                    onClick={() => setShowTargetingModal(true)}
-                    className="w-full bg-green-600 hover:bg-green-700 p-2 rounded text-white font-bold"
-                  >
-                    {selectedAction.id === 'rewrite_destiny' ? 'Select Enemy' : 'Select Ally'}
+                  <button onClick={handleConfirmAction} className="w-full bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-lg font-bold transition-colors">
+                    🎲 Roll Fate's Gambit
                   </button>
                 </div>
               )}
 
-              {(selectedAction.id === 'card_toss') && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-green-900 bg-opacity-30 rounded-lg">
-                    <p className="text-green-200 text-sm">
-                      {drawnCard ? 
-                        `Enhanced Card Toss: ${drawnCard.description}` :
-                        'Select an enemy to hit with your mystical cards.'
-                      }
-                    </p>
-                  </div>
+              {/* Actions requiring target selection */}
+              {(selectedAction.id === 'card_toss' || selectedAction.id === 'rewrite_destiny' || selectedAction.id === 'glimpse_future') && (
+                <>
                   <button
                     onClick={() => setShowTargetingModal(true)}
-                    className="w-full bg-green-600 hover:bg-green-700 p-2 rounded text-white font-bold"
+                    className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
                   >
-                    Select Target Enemy
+                    <Target className="w-5 h-5 mr-2" />
+                    Select {selectedAction.targetType === 'ally' ? 'Ally' : 'Target'}
+                    {selectedTarget && (
+                      <span className="ml-2 text-sm">
+                        ({(selectedAction.targetType === 'ally' ? getValidTargets('ally') : availableEnemies).find(e => e.id === selectedTarget)?.name})
+                      </span>
+                    )}
                   </button>
-                </div>
-              )}
 
-              {selectedTarget && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-gray-800 rounded-lg">
-                    <label className="block text-sm font-bold text-gray-300 mb-2">
-                      Attack Roll vs AC (d20 + modifiers):
-                    </label>
-                    <input
-                      type="text"
-                      value={acRoll}
-                      onChange={(e) => setACRoll(e.target.value)}
-                      placeholder="e.g., 15"
-                      className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
-                    />
-                  </div>
-                  <button
-                    onClick={handleConfirmAction}
-                    className="w-full bg-red-600 hover:bg-red-700 p-3 rounded text-white font-bold"
-                  >
-                    Confirm Action
-                  </button>
-                </div>
+                  {/* AC Roll Input for Card Toss only */}
+                  {selectedTarget && selectedAction.id === 'card_toss' && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-sm font-bold mb-2 text-clair-gold-300">
+                          Roll d20 + modifiers:
+                        </label>
+                        <input
+                          type="number"
+                          value={acRoll}
+                          onChange={(e) => setACRoll(e.target.value)}
+                          placeholder="Enter your attack roll total"
+                          className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
+                          min={1}
+                          max={30}
+                        />
+                      </div>
+                      <button
+                        onClick={handleConfirmAction}
+                        disabled={!acRoll}
+                        className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
+                      >
+                        {chargedFateCard ? (
+                          <>
+                            {chargedFateCard === 'explosive' && '💥 Explosive '}
+                            {chargedFateCard === 'switch' && '🔄 Switch '}
+                            {chargedFateCard === 'vanish' && '👻 Vanish '}
+                            Card Toss
+                          </>
+                        ) : (
+                          'Throw Card'
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Instant actions for buff/debuff abilities */}
+                  {selectedTarget && (selectedAction.id === 'rewrite_destiny' || selectedAction.id === 'glimpse_future') && (
+                    <button
+                      onClick={handleConfirmAction}
+                      className="w-full bg-purple-600 hover:bg-purple-700 text-white p-3 rounded-lg font-bold transition-colors"
+                    >
+                      {selectedAction.id === 'rewrite_destiny' ? '📜 Rewrite Destiny' : '🔮 Glimpse Future'}
+                    </button>
+                  )}
+
+                  {getValidTargets(selectedAction.targetType).length === 0 && (
+                    <div className="text-center text-clair-gold-400 py-4">
+                      No {selectedAction.targetType === 'ally' ? 'allies' : 'enemies'} available
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
-        </div>
 
-        {/* Combat Tips */}
-        <div className="bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
-          <h4 className="font-serif font-bold text-green-400 text-sm mb-2 p-4 pb-0">Combat Tips:</h4>
-          <ul className="text-xs text-green-300 space-y-1 p-4 pt-2">
-            <li>• Card Toss has unlimited range with mystical accuracy</li>
-            <li>• Rewrite Destiny gives enemy disadvantage on next roll</li>
-            <li>• Glimpse Future gives ally advantage on next roll</li> 
-            <li>• Draw Fate randomly enhances next Card Toss (risky but powerful!)</li>
-            <li>• Guiding Cards is a bonus action (3-round cooldown)</li>
-            <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on Sciel's turns only)!</strong></li>
-          </ul>
-        </div>
+          {/* End Turn */}
+          {isMyTurn && combatActive && !selectedAction && hasActedThisTurn && !showBonusAction && (
+            <button
+              onClick={onEndTurn}
+              className="w-full mt-4 p-3 rounded-lg font-bold transition-colors bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900"
+            >
+              <Eye className="w-5 h-5 inline mr-2" />
+              End Turn
+            </button>
+          )}
 
-        {/* Turn Management */}
-        {isMyTurn && combatActive && (
-          <div className="bg-clair-mystical-600 rounded-lg shadow-shadow p-4 border border-clair-mystical-400">
-            <h3 className="font-display text-lg font-bold text-white mb-3">Your Turn</h3>
-            <div className="flex space-x-2">
-              <button
-                onClick={onEndTurn}
-                disabled={!hasActedThisTurn}
-                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition-colors"
-              >
-                End Turn
-              </button>
-            </div>
+          {/* Tips */}
+          <div className="mt-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
+            <h4 className="font-serif font-bold text-green-400 text-sm mb-2">Combat Tips:</h4>
+            <ul className="text-xs text-green-300 space-y-1">
+              <li>• Card Toss: Ranged attack with unlimited range</li>
+              <li>• Rewrite Destiny: Enemy gets disadvantage on next turn</li>
+              <li>• Glimpse Future: Ally gets advantage on next turn</li>
+              <li>• Fate's Gambit: Random card effect for next Card Toss</li>
+              <li>• Ranged attacks get -2 AC penalty per 5ft beyond 30ft</li>
+              <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on your turns)!</strong></li>
+            </ul>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Enemy Targeting Modal */}
+      {/* Enemy/Ally Targeting Modal */}
       <EnemyTargetingModal
         isOpen={showTargetingModal}
         onClose={() => setShowTargetingModal(false)}
-        enemies={availableEnemies}
+        enemies={selectedAction?.targetType === 'ally' ? getValidTargets('ally') : availableEnemies}
         playerPosition={playerPosition}
         sessionId={sessionId}
         playerId={character.id}
-        onSelectEnemy={(enemy: Enemy) => {
-          setSelectedTarget(enemy.id);
+        onSelectEnemy={(target) => {
+          setSelectedTarget(target.id);
+          setShowTargetingModal(false);
         }}
         selectedEnemyId={selectedTarget}
         abilityName={selectedAction?.name}
-        abilityRange={999} // Sciel has unlimited range
+        abilityRange={999}
       />
 
       <InventoryModal
         isOpen={showInventoryModal}
         characterName={character.name}
-        inventory={[]}
-        goldAmount={0}
-        isLoading={false}
+        inventory={inventory}
+        goldAmount={goldAmount}
+        isLoading={inventoryLoading}
         onClose={() => setShowInventoryModal(false)}
       />
     </div>

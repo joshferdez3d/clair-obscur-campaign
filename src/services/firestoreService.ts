@@ -26,7 +26,9 @@ import type {
   Position,
   CombatAction,
   InitiativeEntry,
-  GMCombatAction // Import from types file
+  GMCombatAction, // Import from types file
+  ActiveBuff, // NEW: Import for buff/debuff tracking  
+  VanishedEnemy 
 } from '../types';
 import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
@@ -119,6 +121,328 @@ export class FirestoreService {
       throw error;
     }
   }
+
+  // NEW: Create buff/debuff action (Rewrite Destiny, Glimpse Future)
+  static async createBuffAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      targetId: string;
+      abilityName: string;
+      buffType: 'advantage' | 'disadvantage';
+      duration: number; // Number of turns
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    const targetToken = session.tokens[payload.targetId] || 
+      Object.values(session.tokens).find(t => t.characterId === payload.targetId);
+    
+    if (!playerToken) throw new Error('Player token not found');
+    if (!targetToken) throw new Error('Target token not found');
+
+    const action: GMCombatAction = {
+      id: `buff-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      targetId: payload.targetId,
+      sourcePosition: playerToken.position,
+      acRoll: 0, // Not relevant for buffs
+      range: 0,
+      timestamp: new Date(),
+      resolved: false,
+      hit: true, // Buffs always "hit"
+      needsDamageInput: false,
+      damageApplied: false,
+      playerName: playerToken.name,
+      targetName: targetToken.name,
+      abilityName: payload.abilityName,
+      buffType: payload.buffType,
+      duration: payload.duration
+    };
+
+    // Apply the buff immediately to session
+    const currentRound = session.combatState?.round || 1;
+    const newBuff: ActiveBuff = {
+      id: action.id,
+      type: payload.buffType,
+      targetId: payload.targetId,
+      targetName: targetToken.name,
+      sourcePlayer: payload.playerId,
+      appliedOnRound: currentRound,
+      duration: payload.duration,
+      turnsRemaining: payload.duration,
+      createdAt: Date.now()
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      activeBuffs: arrayUnion(newBuff),
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`Applied ${payload.buffType} to ${targetToken.name} for ${payload.duration} turns`);
+    return action;
+  }
+
+  // NEW: Create switch card action
+  static async createSwitchCardAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      targetId: string;
+      playerPosition: { x: number; y: number };
+      targetPosition: { x: number; y: number };
+      acRoll: number;
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    const targetToken = session.tokens[payload.targetId];
+    
+    if (!playerToken) throw new Error('Player token not found');
+    if (!targetToken) throw new Error('Target token not found');
+
+    const action: GMCombatAction = {
+      id: `switch-card-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      targetId: payload.targetId,
+      sourcePosition: payload.playerPosition,
+      acRoll: payload.acRoll,
+      range: 999,
+      timestamp: new Date(),
+      resolved: false,
+      hit: payload.acRoll >= (targetToken.ac || 13),
+      needsDamageInput: payload.acRoll >= (targetToken.ac || 13), // If hit, apply damage + switch
+      damageApplied: false,
+      playerName: playerToken.name,
+      targetName: targetToken.name,
+      abilityName: 'Switch Card',
+      cardType: 'switch',
+      switchData: {
+        playerId: payload.playerId,
+        playerPosition: payload.playerPosition,
+        targetPosition: payload.targetPosition
+      }
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      updatedAt: serverTimestamp()
+    });
+
+    return action;
+  }
+
+  // NEW: Create vanish card action
+  static async createVanishCardAction(
+    sessionId: string,
+    payload: {
+      playerId: string;
+      targetId: string;
+      acRoll: number;
+    }
+  ): Promise<GMCombatAction> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const playerToken = Object.values(session.tokens).find(t => t.characterId === payload.playerId);
+    const targetToken = session.tokens[payload.targetId];
+    
+    if (!playerToken) throw new Error('Player token not found');
+    if (!targetToken) throw new Error('Target token not found');
+
+    const currentRound = session.combatState?.round || 1;
+    const returnsOnRound = currentRound + 2; // Returns after 2 rounds
+
+    const action: GMCombatAction = {
+      id: `vanish-card-${Date.now()}`,
+      type: 'ability',
+      playerId: payload.playerId,
+      targetId: payload.targetId,
+      sourcePosition: playerToken.position,
+      acRoll: payload.acRoll,
+      range: 999,
+      timestamp: new Date(),
+      resolved: false,
+      hit: payload.acRoll >= (targetToken.ac || 13),
+      needsDamageInput: payload.acRoll >= (targetToken.ac || 13), // If hit, apply damage + vanish
+      damageApplied: false,
+      playerName: playerToken.name,
+      targetName: targetToken.name,
+      abilityName: 'Vanish Card',
+      cardType: 'vanish',
+      vanishData: {
+        targetId: payload.targetId,
+        targetName: targetToken.name,
+        returnsOnRound: returnsOnRound
+      }
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      pendingActions: arrayUnion(action),
+      updatedAt: serverTimestamp()
+    });
+
+    return action;
+  }
+
+  // NEW: Apply switch positions after damage is applied
+static async applySwitchPositions(sessionId: string, actionId: string): Promise<void> {
+  const session = await this.getBattleSession(sessionId);
+  if (!session || !session.pendingActions) return;
+
+  const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
+  if (!action || !action.switchData || action.resolved) return;
+
+  const updatedTokens = { ...session.tokens };
+  
+  // Find player and target tokens
+  const playerToken = Object.values(updatedTokens).find(t => t.characterId === action.playerId);
+  const targetToken = updatedTokens[action.targetId!];
+
+  if (playerToken && targetToken) {
+    // Swap positions
+    const tempPosition = { ...playerToken.position };
+    playerToken.position = { ...targetToken.position };
+    targetToken.position = tempPosition;
+
+    updatedTokens[playerToken.id] = playerToken;
+    updatedTokens[targetToken.id] = targetToken;
+
+    console.log(`Switched positions: ${playerToken.name} <-> ${targetToken.name}`);
+  }
+
+  // Mark action as resolved
+  const updatedActions = session.pendingActions.map(a =>
+    a.id === actionId ? { ...a, resolved: true, damageApplied: true } : a
+  );
+
+  const ref = doc(db, 'battleSessions', sessionId);
+  await updateDoc(ref, {
+    tokens: updatedTokens,
+    pendingActions: updatedActions,
+    updatedAt: serverTimestamp()
+  });
+}
+
+// NEW: Apply vanish effect after damage is applied
+static async applyVanishEffect(sessionId: string, actionId: string): Promise<void> {
+  const session = await this.getBattleSession(sessionId);
+  if (!session || !session.pendingActions) return;
+
+  const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
+  if (!action || !action.vanishData || action.resolved) return;
+
+  const targetToken = session.tokens[action.targetId!];
+  if (!targetToken) return;
+
+  // Create vanished enemy record
+  const vanishedEnemy: VanishedEnemy = {
+    id: action.vanishData.targetId,
+    enemyData: { ...targetToken },
+    vanishedOnRound: session.combatState?.round || 1,
+    returnsOnRound: action.vanishData.returnsOnRound,
+    vanishedBy: action.playerId
+  };
+
+  // Remove token from battlefield
+  const updatedTokens = { ...session.tokens };
+  delete updatedTokens[action.targetId!];
+
+  // Mark action as resolved
+  const updatedActions = session.pendingActions.map(a =>
+    a.id === actionId ? { ...a, resolved: true, damageApplied: true } : a
+  );
+
+  const ref = doc(db, 'battleSessions', sessionId);
+  await updateDoc(ref, {
+    tokens: updatedTokens,
+    pendingActions: updatedActions,
+    vanishedEnemies: arrayUnion(vanishedEnemy),
+    updatedAt: serverTimestamp()
+  });
+
+  console.log(`${targetToken.name} vanished until round ${action.vanishData.returnsOnRound}`);
+}
+
+// NEW: Process buff/debuff expirations and vanished enemy returns
+static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
+  const session = await this.getBattleSession(sessionId);
+  if (!session) return;
+
+  const currentRound = session.combatState?.round || 1;
+  let needsUpdate = false;
+  const updates: any = {};
+
+  // Process active buffs
+  if (session.activeBuffs) {
+    const beforeCount = session.activeBuffs.length;
+    const activeBuffs = session.activeBuffs.filter((buff: ActiveBuff) => {
+      const roundsElapsed = currentRound - buff.appliedOnRound;
+      const shouldKeep = roundsElapsed < buff.duration;
+      if (!shouldKeep) {
+        console.log(`Expired buff: ${buff.type} on ${buff.targetName}`);
+      }
+      return shouldKeep;
+    });
+    
+    if (activeBuffs.length !== beforeCount) {
+      updates.activeBuffs = activeBuffs;
+      needsUpdate = true;
+      console.log(`Cleaned up ${beforeCount - activeBuffs.length} expired buffs`);
+    }
+  }
+
+  // Process vanished enemies
+  if (session.vanishedEnemies) {
+    const beforeCount = session.vanishedEnemies.length;
+    const returningEnemies: VanishedEnemy[] = [];
+    const stillVanished: VanishedEnemy[] = [];
+
+    session.vanishedEnemies.forEach((vanished: VanishedEnemy) => {
+      if (currentRound >= vanished.returnsOnRound) {
+        returningEnemies.push(vanished);
+      } else {
+        stillVanished.push(vanished);
+      }
+    });
+
+    if (returningEnemies.length > 0) {
+      // Return vanished enemies to battlefield
+      const updatedTokens = { ...session.tokens };
+      returningEnemies.forEach(vanished => {
+        updatedTokens[vanished.id] = vanished.enemyData;
+        console.log(`${vanished.enemyData.name} returned from vanish on round ${currentRound}`);
+      });
+      updates.tokens = updatedTokens;
+      updates.vanishedEnemies = stillVanished;
+      needsUpdate = true;
+    } else if (stillVanished.length !== beforeCount) {
+      updates.vanishedEnemies = stillVanished;
+      needsUpdate = true;
+    }
+  }
+
+  if (needsUpdate) {
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      ...updates,
+      updatedAt: serverTimestamp()
+    });
+    console.log('Processed buffs and vanished enemies');
+  }
+}
+
+
 
   // ========== BATTLE MAP PRESET MANAGEMENT ==========
 
@@ -306,7 +630,7 @@ export class FirestoreService {
       return null;
     }
   }
-  
+
   static async updateCharacterHP(characterId: string, newHP: number) {
     const ref = doc(db, 'characters', characterId);
     await updateDoc(ref, {
@@ -1484,6 +1808,7 @@ export class FirestoreService {
     });
   }
 
+  // UPDATE: Enhanced nextTurn method to include buff/vanish processing
   static async nextTurn(sessionId: string) {
     const session = await this.getBattleSession(sessionId);
     if (!session?.combatState) return;
@@ -1514,14 +1839,12 @@ export class FirestoreService {
       updatedAt: serverTimestamp()
     });
 
-
-
-
-    // 🔧 FIX: Clean up expired terrain effects after turn advancement
+    // Process terrain effects, protection effects, buffs, and vanished enemies
     await this.cleanupExpiredTerrain(sessionId);
-    await this.cleanupExpiredProtectionEffects(sessionId); // ADD THIS LINE
+    await this.cleanupExpiredProtectionEffects(sessionId);
+    await this.processBuffsAndVanishedEnemies(sessionId); // NEW
 
-    console.log('🔄 Turn advanced and terrain effects cleaned up');
+    console.log('Turn advanced and all effects processed');
   }
   static async setInitiativeOrder(sessionId: string, initiativeOrder: InitiativeEntry[]) {
     const ref = doc(db, 'battleSessions', sessionId);
@@ -1531,6 +1854,23 @@ export class FirestoreService {
       'combatState.currentTurn': initiativeOrder[0]?.id ?? '',
       updatedAt: serverTimestamp()
     });
+  }
+
+  // NEW: Helper method to check if a character has active buffs
+  static async getActiveBuffsForCharacter(sessionId: string, characterId: string): Promise<ActiveBuff[]> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.activeBuffs) return [];
+
+    return session.activeBuffs.filter((buff: ActiveBuff) => 
+      buff.targetId === characterId || 
+      Object.values(session.tokens).find(t => t.characterId === characterId)?.id === buff.targetId
+    );
+  }
+
+  // NEW: Helper method to get vanished enemies info
+  static async getVanishedEnemiesInfo(sessionId: string): Promise<VanishedEnemy[]> {
+    const session = await this.getBattleSession(sessionId);
+    return session?.vanishedEnemies || [];
   }
 
   // ========== Movement ==========

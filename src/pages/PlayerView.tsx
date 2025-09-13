@@ -455,7 +455,7 @@ export function PlayerView() {
     );
   }
 
-  if (character.name.toLowerCase() === 'sciel') {
+if (character.name.toLowerCase() === 'sciel') {
     return (
       <ScielCharacterSheet
         character={character}
@@ -473,12 +473,13 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={cancelTargeting}
         hasActedThisTurn={hasActedThisTurn}
-        foretellStacks={foretellStacks}
-        onStacksChange={setForetellStacks}
-        foretellChainCharged={foretellChainCharged}
-        onChainChargedChange={setForetellChainCharged}
-        bonusActionCooldown={bonusActionCooldown}
-        onBonusActionCooldownChange={setBonusActionCooldown}
+        // REMOVED: All Foretell-related props
+        // foretellStacks={foretellStacks}
+        // onStacksChange={setForetellStacks}
+        // foretellChainCharged={foretellChainCharged}
+        // onChainChargedChange={setForetellChainCharged}
+        // bonusActionCooldown={bonusActionCooldown}
+        // onBonusActionCooldownChange={setBonusActionCooldown}
       />
     );
   }

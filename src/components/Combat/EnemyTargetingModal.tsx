@@ -92,8 +92,6 @@ export function EnemyTargetingModal({
     setEnemySelectionCounts(newCounts);
   };
 
-  
-
   // Handle single enemy selection
   const handleSingleEnemySelect = async (enemyId: string) => {
     setLocalSelectedId(enemyId);

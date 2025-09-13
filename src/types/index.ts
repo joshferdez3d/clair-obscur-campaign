@@ -131,6 +131,34 @@ export interface CombatTargeting {
   sourcePosition?: Position;
 }
 
+export interface EnemyTargetingModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  enemies: Array<{
+    id: string;
+    name: string;
+    position: { x: number; y: number };
+    hp: number;
+    maxHp: number;
+    ac: number;
+  }>;
+  playerPosition: { x: number; y: number };
+  sessionId: string;
+  playerId: string;
+  onSelectEnemy: (enemy: {
+    id: string;
+    name: string;
+    position: { x: number; y: number };
+    hp: number;
+    maxHp: number;
+    ac: number;
+  }) => void;
+  selectedEnemyId: string;
+  abilityName?: string;
+  abilityRange: number;
+  actionConfirmSection?: React.ReactNode; // ADD THIS PROPERTY
+}
+
 // Base combat action interface
 export interface CombatAction {
   id: string;
@@ -174,14 +202,39 @@ export interface GMCombatAction extends CombatAction {
   needsDamageInput?: boolean;
   damageApplied?: boolean;
 
-  // Ultimate-specific properties
-  ultimateType?: string; // 'elemental_genesis', etc.
+  // ENHANCED: Sciel's card system (updated to support new abilities)
+  cardType?: 'explosive' | 'switch' | 'vanish';
+  cardName?: string;
+  primaryTargetId?: string;
+  explosionCenter?: { x: number; y: number };
+  description?: string;
+
+  // NEW: Sciel's buff/debuff abilities
+  abilityType?: 'rewrite_destiny' | 'glimpse_future' | 'fates_gambit';
+  buffType?: 'advantage' | 'disadvantage';
+  duration?: number; // For tracking how long buffs/debuffs last
+  
+  // NEW: Switch card data
+  switchData?: {
+    playerId: string;
+    playerPosition: { x: number; y: number };
+    targetPosition: { x: number; y: number };
+  };
+  
+  // NEW: Vanish card data
+  vanishData?: {
+    targetId: string;
+    targetName: string;
+    returnsOnRound: number; // Which round the enemy returns
+  };
+
+  // Ultimate-specific properties (keep existing)
+  ultimateType?: string;
   element?: 'fire' | 'ice' | 'nature' | 'light';
   effectName?: string;
-  description?: string;
   needsGMInteraction?: boolean;
 
-  // Element-specific data
+  // Element-specific data (keep existing)
   healingTargets?: Array<{
     id: string;
     name: string;
@@ -193,18 +246,18 @@ export interface GMCombatAction extends CombatAction {
   affectedSquares?: Array<{ x: number; y: number }>;
   affectedTokens?: string[];
   
-  // Fire terrain
+  // Fire terrain (keep existing)
   terrainCenter?: { x: number; y: number };
   
-  // Ice wall
+  // Ice wall (keep existing)
   wallType?: 'row' | 'column';
   wallIndex?: number;
   wallSquares?: Array<{ x: number; y: number }>;
   
-  // Light blind
+  // Light blind (keep existing)
   blindedSquares?: Array<{ x: number; y: number }>;
 
-  // Turret placement data
+  // Turret placement data (keep existing)
   turretData?: {
     name: string;
     hp: number;
@@ -214,6 +267,7 @@ export interface GMCombatAction extends CombatAction {
     size: number;
   };
 
+  // Protection data (keep existing)
   protectionData?: {
     protectorName: string;
     activatedOnRound: number;
@@ -222,6 +276,28 @@ export interface GMCombatAction extends CombatAction {
     protectedAlly: string;
     description: string;
   };
+}
+
+// NEW: Interface for tracking active buffs/debuffs in battle session
+export interface ActiveBuff {
+  id: string;
+  type: 'advantage' | 'disadvantage';
+  targetId: string; // Player or enemy ID
+  targetName: string;
+  sourcePlayer: string; // Who applied the buff/debuff
+  appliedOnRound: number;
+  duration: number; // How many turns it lasts
+  turnsRemaining: number;
+  createdAt: number;
+}
+
+// NEW: Interface for vanished enemies
+export interface VanishedEnemy {
+  id: string;
+  enemyData: BattleToken; // Full token data to restore
+  vanishedOnRound: number;
+  returnsOnRound: number;
+  vanishedBy: string; // Player who vanished them
 }
 
 // Fire terrain zone data
@@ -333,6 +409,8 @@ export interface BattleSession {
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
+  activeBuffs?: ActiveBuff[];
+  vanishedEnemies?: VanishedEnemy[];
 
   luneElementalGenesisUsed?: boolean;
 
@@ -412,7 +490,9 @@ export interface BattleSessionDoc {
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
-  
+  activeBuffs?: ActiveBuff[];
+  vanishedEnemies?: VanishedEnemy[];
+
   // NEW: Terrain effects from Elemental Genesis
   fireTerrainZones?: FireTerrainZone[];
   iceWalls?: IceWall[];
