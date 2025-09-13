@@ -317,6 +317,12 @@ export function PlayerView() {
       return;
     }
 
+    if (targetId === 'foretell_chain_charged') {
+      console.log('Foretell Chain used - setting hasActedThisTurn to TRUE');
+      setHasActedThisTurn(true);
+      return;
+    }
+
     // Handle Maelle's Afterimage system
     if (character.name.toLowerCase() === 'maelle' && attackType === 'basic') {
       const enemy = availableEnemies.find(e => e.id === targetId);

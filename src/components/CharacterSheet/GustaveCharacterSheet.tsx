@@ -11,6 +11,7 @@ import { Package } from 'lucide-react'; // Add Package to your existing lucide i
 import { InventoryModal } from './InventoryModal'; // Add this import
 import { InventoryService } from '../../services/inventoryService'; // Add this import
 import type { InventoryItem } from '../../types'; // Add this import
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
 
 interface GustaveCharacterSheetProps {
   character: Character;
@@ -76,9 +77,8 @@ export function GustaveCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
-  const [goldAmount, setGoldAmount] = useState(0);
+  const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+
   const [selectedAction, setSelectedAction] = useState<{
     type: 'melee' | 'ranged' | 'ability';
     id: string;
@@ -91,27 +91,6 @@ export function GustaveCharacterSheet({
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
   };
-
-  useEffect(() => {
-    const loadInventory = async () => {
-      if (character?.id) {
-        setInventoryLoading(true);
-        try {
-          const characterData = await InventoryService.getCharacterInventory(character.id);
-          setInventory(characterData?.inventory || []);
-
-          const gold = await InventoryService.getCharacterGold(character.id);
-          setGoldAmount(gold);
-        } catch (error) {
-          console.error('Failed to load inventory:', error);
-        } finally {
-          setInventoryLoading(false);
-        }
-      }
-    };
-
-    loadInventory();
-  }, [character?.id]);
 
 
 

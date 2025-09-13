@@ -14,6 +14,7 @@ import { Package } from 'lucide-react'; // Add Package to your existing lucide i
 import { InventoryModal } from './InventoryModal'; // Add this import
 import { InventoryService } from '../../services/inventoryService'; // Add this import
 import type { InventoryItem } from '../../types'; // Add this import
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
 
 interface ScielCharacterSheetProps {
   character: Character;
@@ -76,8 +77,8 @@ export function ScielCharacterSheet({
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'bonus';
     id: string;
@@ -87,31 +88,11 @@ export function ScielCharacterSheet({
     cost?: number;
     isBonusAction?: boolean;
   } | null>(null);
-  const [goldAmount, setGoldAmount] = useState(0);
 
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
   };
 
-  useEffect(() => {
-    const loadInventory = async () => {
-      if (character?.id) {
-        setInventoryLoading(true);
-        try {
-          const characterData = await InventoryService.getCharacterInventory(character.id);
-          setInventory(characterData?.inventory || []);
-          const gold = await InventoryService.getCharacterGold(character.id);
-          setGoldAmount(gold);
-        } catch (error) {
-          console.error('Failed to load inventory:', error);
-        } finally {
-          setInventoryLoading(false);
-        }
-      }
-    };
-
-    loadInventory();
-  }, [character?.id]);
 
   const [showBonusAction, setShowBonusAction] = useState(false);
 
@@ -282,66 +263,68 @@ export function ScielCharacterSheet({
       return;
     }
 
-    // Handle Card Toss (basic attack)
-    if (selectedAction.id === 'card_toss') {
-      if (!selectedTarget || !acRoll) {
-        alert('Please select target and enter AC roll');
-        return;
-      }
-
-      const enemy = availableEnemies.find(e => e.id === selectedTarget);
-      if (!enemy) return;
-
-      // Apply range penalty
-      const distance = calculateDistance(playerPosition, enemy.position);
-      const finalAC = applyRangePenalty(parseInt(acRoll), distance);
-      const hit = finalAC >= enemy.ac;
-
-      if (hit) {
-        // Add foretell stack to primary target
-        addForetellStack(selectedTarget);
-
-        // If Foretell Chain is charged, apply stacks to nearby enemies
-        if (foretellChainCharged) {
-          const nearbyEnemies = findEnemiesInRange(enemy.position, 20)
-            .filter(e => e.id !== selectedTarget)
-            .sort((a, b) => calculateDistance(enemy.position, a.position) - calculateDistance(enemy.position, b.position))
-            .slice(0, 2);
-
-          nearbyEnemies.forEach(nearbyEnemy => {
-            addForetellStack(nearbyEnemy.id);
-          });
-
-          // Consume the chain charge
-          onChainChargedChange?.(false);
-        }
-      }
-
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
-      }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setShowTargetingModal(false);
-      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
+   // Handle Card Toss (basic attack) - FIXED
+  if (selectedAction.id === 'card_toss') {
+    if (!selectedTarget || !acRoll) {
+      alert('Please select target and enter AC roll');
       return;
     }
+
+    const enemy = availableEnemies.find(e => e.id === selectedTarget);
+    if (!enemy) return;
+
+    // Apply range penalty
+    const distance = calculateDistance(playerPosition, enemy.position);
+    const finalAC = applyRangePenalty(parseInt(acRoll), distance);
+    const hit = finalAC >= enemy.ac;
+
+    if (hit) {
+      // Add foretell stack to primary target
+      addForetellStack(selectedTarget);
+
+      // If Foretell Chain is charged, apply stacks to UP TO 2 nearby enemies within 10ft
+      if (foretellChainCharged) {
+        const nearbyEnemies = findEnemiesInRange(enemy.position, 10)
+          .filter(e => e.id !== selectedTarget)
+          .sort((a, b) => calculateDistance(enemy.position, a.position) - calculateDistance(enemy.position, b.position))
+          .slice(0, 2); // CRITICAL: This limits to exactly 2 enemies
+
+        console.log(`Foretell Chain: Found ${nearbyEnemies.length} enemies within 10ft, applying to first 2`);
+        
+        nearbyEnemies.forEach(nearbyEnemy => {
+          addForetellStack(nearbyEnemy.id);
+          console.log(`Applied Foretell stack to ${nearbyEnemy.name}`);
+        });
+
+        // Consume the chain charge
+        onChainChargedChange?.(false);
+      }
+    }
+
+    if (onTargetSelect) {
+      onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
+    }
+
+    setSelectedAction(null);
+    setSelectedTarget('');
+    setACRoll('');
+    setShowTargetingModal(false);
+    setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
+    return;
+  }
 
     // Handle Foretell Chain
     if (selectedAction.id === 'foretell_chain') {
       onAbilityPointsChange?.(-selectedAction.cost!);
       onChainChargedChange?.(true);
       if (onTargetSelect) {
-        onTargetSelect('foretell_chain_charged', 0, 'ability', selectedAction.id);
+        onTargetSelect('foretell_chain_charged', 0, 'action', selectedAction.id); // Changed from 'ability' to 'action'
       }
       setSelectedAction(null);
-      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
       return;
     }
 
-    // Handle Foretell Sweep
+    // Handle Foretell Sweep - FIXED
     if (selectedAction.id === 'foretell_sweep') {
       if (!acRoll) {
         alert('Please enter AC roll');
@@ -366,10 +349,15 @@ export function ScielCharacterSheet({
         }
       });
 
-      // Consume all stacks from all enemies (hit or miss)
+      // FIXED: Remove all stacks in a single state update
+      const newStacks = { ...foretellStacks };
       enemiesWithStacks.forEach(enemy => {
-        removeForetellStacks(enemy.id, foretellStacks[enemy.id]);
+        delete newStacks[enemy.id]; // Remove all stacks from this enemy
       });
+      onStacksChange?.(newStacks);
+
+      console.log(`Foretell Sweep consumed stacks from ${enemiesWithStacks.length} enemies:`, 
+        enemiesWithStacks.map(e => `${e.name} (${foretellStacks[e.id]} stacks)`));
 
       // Send hits to GM
       if (onTargetSelect && hitEnemies.length > 0) {
@@ -384,7 +372,7 @@ export function ScielCharacterSheet({
       setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
       return;
     }
-  };
+  }
 
   const handleCancelAction = () => {
     setSelectedAction(null);

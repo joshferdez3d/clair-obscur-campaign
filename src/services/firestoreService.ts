@@ -33,7 +33,7 @@ import type { BattleMapPreset, PresetSaveData } from '../types';
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
   static async resetBattleSession(sessionId: string) {
-    console.log('🔄 Starting battle session reset with sample data initialization...');
+    console.log('🔄 Starting battle session reset with inventory/gold preservation...');
     
     try {
       const session = await this.getBattleSession(sessionId);
@@ -41,9 +41,29 @@ export class FirestoreService {
         throw new Error('Session not found');
       }
 
+      console.log('💰 Preserving inventory and gold data...');
+      
+      // 1. Save current inventory and gold for all characters BEFORE reset
+      const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
+      const preservedData: Record<string, { inventory: any[], gold: number }> = {};
+      
+      for (const characterId of characterIds) {
+        const characterRef = doc(db, 'characters', characterId);
+        const characterSnap = await getDoc(characterRef);
+        
+        if (characterSnap.exists()) {
+          const data = characterSnap.data();
+          preservedData[characterId] = {
+            inventory: data.inventory || [],
+            gold: data.gold ?? 0
+          };
+          console.log(`📦 Preserved ${characterId}: ${data.inventory?.length || 0} items, ${data.gold || 0} gold`);
+        }
+      }
+
       console.log('🗑️ Clearing battle session...');
 
-      // 1. Clear the session completely first
+      // 2. Clear the session completely first
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
         tokens: {},
@@ -68,14 +88,30 @@ export class FirestoreService {
 
       console.log('📊 Reinitializing sample data...');
 
-      // 2. Reinitialize sample data to recreate characters and proper battle session
+      // 3. Reinitialize sample data (this will overwrite characters)
       await this.initializeSampleData();
 
-      console.log('✅ Battle session reset complete with sample data');
+      console.log('🔄 Restoring inventory and gold...');
+
+      // 4. Restore the preserved inventory and gold data
+      for (const characterId of characterIds) {
+        if (preservedData[characterId]) {
+          const characterRef = doc(db, 'characters', characterId);
+          await updateDoc(characterRef, {
+            inventory: preservedData[characterId].inventory,
+            gold: preservedData[characterId].gold,
+            updatedAt: serverTimestamp()
+          });
+          console.log(`✅ Restored ${characterId}: ${preservedData[characterId].inventory.length} items, ${preservedData[characterId].gold} gold`);
+        }
+      }
+
+      console.log('✅ Battle session reset complete with preserved inventory/gold');
       console.log('- Cleared all tokens, combat state, and pending actions');
       console.log('- Recreated character documents with full stats');
       console.log('- Restored proper initiative order with characterIds');
       console.log('- Reset player HP to maximum values');
+      console.log('- 💰 PRESERVED all inventory and gold data');
       
       return true;
     } catch (error) {
