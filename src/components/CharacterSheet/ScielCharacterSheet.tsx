@@ -194,31 +194,32 @@ export function ScielCharacterSheet({
   };
 
   // Handle confirming actions
-  const handleConfirmAction = async () => {
-    if (!selectedAction) return;
-    
-    if (sessionId) {
-      FirestoreService.clearTargetingState(sessionId);
+const handleConfirmAction = async () => {
+  if (!selectedAction) return;
+  
+  if (sessionId) {
+    FirestoreService.clearTargetingState(sessionId);
+  }
+
+  // Handle Card Toss (basic attack) - FIXED VERSION
+  if (selectedAction.id === 'card_toss') {
+    if (!selectedTarget || !acRoll) {
+      alert('Please select target and enter AC roll');
+      return;
     }
 
-    // Handle Card Toss (basic attack)
-    if (selectedAction.id === 'card_toss') {
-      if (!selectedTarget || !acRoll) {
-        alert('Please select target and enter AC roll');
-        return;
-      }
+    const enemy = availableEnemies.find(e => e.id === selectedTarget);
+    if (!enemy) return;
 
-      const enemy = availableEnemies.find(e => e.id === selectedTarget);
-      if (!enemy) return;
+    const distance = calculateDistance(playerPosition, enemy.position);
+    const finalAC = applyRangePenalty(parseInt(acRoll), distance);
+    const hit = finalAC >= enemy.ac;
 
-      const distance = calculateDistance(playerPosition, enemy.position);
-      const finalAC = applyRangePenalty(parseInt(acRoll), distance);
-      const hit = finalAC >= enemy.ac;
-
-      if (hit && chargedFateCard) {
-        // Handle special card effects
-        if (chargedFateCard === 'explosive') {
-          // Create AoE action for explosion
+    // ✅ FIXED: Create specialized actions for ALL charged cards (hit or miss)
+    if (chargedFateCard) {
+      if (chargedFateCard === 'explosive') {
+        // Create AoE action for explosion - only if it hits
+        if (hit) {
           const nearbyEnemies = availableEnemies.filter(e => {
             if (e.id === selectedTarget) return true; // Include primary target
             const distanceToTarget = calculateDistance(enemy.position, e.position);
@@ -237,100 +238,117 @@ export function ScielCharacterSheet({
             });
           }
         } else {
-          // For switch and vanish cards, create special GM actions
+          // Miss - create regular attack action to show the miss
           await FirestoreService.createAttackAction(
             sessionId,
             character.id,
             selectedTarget,
             playerPosition,
             finalAC,
-            chargedFateCard === 'switch' ? '🔄 Switch Card' : '👻 Vanish Card'
+            '💥 Explosive Card Toss (Miss)'
           );
         }
-        
-        // Consume the charged card
-        setChargedFateCard(null);
-      } else {
-        // Regular card toss
-        await FirestoreService.createAttackAction(
-          sessionId,
-          character.id,
-          selectedTarget,
-          playerPosition,
-          finalAC,
-          'Card Toss'
-        );
+      } else if (chargedFateCard === 'switch') {
+        // ✅ ALWAYS create switch card action (hit or miss)
+        await FirestoreService.createSwitchCardAction(sessionId, {
+          playerId: character.id,
+          targetId: selectedTarget,
+          playerPosition: playerPosition,
+          targetPosition: enemy.position,
+          acRoll: finalAC
+        });
+      } else if (chargedFateCard === 'vanish') {
+        // ✅ ALWAYS create vanish card action (hit or miss)
+        await FirestoreService.createVanishCardAction(sessionId, {
+          playerId: character.id,
+          targetId: selectedTarget,
+          acRoll: finalAC
+        });
       }
-
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
-      }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setShowTargetingModal(false);
-      setShowBonusAction(hasActedThisTurn);
-      return;
-    }
-
-    // Handle Rewrite Destiny
-    if (selectedAction.id === 'rewrite_destiny') {
-      if (!selectedTarget) {
-        alert('Please select an enemy to curse with disadvantage');
-        return;
-      }
-
+      
+      // Consume the charged card
+      setChargedFateCard(null);
+    } else {
+      // Regular card toss - no special effects
       await FirestoreService.createAttackAction(
         sessionId,
         character.id,
         selectedTarget,
         playerPosition,
-        0, // No AC roll needed
-        'Rewrite Destiny (Disadvantage next turn)'
+        finalAC,
+        'Card Toss'
       );
+    }
 
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
-      }
-      setSelectedAction(null);
-      setShowBonusAction(hasActedThisTurn);
+    if (onTargetSelect) {
+      onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
+    }
+
+    setSelectedAction(null);
+    setSelectedTarget('');
+    setACRoll('');
+    setShowTargetingModal(false);
+    setShowBonusAction(hasActedThisTurn);
+    return;
+  }
+
+  // 3. FIX: Use createBuffAction for Rewrite Destiny
+  if (selectedAction.id === 'rewrite_destiny') {
+    if (!selectedTarget) {
+      alert('Please select an enemy to curse with disadvantage');
       return;
     }
 
-    // Handle Glimpse Future
-    if (selectedAction.id === 'glimpse_future') {
-      if (!selectedTarget) {
-        alert('Please select an ally to grant advantage');
-        return;
-      }
+    // ✅ USE SPECIALIZED BUFF ACTION instead of createAttackAction
+    await FirestoreService.createBuffAction(sessionId, {
+      playerId: character.id,
+      targetId: selectedTarget,
+      abilityName: 'Rewrite Destiny',
+      buffType: 'disadvantage',
+      duration: 1 // Lasts 1 turn
+    });
 
-      await FirestoreService.createAttackAction(
-        sessionId,
-        character.id,
-        selectedTarget,
-        playerPosition,
-        0, // No AC roll needed
-        'Glimpse Future (Advantage next turn)'
-      );
+    onAbilityPointsChange?.(-selectedAction.cost!);
+    if (onTargetSelect) {
+      onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
+    }
+    setSelectedAction(null);
+    setShowBonusAction(hasActedThisTurn);
+    return;
+  }
 
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      if (onTargetSelect) {
-        onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
-      }
-      setSelectedAction(null);
-      setShowBonusAction(hasActedThisTurn);
+  // 4. FIX: Use createBuffAction for Glimpse Future
+  if (selectedAction.id === 'glimpse_future') {
+    if (!selectedTarget) {
+      alert('Please select an ally to grant advantage');
       return;
     }
 
-    // Handle Fate's Gambit
-    if (selectedAction.id === 'fates_gambit') {
-      handleFatesGambit();
-      setSelectedAction(null);
-      return;
+    // ✅ USE SPECIALIZED BUFF ACTION instead of createAttackAction
+    await FirestoreService.createBuffAction(sessionId, {
+      playerId: character.id,
+      targetId: selectedTarget,
+      abilityName: 'Glimpse Future',
+      buffType: 'advantage',
+      duration: 1 // Lasts 1 turn
+    });
+
+    onAbilityPointsChange?.(-selectedAction.cost!);
+    if (onTargetSelect) {
+      onTargetSelect(selectedTarget, 0, 'ability', selectedAction.id);
     }
-  };
+    setSelectedAction(null);
+    setShowBonusAction(hasActedThisTurn);
+    return;
+  }
+
+  // Handle Fate's Gambit (unchanged)
+  if (selectedAction.id === 'fates_gambit') {
+    handleFatesGambit();
+    setSelectedAction(null);
+    return;
+  }
+};
 
   const handleCancelAction = () => {
     setSelectedAction(null);
@@ -383,7 +401,7 @@ export function ScielCharacterSheet({
       name: "Fate's Gambit",
       description: 'Randomly enhance your next Card Toss with a special effect',
       damage: 'Card enhancement',
-      cost: 1,
+      cost: 2,
       range: 'Self',
     },
   ];

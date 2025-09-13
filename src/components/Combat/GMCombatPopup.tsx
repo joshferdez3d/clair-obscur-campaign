@@ -8,9 +8,10 @@ interface GMCombatPopupProps {
   actions: GMCombatAction[];
   onApplyDamage: (actionId: string, damage: number) => void | Promise<void>;
   onDismissMiss: (actionId: string) => void | Promise<void>;
+  sessionId: string; 
 }
 
-export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss }: GMCombatPopupProps) {
+export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss, sessionId}: GMCombatPopupProps) {
   const [damageInputs, setDamageInputs] = useState<Record<string, string>>({});
   const [applyingDamage, setApplyingDamage] = useState<Set<string>>(new Set());
 
@@ -55,9 +56,9 @@ export function GMCombatPopup({ actions, onApplyDamage, onDismissMiss }: GMComba
       
       // Handle special card effects after damage is applied
       if (action.cardType === 'switch') {
-        await FirestoreService.applySwitchPositions('test-session', id);
+        await FirestoreService.applySwitchPositions(sessionId, id); // ✅ USE PROP
       } else if (action.cardType === 'vanish') {
-        await FirestoreService.applyVanishEffect('test-session', id);
+        await FirestoreService.applyVanishEffect(sessionId, id); // ✅ USE PROP
       }
     } finally {
       setApplyingDamage(prev => {

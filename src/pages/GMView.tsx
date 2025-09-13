@@ -821,8 +821,13 @@ const handleResetSession = async () => {
 
       {/* Regular GM Combat Popup - Lower priority than storm */}
       {gmActions.length > 0 && !pendingRoll && (
-        <GMCombatPopup actions={gmActions} onApplyDamage={handleApplyDamage} onDismissMiss={handleDismissMiss} />
-      )}
+      <GMCombatPopup 
+          actions={gmActions} 
+          onApplyDamage={handleApplyDamage} 
+          onDismissMiss={handleDismissMiss}
+          sessionId={sessionId || 'test-session'} // ✅ ADD THIS LINE
+        />
+        )}
 
           {/* ADD THIS HERE - Enemy Selection Modal */}
       <EnemySelectionModal
