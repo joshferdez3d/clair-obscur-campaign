@@ -1,108 +1,121 @@
-// src/components/CharacterSheet/ScielCharacterSheet.tsx
-import React, { useState, useEffect } from 'react'; // Make sure useEffect is included
-import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
-import { FirestoreService } from '../../services/firestoreService';
-import { HPTracker } from './HPTracker';
-import { StatDisplay } from './StatDisplay';
+import React, { useState, useEffect } from 'react';
+import { Circle, Target, Zap, Heart, Eye, Shuffle, Users } from 'lucide-react';
+import type { Character, BattleToken } from '../../types';
 import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
+import { InventoryModal } from './InventoryModal';
+import { FirestoreService } from '../../services/firestoreService';
 import { useStormSystem } from '../../hooks/useStormSystem';
 import { StormService } from '../../services/StormService';
-import { StormIndicator } from '../Combat/StormIndicator';
-import type { Character, Position, BattleToken } from '../../types';
-import { useUltimateVideo } from '../../hooks/useUltimateVideo';
-import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
-import { InventoryModal } from './InventoryModal'; // Add this import
-import { InventoryService } from '../../services/inventoryService'; // Add this import
-import type { InventoryItem } from '../../types'; // Add this import
-import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
+
+interface Enemy {
+  id: string;
+  name: string;
+  position: { x: number; y: number };
+  hp: number;
+  maxHp: number;
+  ac: number;
+}
 
 interface ScielCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
   onAbilityPointsChange: (delta: number) => void;
-  onAbilityUse: (ability: any) => void;
-  isLoading?: boolean;
-  isMyTurn?: boolean;
-  combatActive?: boolean;
-  availableEnemies?: Array<{
-    id: string;
-    name: string;
-    position: { x: number; y: number };
-    hp: number;
-    maxHp: number;
-    ac: number;
-  }>;
-  playerPosition?: { x: number; y: number };
-  onTargetSelect?: (targetId: string, acRoll: number, attackType: string, abilityId?: string) => void;
-  onEndTurn?: () => void;
-  onCancelTargeting?: () => void;
-  hasActedThisTurn?: boolean;
-  foretellStacks?: Record<string, number>;
-  onStacksChange?: (stacks: Record<string, number>) => void;
-  foretellChainCharged?: boolean;
-  onChainChargedChange?: (charged: boolean) => void;
-  bonusActionCooldown?: number;
-  onBonusActionCooldownChange?: (cooldown: number) => void;
-
-  // For abilities that need special targeting
-  sessionId?: string;
-  allTokens?: BattleToken[];
+  onAbilityUse: () => void;
+  isMyTurn: boolean;
+  isLoading: boolean;
+  combatActive: boolean;
+  availableEnemies: Enemy[];
+  playerPosition: { x: number; y: number };
+  sessionId: string;
+  allTokens: BattleToken[];
+  onTargetSelect: (targetId: string, acRoll: number, attackType?: string, abilityId?: string) => void;
+  onEndTurn: () => void;
+  onCancelTargeting: () => void;
+  hasActedThisTurn: boolean;
+  foretellStacks: Record<string, number>;
+  onStacksChange: (stacks: Record<string, number>) => void;
+  foretellChainCharged: boolean;
+  onChainChargedChange: (charged: boolean) => void;
+  bonusActionCooldown: number;
+  onBonusActionCooldownChange: (rounds: number) => void;
 }
+
+// Draw Fate card types
+type DrawnCard = {
+  type: 'explosive' | 'switch' | 'vanish';
+  name: string;
+  description: string;
+};
+
+const DRAW_FATE_CARDS: DrawnCard[] = [
+  {
+    type: 'explosive',
+    name: 'Explosive Card',
+    description: 'Next Card Toss hits all enemies within 10ft of target'
+  },
+  {
+    type: 'switch', 
+    name: 'Switch Card',
+    description: 'After damage, you and target swap positions'
+  },
+  {
+    type: 'vanish',
+    name: 'Vanish Card', 
+    description: 'Target is banished for 2 turns'
+  }
+];
 
 export function ScielCharacterSheet({
   character,
   onHPChange,
   onAbilityPointsChange,
   onAbilityUse,
-  isLoading = false,
-  isMyTurn = false,
-  combatActive = false,
-  availableEnemies = [],
-  playerPosition = { x: 0, y: 0 },
+  isMyTurn,
+  isLoading,
+  combatActive,
+  availableEnemies,
+  playerPosition,
+  sessionId,
+  allTokens,
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn = false,
-  foretellStacks = {},
+  hasActedThisTurn,
+  foretellStacks,
   onStacksChange,
-  foretellChainCharged = false,
+  foretellChainCharged,
   onChainChargedChange,
-  bonusActionCooldown = 0,
-  onBonusActionCooldownChange,
-  sessionId = 'test-session',
-  allTokens = [],
+  bonusActionCooldown,
+  onBonusActionCooldownChange
 }: ScielCharacterSheetProps) {
-  const [selectedTarget, setSelectedTarget] = useState<string>('');
-  const [acRoll, setACRoll] = useState<string>('');
-  const [showTargetingModal, setShowTargetingModal] = useState(false);
-  const { triggerUltimate } = useUltimateVideo(sessionId);
+  
   const [showInventoryModal, setShowInventoryModal] = useState(false);
-  const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
-
+  const [showTargetingModal, setShowTargetingModal] = useState(false);
+  const [selectedTarget, setSelectedTarget] = useState('');
+  const [acRoll, setACRoll] = useState('');
+  const [showBonusAction, setShowBonusAction] = useState(false);
+  
+  // New state for Draw Fate system
+  const [drawnCard, setDrawnCard] = useState<DrawnCard | null>(null);
+  
   const [selectedAction, setSelectedAction] = useState<{
-    type: 'basic' | 'ability' | 'bonus';
+    type: string;
     id: string;
     name: string;
     description: string;
-    damage?: string;
+    damage: string;
+    range: string;
     cost?: number;
     isBonusAction?: boolean;
   } | null>(null);
 
-  const handleOpenInventory = () => {
-    setShowInventoryModal(true);
-  };
-
-
-  const [showBonusAction, setShowBonusAction] = useState(false);
-
-  // Storm system integration
+  // Storm system integration  
   const { stormState, isStormActive } = useStormSystem(sessionId);
 
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
       'gustave': '/tokens/characters/gustave.jpg',
-      'lune': '/tokens/characters/lune.jpg',
+      'lune': '/tokens/characters/lune.jpg', 
       'maelle': '/tokens/characters/maelle.jpg',
       'sciel': '/tokens/characters/sciel.jpg'
     };
@@ -110,8 +123,6 @@ export function ScielCharacterSheet({
   };
 
   const portraitUrl = getCharacterPortrait(character.name);
-
-
   const getCharacterGradient = () => 'bg-gradient-to-br from-green-600 to-green-800';
 
   // Calculate distance for range validation and penalties
@@ -129,59 +140,18 @@ export function ScielCharacterSheet({
     return Math.max(1, baseAC - penalty);
   };
 
-  // Get valid targets (all enemies for Sciel's ranged attacks)
-  const getValidTargets = () => {
-    return availableEnemies;
+  const handleOpenInventory = () => {
+    setShowInventoryModal(true);
   };
 
-  // Add foretell stack to enemy
-  const addForetellStack = (enemyId: string) => {
-    const currentStacks = foretellStacks[enemyId] || 0;
-    if (currentStacks >= 3) return; // Max 3 stacks per enemy
-    
-    const newStacks = {
-      ...foretellStacks,
-      [enemyId]: currentStacks + 1
-    };
-    onStacksChange?.(newStacks);
+  // Draw a random fate card
+  const drawFateCard = (): DrawnCard => {
+    const randomIndex = Math.floor(Math.random() * DRAW_FATE_CARDS.length);
+    return DRAW_FATE_CARDS[randomIndex];
   };
 
-  // Remove foretell stacks from enemy
-  const removeForetellStacks = (enemyId: string, count: number = 1) => {
-    const currentStacks = foretellStacks[enemyId] || 0;
-    const newStacks = { ...foretellStacks };
-    
-    if (currentStacks <= count) {
-      delete newStacks[enemyId];
-    } else {
-      newStacks[enemyId] = currentStacks - count;
-    }
-    
-    onStacksChange?.(newStacks);
-  };
-
-  // Clear all foretell stacks (for Crescendo of Fate)
-  const clearAllStacks = () => {
-    onStacksChange?.({});
-  };
-
-  // Find enemies within range of a position
-  const findEnemiesInRange = (centerPos: Position, range: number) => {
-    return availableEnemies.filter(enemy => {
-      const distance = calculateDistance(centerPos, enemy.position);
-      return distance <= range;
-    });
-  };
-
-  // Handle Crescendo of Fate activation
+  // Handle Crescendo of Fate activation (Ultimate)
   const handleActivateUltimate = async () => {
-    const totalStacks = Object.values(foretellStacks).reduce((sum, stacks) => sum + stacks, 0);
-    
-    if (totalStacks === 0) {
-      alert('No enemies have Foretell stacks for Crescendo of Fate!');
-      return;
-    }
-
     if (isStormActive) {
       alert('Storm is already active!');
       return;
@@ -194,21 +164,14 @@ export function ScielCharacterSheet({
     }
 
     try {
-      await triggerUltimate('sciel', 'Crescendo of Fate');
-
-      // Activate the storm system
-      await StormService.activateStorm(sessionId, totalStacks);
-      
-      // Clear all foretell stacks
-      clearAllStacks();
+      // Activate the storm system with base damage
+      await StormService.activateStorm(sessionId, 3); // Base 3d6 damage
       
       // Consume ability points
-      onAbilityPointsChange?.(-3);
+      onAbilityPointsChange(-3);
       
       // Mark as having acted
-      if (onTargetSelect) {
-        onTargetSelect('storm_activated', 0, 'ultimate', 'crescendo_of_fate');
-      }
+      onTargetSelect('action_taken', 0, 'ultimate', 'crescendo_of_fate');
       
       setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
       
@@ -237,6 +200,19 @@ export function ScielCharacterSheet({
       return;
     }
 
+    // Handle Draw Fate special case
+    if (action.id === 'draw_fate') {
+      const card = drawFateCard();
+      setDrawnCard(card);
+      
+      // Consume ability points and mark turn as used
+      onAbilityPointsChange(-action.cost);
+      onTargetSelect('action_taken', 0, 'ability', action.id);
+      
+      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
+      return;
+    }
+
     setSelectedAction(action);
     setSelectedTarget('');
     setACRoll('');
@@ -252,147 +228,72 @@ export function ScielCharacterSheet({
 
     // Handle Bonus Action (Guiding Cards)
     if (selectedAction.isBonusAction) {
-      if (onTargetSelect) {
-        onTargetSelect('bonus_action_used', 0, 'bonus', selectedAction.id);
-      }
-      
-      onBonusActionCooldownChange?.(3);
-      
+      onTargetSelect('bonus_action_used', 0, 'bonus', selectedAction.id);
+      onBonusActionCooldownChange(3);
       setSelectedAction(null);
+      setACRoll('');
       setShowBonusAction(false);
       return;
     }
 
-   // Handle Card Toss (basic attack) - FIXED
-  if (selectedAction.id === 'card_toss') {
-    if (!selectedTarget || !acRoll) {
-      alert('Please select target and enter AC roll');
-      return;
-    }
-
-    const enemy = availableEnemies.find(e => e.id === selectedTarget);
-    if (!enemy) return;
-
-    // Apply range penalty
-    const distance = calculateDistance(playerPosition, enemy.position);
-    const finalAC = applyRangePenalty(parseInt(acRoll), distance);
-    const hit = finalAC >= enemy.ac;
-
-    if (hit) {
-      // Add foretell stack to primary target
-      addForetellStack(selectedTarget);
-
-      // If Foretell Chain is charged, apply stacks to UP TO 2 nearby enemies within 10ft
-      if (foretellChainCharged) {
-        const nearbyEnemies = findEnemiesInRange(enemy.position, 10)
-          .filter(e => e.id !== selectedTarget)
-          .sort((a, b) => calculateDistance(enemy.position, a.position) - calculateDistance(enemy.position, b.position))
-          .slice(0, 2); // CRITICAL: This limits to exactly 2 enemies
-
-        console.log(`Foretell Chain: Found ${nearbyEnemies.length} enemies within 10ft, applying to first 2`);
-        
-        nearbyEnemies.forEach(nearbyEnemy => {
-          addForetellStack(nearbyEnemy.id);
-          console.log(`Applied Foretell stack to ${nearbyEnemy.name}`);
-        });
-
-        // Consume the chain charge
-        onChainChargedChange?.(false);
+    // Handle regular abilities
+    if (selectedAction.type === 'ability') {
+      onAbilityPointsChange(-(selectedAction.cost || 0));
+      
+      const damage = selectedAction.id === 'card_toss' && drawnCard ? 
+        getDamageWithCard(drawnCard) : 0;
+      onTargetSelect(selectedTarget, parseInt(acRoll) || 0, 'ability', selectedAction.id);
+      
+      // Clear drawn card if Card Toss was used
+      if (selectedAction.id === 'card_toss' && drawnCard) {
+        setDrawnCard(null);
       }
-    }
-
-    if (onTargetSelect) {
-      onTargetSelect(selectedTarget, finalAC, 'ranged', selectedAction.id);
+    } else if (selectedAction.type === 'basic') {
+      const targetEnemy = availableEnemies.find(e => e.id === selectedTarget);
+      if (targetEnemy) {
+        const distance = calculateDistance(playerPosition, targetEnemy.position);
+        const effectiveAC = applyRangePenalty(targetEnemy.ac, distance);
+        const damage = drawnCard ? getDamageWithCard(drawnCard) : 0;
+        onTargetSelect(selectedTarget, parseInt(acRoll) || 0, 'attack', selectedAction.id);
+      }
+      
+      // Clear drawn card after Card Toss
+      if (drawnCard) {
+        setDrawnCard(null);
+      }
     }
 
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
-    setShowTargetingModal(false);
     setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
-    return;
-  }
+  };
 
-    // Handle Foretell Chain
-    if (selectedAction.id === 'foretell_chain') {
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      onChainChargedChange?.(true);
-      if (onTargetSelect) {
-        onTargetSelect('foretell_chain_charged', 0, 'action', selectedAction.id); // Changed from 'ability' to 'action'
-      }
-      setSelectedAction(null);
-      return;
-    }
+  // Get damage description with card effects
+  const getDamageWithCard = (card: DrawnCard): number => {
+    // Return 0 for now, actual damage will be calculated in game logic
+    return 0;
+  };
 
-    // Handle Foretell Sweep - FIXED
-    if (selectedAction.id === 'foretell_sweep') {
-      if (!acRoll) {
-        alert('Please enter AC roll');
-        return;
-      }
-
-      const enemiesWithStacks = availableEnemies.filter(enemy => foretellStacks[enemy.id] > 0);
-      if (enemiesWithStacks.length === 0) {
-        alert('No enemies have Foretell stacks to consume!');
-        return;
-      }
-
-      const baseAC = parseInt(acRoll);
-      const hitEnemies: string[] = [];
-
-      enemiesWithStacks.forEach(enemy => {
-        const distance = calculateDistance(playerPosition, enemy.position);
-        const finalAC = applyRangePenalty(baseAC, distance);
-        
-        if (finalAC >= enemy.ac) {
-          hitEnemies.push(enemy.id);
-        }
-      });
-
-      // FIXED: Remove all stacks in a single state update
-      const newStacks = { ...foretellStacks };
-      enemiesWithStacks.forEach(enemy => {
-        delete newStacks[enemy.id]; // Remove all stacks from this enemy
-      });
-      onStacksChange?.(newStacks);
-
-      console.log(`Foretell Sweep consumed stacks from ${enemiesWithStacks.length} enemies:`, 
-        enemiesWithStacks.map(e => `${e.name} (${foretellStacks[e.id]} stacks)`));
-
-      // Send hits to GM
-      if (onTargetSelect && hitEnemies.length > 0) {
-        hitEnemies.forEach(enemyId => {
-          onTargetSelect(enemyId, baseAC, 'ability', selectedAction.id);
-        });
-      }
-
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      setSelectedAction(null);
-      setACRoll('');
-      setShowBonusAction(hasActedThisTurn && bonusActionCooldown === 0);
-      return;
-    }
-  }
-
+  // Handle cancel action
   const handleCancelAction = () => {
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
     setShowBonusAction(false);
     setShowTargetingModal(false);
-    onCancelTargeting?.();
+    onCancelTargeting();
   };
 
   const abilityPoints = character.charges || 0;
-  const totalStacks = Object.values(foretellStacks).reduce((sum, stacks) => sum + stacks, 0);
 
   // Define Sciel's actions
   const basicAttack = {
     type: 'basic' as const,
     id: 'card_toss',
     name: 'Card Toss',
-    description: 'Ranged attack that applies Foretell Stack',
-    damage: '1d6 slashing + 1d4 radiant',
+    description: drawnCard ? `${drawnCard.description}` : 'Ranged attack with mystical cards',
+    damage: drawnCard ? `1d6 slashing + 1d4 radiant + ${drawnCard.name}` : '1d6 slashing + 1d4 radiant',
     icon: Circle,
     range: 'Unlimited',
   };
@@ -400,21 +301,30 @@ export function ScielCharacterSheet({
   const abilities = [
     {
       type: 'ability' as const,
-      id: 'foretell_chain',
-      name: 'Foretell Chain',
-      description: 'Charge next Card Toss to affect 2 additional nearby enemies',
-      damage: 'Enhances next Card Toss',
+      id: 'rewrite_destiny',
+      name: 'Rewrite Destiny',
+      description: 'Target enemy rolls with disadvantage on their next action',
+      damage: 'Tactical debuff',
       cost: 1,
-      range: 'Self-buff',
+      range: 'Any enemy in sight',
     },
     {
       type: 'ability' as const,
-      id: 'foretell_sweep',
-      name: 'Foretell Sweep',
-      description: 'Consume stacks from all enemies in range for radiant damage',
-      damage: '2d8 radiant per stack',
+      id: 'glimpse_future', 
+      name: 'Glimpse Future',
+      description: 'Target ally gains advantage on their next action',
+      damage: 'Tactical buff',
+      cost: 1,
+      range: 'Any ally in sight',
+    },
+    {
+      type: 'ability' as const,
+      id: 'draw_fate',
+      name: 'Draw Fate',
+      description: 'Draw random card to enhance next Card Toss',
+      damage: 'Enhances next attack',
       cost: 2,
-      range: 'All enemies with stacks',
+      range: 'Self-buff',
     },
   ];
 
@@ -429,153 +339,88 @@ export function ScielCharacterSheet({
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
-    {/* CHARACTER HEADER */}
-    <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
-            {portraitUrl ? (
-              <img 
-                src={portraitUrl} 
-                alt={character.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  console.error(`Failed to load image for ${character.name}`);
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <User className="w-8 h-8 text-clair-gold-200" />
-            )}
+      {/* CHARACTER HEADER */}
+      <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
+              {portraitUrl ? (
+                <img src={portraitUrl} alt={character.name} className="w-full h-full object-cover" />
+              ) : (
+                <Circle className="w-8 h-8 text-clair-gold-400" />
+              )}
+            </div>
+            <div>
+              <h1 className="font-display text-2xl font-bold text-clair-gold-400">{character.name}</h1>
+              <p className="font-serif text-clair-gold-200">Tarot Warrior</p>
+            </div>
           </div>
-          <div>
-            <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
-            <p className="font-serif italic text-clair-gold-200 text-sm">{character.role}</p>
+          <div className="text-right">
+            <button
+              onClick={handleOpenInventory}
+              className="bg-clair-gold-600 hover:bg-clair-gold-700 px-4 py-2 rounded-lg font-bold text-clair-shadow-900 transition-colors"
+            >
+              Inventory
+            </button>
           </div>
         </div>
-        
-        {/* Turn Indicator */}
-        {isMyTurn && combatActive && (
-          <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
-            Your Turn
-          </div>
-        )}
       </div>
-    </div>
 
-
-      <div className="px-4 pt-4">
-
-      {portraitUrl && (
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
-          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
-          <div className="flex justify-center">
-            <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
-              <img 
-                src={portraitUrl} 
-                alt={`${character.name} portrait`}
-                className="w-full h-full object-cover"
-                style={{ imageRendering: 'crisp-edges' }}  // Fixed: use valid value
-              />
+      {/* MAIN CONTENT */}
+      <div className="p-4 space-y-6">
+        {/* Character Stats */}
+        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600">
+          <h2 className="font-display text-xl font-bold text-clair-gold-400 mb-3">Character Stats</h2>
+          <div className="grid grid-cols-2 gap-4 text-white">
+            <div>
+              <span className="font-bold">HP:</span> {character.currentHP}/{character.maxHP}
             </div>
-          </div>
-        </div>
-      )}
-        {/* Storm Status */}
-        {stormState && isStormActive && (
-          <div className="mb-4">
-            <StormIndicator stormState={stormState} />
-          </div>
-        )}
-
-        {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && (
-          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
-            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
-            <span className="font-sans text-clair-success">
-              Action completed this turn - {showBonusAction ? 'Use bonus action or ' : ''}Click "End Turn" when ready
-            </span>
-          </div>
-        )}
-
-        {/* HP TRACKER */}
-        <HPTracker currentHP={character.currentHP} maxHP={character.maxHP} onHPChange={onHPChange} isLoading={isLoading} showControls={false}/>
-
-        {/* ABILITY SCORES */}
-        <StatDisplay stats={character.stats} />
-
-        <div className="mb-6">
-          <button
-            onClick={handleOpenInventory}
-            className="w-full bg-clair-shadow-600 hover:bg-clair-shadow-500 border border-clair-gold-600 text-clair-gold-200 p-3 rounded-lg transition-colors flex items-center justify-center"
-          >
-            <Package className="w-5 h-5 mr-2" />
-            <span className="font-serif font-bold">Inventory</span>
-            {inventory.length > 0 && (
-              <span className="ml-2 bg-clair-gold-600 text-clair-shadow-900 px-2 py-1 rounded-full text-xs font-bold">
-                {inventory.length}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Ability Points */}
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-gold-600">
-          <div className="flex items-center justify-between mb-3">
+            <div>
+              <span className="font-bold">AC:</span> {character.stats ? (10 + Math.floor((character.stats.dex - 10) / 2)) : 13}
+            </div>
+            <div>
+              <span className="font-bold">Ability Points:</span> {abilityPoints}/5
+            </div>
             <div className="flex items-center">
-              <Sparkles className="w-6 h-6 text-clair-gold-500 mr-2" />
-              <h3 className="font-display text-lg font-bold text-clair-gold-400">Ability Points</h3>
+              <span className="font-bold mr-2">Status:</span>
+              {hasActedThisTurn ? (
+                <span className="text-red-400">Turn Used</span>
+              ) : (
+                <span className="text-green-400">Ready</span>
+              )}
             </div>
-            <div className="font-serif text-2xl font-bold text-clair-gold-50">{abilityPoints} / 5</div>
           </div>
-          
-          <div className="flex justify-center space-x-2 mb-2">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div
-                key={index}
-                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
-                  index < abilityPoints 
-                    ? 'bg-clair-gold-500 border-clair-gold-400 shadow-lg' 
-                    : 'bg-clair-shadow-800 border-clair-shadow-400'
-                }`}
-              />
-            ))}
+
+          {/* Ability Points Visual */}
+          <div className="mt-3">
+            <div className="flex space-x-1">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-3 h-3 rounded-full border ${
+                    i < abilityPoints 
+                      ? 'bg-clair-gold-500 border-clair-gold-400 shadow-lg' 
+                      : 'bg-clair-shadow-800 border-clair-shadow-400'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* Foretell Stacks Display */}
-        {totalStacks > 0 && (
-          <div className="bg-green-900 bg-opacity-30 border border-green-500 rounded-lg p-4 mb-4">
+        {/* Drawn Card Display */}
+        {drawnCard && (
+          <div className="bg-purple-900 bg-opacity-30 border border-purple-500 rounded-lg p-4 mb-4">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-green-300 font-bold">Active Foretell Stacks</h3>
-              <span className="text-green-200 text-sm font-bold">{totalStacks} total</span>
+              <h3 className="text-purple-300 font-bold flex items-center">
+                <Shuffle className="w-5 h-5 mr-2" />
+                {drawnCard.name} Drawn!
+              </h3>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.entries(foretellStacks).map(([enemyId, stacks]) => {
-                const enemy = availableEnemies.find(e => e.id === enemyId);
-                return (
-                  <div key={enemyId} className="flex items-center justify-between bg-green-800 bg-opacity-50 p-2 rounded">
-                    <span className="text-green-200 text-sm">{enemy?.name || enemyId}</span>
-                    <div className="flex space-x-1">
-                      {Array.from({ length: stacks }).map((_, i) => (
-                        <div key={i} className="w-2 h-2 bg-green-400 rounded-full"></div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+            <p className="text-purple-200 text-sm">{drawnCard.description}</p>
+            <div className="text-xs text-purple-400 mt-1">
+              Effect will trigger on your next Card Toss
             </div>
-          </div>
-        )}
-
-        {/* Foretell Chain Status */}
-        {foretellChainCharged && (
-          <div className="bg-green-900 bg-opacity-30 border border-green-500 rounded-lg p-3 mb-4 flex items-center">
-            <Zap className="w-5 h-5 text-green-400 mr-3" />
-            <span className="font-sans text-green-300">
-              <strong>Foretell Chain Active!</strong> Next Card Toss will affect nearby enemies
-            </span>
           </div>
         )}
 
@@ -594,21 +439,23 @@ export function ScielCharacterSheet({
           <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Combat Actions</h3>
 
           {!selectedAction ? (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {/* Basic Attack */}
               <div>
                 <h4 className="text-sm font-bold text-green-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={!isMyTurn || !combatActive || (hasActedThisTurn && !showBonusAction) || isStormActive}
+                  disabled={hasActedThisTurn}
                   className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                 >
                   <div className="flex items-center">
                     <Circle className="w-4 h-4 mr-2" />
                     <span className="font-bold">{basicAttack.name}</span>
-                    <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      +1 Stack
-                    </span>
+                    {drawnCard && (
+                      <span className="ml-2 text-xs bg-purple-600 px-2 py-1 rounded">
+                        {drawnCard.name.toUpperCase()}
+                      </span>
+                    )}
                   </div>
                   <div className="text-sm opacity-90 mt-1">{basicAttack.description}</div>
                   <div className="text-xs text-clair-gold-200 mt-1">{basicAttack.damage}</div>
@@ -617,20 +464,24 @@ export function ScielCharacterSheet({
 
               {/* Abilities */}
               <div>
-                <h4 className="text-sm font-bold text-green-300 mb-2">Abilities</h4>
-                <div className="space-y-2">
+                <h4 className="text-sm font-bold text-blue-300 mb-2">Abilities</h4>
+                <div className="grid gap-2">
                   {abilities.map((ability) => (
                     <button
                       key={ability.id}
                       onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost || (hasActedThisTurn && !showBonusAction) || isStormActive}
-                      className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
+                      disabled={hasActedThisTurn || Boolean(ability.cost && abilityPoints < ability.cost)}
+                      className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                     >
-                      <div className="flex items-center">
-                        <Zap className="w-4 h-4 mr-2" />
-                        <span className="font-bold">{ability.name}</span>
-                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.cost} pts
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          {ability.id === 'rewrite_destiny' && <Eye className="w-4 h-4 mr-2" />}
+                          {ability.id === 'glimpse_future' && <Zap className="w-4 h-4 mr-2" />}
+                          {ability.id === 'draw_fate' && <Shuffle className="w-4 h-4 mr-2" />}
+                          <span className="font-bold">{ability.name}</span>
+                        </div>
+                        <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                          {ability.cost} AP
                         </span>
                       </div>
                       <div className="text-sm opacity-90 mt-1">{ability.description}</div>
@@ -640,36 +491,31 @@ export function ScielCharacterSheet({
                 </div>
               </div>
 
-              {/* Ultimate Ability - Crescendo of Fate */}
+              {/* Ultimate */}
               <div>
-                <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
+                <h4 className="text-sm font-bold text-red-300 mb-2">Ultimate</h4>
                 <button
                   onClick={handleActivateUltimate}
-                  disabled={!isMyTurn || !combatActive || abilityPoints < 3 || totalStacks === 0 || isStormActive || (hasActedThisTurn && !showBonusAction)}
-                  className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
-                    totalStacks === 0 || isStormActive || abilityPoints < 3
-                      ? 'bg-gray-600 cursor-not-allowed opacity-50'
-                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
-                  }`}
+                  disabled={abilityPoints < 3 || isStormActive}
+                  className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                 >
-                  <div className="flex items-center">
-                    <span className="text-xl mr-2">⚡</span>
-                    <span className="font-bold">Crescendo of Fate</span>
-                    <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      3 pts
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center">
+                      <Target className="w-4 h-4 mr-2" />
+                      <span className="font-bold">Crescendo of Fate</span>
+                    </div>
+                    <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                      3 AP
                     </span>
-                    <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                   </div>
                   <div className="text-sm opacity-90 mt-1">
                     {isStormActive 
                       ? '⚡ Storm Active - Radiant fury rages!'
-                      : totalStacks === 0 
-                        ? 'Need Foretell Stacks to activate'
-                        : `5-turn radiant storm using ${totalStacks} stacks`
+                      : '5-turn radiant storm (3d6 per turn)'
                     }
                   </div>
                   <div className="text-xs text-clair-gold-200 mt-1">
-                    Auto-targeting storm: 3d6 radiant per turn (triggers on Sciel's turn only)
+                    Auto-targeting storm: 3d6 radiant per turn (triggers on Sciel's turns only)
                   </div>
                 </button>
               </div>
@@ -709,147 +555,99 @@ export function ScielCharacterSheet({
                 </button>
               </div>
 
-              {selectedAction.id === 'foretell_chain' && (
+              {/* Show action-specific UI */}
+              {(selectedAction.id === 'rewrite_destiny' || selectedAction.id === 'glimpse_future') && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-green-900 bg-opacity-30 rounded-lg">
-                    <p className="text-green-200 text-sm">
-                      Your next Card Toss will apply Foretell Stacks to up to 2 additional enemies within 10ft of your target.
-                      <br/><strong>Using Foretell Chain will end your turn.</strong>
+                  <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
+                    <p className="text-blue-200 text-sm">
+                      {selectedAction.id === 'rewrite_destiny' 
+                        ? 'Select an enemy to curse with disadvantage on their next action.'
+                        : 'Select an ally to bless with advantage on their next action.'
+                      }
                     </p>
                   </div>
-                  <button onClick={handleConfirmAction} className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg font-bold transition-colors">
-                    Charge Foretell Chain
+                  <button
+                    onClick={() => setShowTargetingModal(true)}
+                    className="w-full bg-green-600 hover:bg-green-700 p-2 rounded text-white font-bold"
+                  >
+                    {selectedAction.id === 'rewrite_destiny' ? 'Select Enemy' : 'Select Ally'}
                   </button>
                 </div>
               )}
 
-              {/* Foretell Sweep - AC roll only */}
-              {selectedAction.id === 'foretell_sweep' && (
+              {(selectedAction.id === 'card_toss') && (
                 <div className="space-y-3">
-                  <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg">
-                    <p className="text-purple-200 text-sm mb-2">
-                      Affects all enemies with Foretell Stacks. Single AC roll determines hits.
+                  <div className="p-3 bg-green-900 bg-opacity-30 rounded-lg">
+                    <p className="text-green-200 text-sm">
+                      {drawnCard ? 
+                        `Enhanced Card Toss: ${drawnCard.description}` :
+                        'Select an enemy to hit with your mystical cards.'
+                      }
                     </p>
-                    <div className="text-xs text-purple-300">
-                      Enemies with stacks: {availableEnemies.filter(e => foretellStacks[e.id] > 0).map(e => `${e.name} (${foretellStacks[e.id]})`).join(', ') || 'None'}
-                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-bold mb-2 text-clair-gold-300">
-                      Roll d20 + modifiers:
+                  <button
+                    onClick={() => setShowTargetingModal(true)}
+                    className="w-full bg-green-600 hover:bg-green-700 p-2 rounded text-white font-bold"
+                  >
+                    Select Target Enemy
+                  </button>
+                </div>
+              )}
+
+              {selectedTarget && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-gray-800 rounded-lg">
+                    <label className="block text-sm font-bold text-gray-300 mb-2">
+                      Attack Roll vs AC (d20 + modifiers):
                     </label>
                     <input
-                      type="number"
+                      type="text"
                       value={acRoll}
                       onChange={(e) => setACRoll(e.target.value)}
-                      placeholder="Enter your attack roll total"
-                      className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                      min={1}
-                      max={30}
+                      placeholder="e.g., 15"
+                      className="w-full p-2 rounded bg-gray-700 text-white border border-gray-600"
                     />
                   </div>
                   <button
                     onClick={handleConfirmAction}
-                    disabled={!acRoll}
-                    className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-clair-shadow-600 text-white p-3 rounded-lg font-bold transition-colors"
+                    className="w-full bg-red-600 hover:bg-red-700 p-3 rounded text-white font-bold"
                   >
-                    Unleash Foretell Sweep
+                    Confirm Action
                   </button>
                 </div>
-              )}
-
-              {/* Guiding Cards - No input needed */}
-              {selectedAction.isBonusAction && (
-                <div className="space-y-3">
-                  <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
-                    <p className="text-blue-200 text-sm">
-                      Tell the GM which ally should receive +1d4 to their next attack or saving throw.
-                    </p>
-                  </div>
-                  <button onClick={handleConfirmAction} className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-bold transition-colors">
-                    Use Guiding Cards
-                  </button>
-                </div>
-              )}
-
-              {/* Card Toss - Target selection with modal */}
-              {selectedAction.id === 'card_toss' && (
-                <>
-                  {/* Modal Trigger Button */}
-                  <div className="space-y-3">
-                    <button
-                      onClick={() => setShowTargetingModal(true)}
-                      className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
-                    >
-                      <Target className="w-5 h-5 mr-2" />
-                      Select Target
-                      {selectedTarget && (
-                        <span className="ml-2 text-sm">
-                          ({availableEnemies.find(e => e.id === selectedTarget)?.name})
-                        </span>
-                      )}
-                    </button>
-
-                    {/* AC Roll Input and Confirm Button */}
-                    {selectedTarget && (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-bold mb-2 text-clair-gold-300">
-                            Roll d20 + modifiers:
-                          </label>
-                          <input
-                            type="number"
-                            value={acRoll}
-                            onChange={(e) => setACRoll(e.target.value)}
-                            placeholder="Enter your attack roll total"
-                            className="w-full p-3 bg-clair-shadow-800 border border-clair-shadow-400 rounded-lg text-clair-gold-200"
-                            min={1}
-                            max={30}
-                          />
-                        </div>
-                        <button
-                          onClick={handleConfirmAction}
-                          disabled={!acRoll}
-                          className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 disabled:bg-clair-shadow-600 text-clair-shadow-900 p-3 rounded-lg font-bold transition-colors"
-                        >
-                          Throw Card
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  {getValidTargets().length === 0 && (
-                    <div className="text-center text-clair-gold-400 py-4">No enemies available</div>
-                  )}
-                </>
               )}
             </div>
           )}
-
-          {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && hasActedThisTurn && !showBonusAction && (
-            <button
-              onClick={onEndTurn}
-              className="w-full mt-4 p-3 rounded-lg font-bold transition-colors bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900"
-            >
-              <Eye className="w-5 h-5 inline mr-2" />
-              End Turn
-            </button>
-          )}
-
-          {/* Tips */}
-          <div className="mt-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
-            <h4 className="font-serif font-bold text-green-400 text-sm mb-2">Combat Tips:</h4>
-            <ul className="text-xs text-green-300 space-y-1">
-              <li>• Card Toss applies Foretell Stacks (max 3 per enemy)</li>
-              <li>• Foretell Chain affects enemies within 10ft (ends your turn)</li>
-              <li>• Foretell Sweep hits all stacked enemies with one roll</li>
-              <li>• Guiding Cards is a bonus action (3-round cooldown)</li>
-              <li>• Ranged attacks get -2 AC penalty per 5ft beyond 30ft</li>
-              <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on Sciel's turns only)!</strong></li>
-            </ul>
-          </div>
         </div>
+
+        {/* Combat Tips */}
+        <div className="bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
+          <h4 className="font-serif font-bold text-green-400 text-sm mb-2 p-4 pb-0">Combat Tips:</h4>
+          <ul className="text-xs text-green-300 space-y-1 p-4 pt-2">
+            <li>• Card Toss has unlimited range with mystical accuracy</li>
+            <li>• Rewrite Destiny gives enemy disadvantage on next roll</li>
+            <li>• Glimpse Future gives ally advantage on next roll</li> 
+            <li>• Draw Fate randomly enhances next Card Toss (risky but powerful!)</li>
+            <li>• Guiding Cards is a bonus action (3-round cooldown)</li>
+            <li>• <strong>Crescendo of Fate: 5-turn storm (3d6 radiant on Sciel's turns only)!</strong></li>
+          </ul>
+        </div>
+
+        {/* Turn Management */}
+        {isMyTurn && combatActive && (
+          <div className="bg-clair-mystical-600 rounded-lg shadow-shadow p-4 border border-clair-mystical-400">
+            <h3 className="font-display text-lg font-bold text-white mb-3">Your Turn</h3>
+            <div className="flex space-x-2">
+              <button
+                onClick={onEndTurn}
+                disabled={!hasActedThisTurn}
+                className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 text-white font-bold py-2 px-4 rounded-lg transition-colors"
+              >
+                End Turn
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Enemy Targeting Modal */}
@@ -858,11 +656,10 @@ export function ScielCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={availableEnemies}
         playerPosition={playerPosition}
-        sessionId={sessionId} // Add this
-        playerId={character.id} // Add this
-        onSelectEnemy={(enemy) => {
+        sessionId={sessionId}
+        playerId={character.id}
+        onSelectEnemy={(enemy: Enemy) => {
           setSelectedTarget(enemy.id);
-          // Don't close modal here - wait for confirmation
         }}
         selectedEnemyId={selectedTarget}
         abilityName={selectedAction?.name}
@@ -872,9 +669,9 @@ export function ScielCharacterSheet({
       <InventoryModal
         isOpen={showInventoryModal}
         characterName={character.name}
-        inventory={inventory}
-        goldAmount={goldAmount}
-        isLoading={inventoryLoading}
+        inventory={[]}
+        goldAmount={0}
+        isLoading={false}
         onClose={() => setShowInventoryModal(false)}
       />
     </div>
