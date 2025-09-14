@@ -37,6 +37,7 @@ interface MaelleCharacterSheetProps {
   onAfterimageChange?: (stacks: number) => void;
   phantomStrikeAvailable?: boolean;
   onPhantomStrikeUse?: () => void;
+  onActionComplete?: () => void; // ADD THIS: Signal that an action has been taken
   sessionId?: string;
 }
 
@@ -58,6 +59,7 @@ export function MaelleCharacterSheet({
   phantomStrikeAvailable = true,
   onPhantomStrikeUse,
   sessionId,
+  onActionComplete,
 }: MaelleCharacterSheetProps) {
   
   const [selectedAction, setSelectedAction] = useState<{
@@ -170,6 +172,8 @@ export function MaelleCharacterSheet({
       setTimeout(() => onAfterimageChange?.(stacksGained), 100);
 
       setSelectedAction(null);
+      onActionComplete?.(); // ADDED: Signal turn used
+
       return;
     }
 
@@ -207,6 +211,7 @@ export function MaelleCharacterSheet({
       setSelectedTarget('');
       setACRoll('');
       setShowTargetingModal(false);
+      onActionComplete?.(); 
     }
   };
 

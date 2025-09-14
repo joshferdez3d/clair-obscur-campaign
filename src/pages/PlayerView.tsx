@@ -396,7 +396,10 @@ export function PlayerView() {
         phantomStrikeAvailable={maelleAfterimage.afterimageState.phantomStrikeAvailable}
         onPhantomStrikeUse={handlePhantomStrikeUse}
         sessionId={sessionId || 'test-session'}
-
+        onActionComplete={() => {
+          console.log('Maelle action completed, marking turn as acted');
+          setHasActedThisTurn(true);
+        }}
       />
     );
   }
