@@ -37,105 +37,163 @@ import type { BattleMapPreset, PresetSaveData } from '../types';
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
 
-  static async resetBattleSession(sessionId: string) {
-    console.log('🔄 Starting battle session reset with combat state preservation...');
+  static async createDefaultInitiativeOrder(sessionId: string): Promise<void> {
+    console.log('⚡ Creating default initiative order...');
     
+    const defaultInitiativeOrder: InitiativeEntry[] = [
+      {
+        id: 'maelle',
+        characterId: 'maelle',
+        name: 'Maelle',
+        initiative: 15, // High initiative for the fencer
+        type: 'player',
+        hasActed: false
+      },
+      {
+        id: 'lune',
+        characterId: 'lune', 
+        name: 'Lune',
+        initiative: 13, // Scholar with good reflexes
+        type: 'player',
+        hasActed: false
+      },
+      {
+        id: 'sciel',
+        characterId: 'sciel',
+        name: 'Sciel', 
+        initiative: 12, // Mystic with decent initiative
+        type: 'player',
+        hasActed: false
+      },
+      {
+        id: 'gustave',
+        characterId: 'gustave',
+        name: 'Gustave',
+        initiative: 10, // Engineer goes last typically
+        type: 'player',
+        hasActed: false
+      }
+    ];
+
     try {
-      const session = await this.getBattleSession(sessionId);
-      if (!session) {
-        throw new Error('Session not found');
-      }
-
-      console.log('💰 Preserving inventory and gold data...');
-      
-      // 1. Save current inventory and gold for all characters BEFORE reset
-      const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
-      const preservedData: Record<string, { 
-        inventory: any[], 
-        gold: number,
-        combatState: CharacterCombatState 
-      }> = {};
-      
-      for (const characterId of characterIds) {
-        const character = await this.getCharacter(characterId);
-        
-        if (character) {
-          preservedData[characterId] = {
-            inventory: character.inventory || [],
-            gold: character.gold ?? 0,
-            combatState: character.combatState || CombatStateHelpers.createDefaultCombatState()
-          };
-          console.log(`📦 Preserved ${characterId}: ${character.inventory?.length || 0} items, ${character.gold || 0} gold, combat state`);
-        }
-      }
-
-      console.log('🗑️ Clearing battle session...');
-
-      // 2. Clear the session completely first
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
-        tokens: {}, // This will be replaced with default player tokens
-        combatState: {
-          isActive: false,
-          currentTurn: '',
-          turnOrder: [],
-          round: 1,
-          phase: 'setup',
-          initiativeOrder: [],
-        },
-        pendingActions: [],
-        enemyData: {},
-        stormState: {
-          isActive: false,
-          currentTurn: 0,
-          totalTurns: 0,
-          pendingRolls: [],
-        },
-        updatedAt: serverTimestamp(),
+        'combatState.initiativeOrder': defaultInitiativeOrder,
+        'combatState.turnOrder': defaultInitiativeOrder.map(entry => entry.id),
+        updatedAt: serverTimestamp()
       });
-
-      console.log('📊 Reinitializing sample data...');
-
-      // 3. Reinitialize sample data (this will overwrite characters)
-      await this.initializeSampleData();
-
-      // 4. CREATE DEFAULT PLAYER TOKENS (NEW!)
-      console.log('🎭 Creating default player tokens on battle map...');
-      await this.createDefaultPlayerTokens(sessionId);
-
-      console.log('🔄 Restoring inventory, gold, and resetting combat state...');
-
-      // 5. Restore inventory/gold and reset combat state for new battle
-      for (const characterId of characterIds) {
-        if (preservedData[characterId]) {
-          const preserved = preservedData[characterId];
-          
-          // Reset combat state for new battle
-          const newCombatState = CombatStateHelpers.resetForNewBattle(preserved.combatState);
-          
-          const characterRef = doc(db, 'characters', characterId);
-          await updateDoc(characterRef, {
-            inventory: preserved.inventory,
-            gold: preserved.gold,
-            combatState: {
-              ...newCombatState,
-              lastUpdated: serverTimestamp(),
-              lastSyncedAt: serverTimestamp()
-            },
-            updatedAt: serverTimestamp(),
-          });
-          
-          console.log(`✅ Restored and reset ${characterId}: ${preserved.inventory.length} items, ${preserved.gold} gold, fresh combat state`);
-        }
-      }
-
-      console.log('✅ Battle session reset complete with default player tokens!');
+      
+      console.log('✅ Default initiative order created successfully');
     } catch (error) {
-      console.error('❌ Error during battle session reset:', error);
+      console.error('❌ Failed to create default initiative order:', error);
       throw error;
     }
   }
 
+
+ static async resetBattleSession(sessionId: string) {
+  console.log('🔄 Starting complete battle session reset with tokens and initiative...');
+  
+  try {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    console.log('💰 Preserving inventory and gold data...');
+    
+    // 1. Save current inventory and gold for all characters BEFORE reset
+    const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
+    const preservedData: Record<string, { 
+      inventory: any[], 
+      gold: number,
+      combatState: CharacterCombatState 
+    }> = {};
+    
+    for (const characterId of characterIds) {
+      const character = await this.getCharacter(characterId);
+      
+      if (character) {
+        preservedData[characterId] = {
+          inventory: character.inventory || [],
+          gold: character.gold ?? 0,
+          combatState: character.combatState || CombatStateHelpers.createDefaultCombatState()
+        };
+        console.log(`📦 Preserved ${characterId}: ${character.inventory?.length || 0} items, ${character.gold || 0} gold, combat state`);
+      }
+    }
+
+    console.log('🗑️ Clearing battle session...');
+
+    // 2. Clear the session completely first
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      tokens: {}, // This will be replaced with default player tokens
+      combatState: {
+        isActive: false,
+        currentTurn: '',
+        turnOrder: [],
+        round: 1,
+        phase: 'setup',
+        initiativeOrder: [], // This will be replaced with default player initiative
+      },
+      pendingActions: [],
+      enemyData: {},
+      stormState: {
+        isActive: false,
+        currentTurn: 0,
+        totalTurns: 0,
+        pendingRolls: [],
+      },
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('📊 Reinitializing sample data...');
+
+    // 3. Reinitialize sample data (this will overwrite characters)
+    await this.initializeSampleData();
+
+    // 4. CREATE DEFAULT PLAYER TOKENS (NEW!)
+    console.log('🎭 Creating default player tokens on battle map...');
+    await this.createDefaultPlayerTokens(sessionId);
+
+    // 5. CREATE DEFAULT INITIATIVE ORDER (NEW!)
+    console.log('⚡ Setting up default initiative order...');
+    await this.createDefaultInitiativeOrder(sessionId);
+
+    console.log('🔄 Restoring inventory, gold, and resetting combat state...');
+
+    // 6. Restore inventory/gold and reset combat state for new battle
+    for (const characterId of characterIds) {
+      if (preservedData[characterId]) {
+        const preserved = preservedData[characterId];
+        
+        // Reset combat state for new battle
+        const newCombatState = CombatStateHelpers.resetForNewBattle(preserved.combatState);
+        
+        const characterRef = doc(db, 'characters', characterId);
+        await updateDoc(characterRef, {
+          inventory: preserved.inventory,
+          gold: preserved.gold,
+          combatState: {
+            ...newCombatState,
+            lastUpdated: serverTimestamp(),
+            lastSyncedAt: serverTimestamp()
+          },
+          updatedAt: serverTimestamp(),
+        });
+        
+        console.log(`✅ Restored and reset ${characterId}: ${preserved.inventory.length} items, ${preserved.gold} gold, fresh combat state`);
+      }
+    }
+
+    console.log('✅ Battle session reset complete with tokens and initiative!');
+    console.log('🎯 Ready for combat - players are on the map and in initiative order!');
+  } catch (error) {
+    console.error('❌ Error during battle session reset:', error);
+    throw error;
+  }
+}
 
 
   // NEW: Create switch card action
