@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'; // Make sure useEffect is included
+import React, { useState, useEffect } from 'react';
 import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } from 'lucide-react';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
@@ -6,16 +6,15 @@ import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character } from '../../types/character';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { FirestoreService } from '../../services/firestoreService';
-import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
-import { InventoryModal } from './InventoryModal'; // Add this import
-import { InventoryService } from '../../services/inventoryService'; // Add this import
-import type { InventoryItem } from '../../types'; // Add this import
-import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
+import { Package } from 'lucide-react';
+import { InventoryModal } from './InventoryModal';
+import { InventoryService } from '../../services/inventoryService';
+import type { InventoryItem } from '../../types';
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 
 interface MaelleCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
-  onAbilityPointsChange: (delta: number) => void;
   isLoading?: boolean;
   isMyTurn?: boolean;
   combatActive?: boolean;
@@ -32,19 +31,21 @@ interface MaelleCharacterSheetProps {
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
   hasActedThisTurn?: boolean;
-  // New props specific to Maelle's Afterimage system
-  afterimageStacks?: number;
-  onAfterimageChange?: (stacks: number) => void;
-  phantomStrikeAvailable?: boolean;
-  onPhantomStrikeUse?: () => void;
-  onActionComplete?: () => void; // ADD THIS: Signal that an action has been taken
   sessionId?: string;
+  onActionComplete?: () => void;
+  
+  // Persistent state props
+  afterimageStacks: number;
+  setAfterimageStacks: (stacks: number) => Promise<void>;
+  phantomStrikeAvailable: boolean;
+  setPhantomStrikeAvailable: (available: boolean) => Promise<void>;
+  abilityPoints: number;
+  setAbilityPoints: (points: number) => Promise<void>;
 }
 
 export function MaelleCharacterSheet({
   character,
   onHPChange,
-  onAbilityPointsChange,
   isLoading = false,
   isMyTurn = false,
   combatActive = false,
@@ -54,12 +55,15 @@ export function MaelleCharacterSheet({
   onEndTurn,
   onCancelTargeting,
   hasActedThisTurn = false,
-  afterimageStacks = 0,
-  onAfterimageChange,
-  phantomStrikeAvailable = true,
-  onPhantomStrikeUse,
   sessionId,
   onActionComplete,
+  // Persistent state props
+  afterimageStacks,
+  setAfterimageStacks,
+  phantomStrikeAvailable,
+  setPhantomStrikeAvailable,
+  abilityPoints,
+  setAbilityPoints,
 }: MaelleCharacterSheetProps) {
   
   const [selectedAction, setSelectedAction] = useState<{
@@ -78,12 +82,10 @@ export function MaelleCharacterSheet({
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
 
-
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
   };
   
-
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
       'gustave': '/tokens/characters/gustave.jpg',
@@ -95,7 +97,6 @@ export function MaelleCharacterSheet({
   };
 
   const portraitUrl = getCharacterPortrait(character.name);
-
 
   // Calculate distance for range validation
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -165,22 +166,24 @@ export function MaelleCharacterSheet({
         console.error('Failed to trigger ultimate video:', error);
       }
       
-      onPhantomStrikeUse?.();
-      onAfterimageChange?.(0);
+      await setPhantomStrikeAvailable(false);
+      await setAfterimageStacks(0);
       
-      const stacksGained = Math.ceil(enemiesInRange.length / 2);
-      setTimeout(() => onAfterimageChange?.(stacksGained), 100);
+      const stacksRegained = Math.ceil(enemiesInRange.length / 2);
+      setTimeout(async () => {
+        await setAfterimageStacks(stacksRegained);
+      }, 100);
 
       setSelectedAction(null);
-      onActionComplete?.(); // ADDED: Signal turn used
-
+      onActionComplete?.();
       return;
     }
 
     // Handle abilities that don't need targeting
     if (selectedAction.id === 'spectral_feint' || selectedAction.id === 'mirror_step') {
       if (selectedAction.cost) {
-        onAfterimageChange?.(Math.max(0, afterimageStacks - selectedAction.cost));
+        const newStacks = Math.max(0, afterimageStacks - selectedAction.cost);
+        await setAfterimageStacks(newStacks);
       }
       
       setSelectedAction(null);
@@ -201,10 +204,12 @@ export function MaelleCharacterSheet({
           const rollValue = parseInt(acRoll);
           const criticalHit = rollValue === 20;
           const stacksGained = criticalHit ? 2 : 1;
-          onAfterimageChange?.(Math.min(5, afterimageStacks + stacksGained));
+          const newStacks = Math.min(5, afterimageStacks + stacksGained);
+          await setAfterimageStacks(newStacks);
         }
       } else if (selectedAction.cost) {
-        onAfterimageChange?.(Math.max(0, afterimageStacks - selectedAction.cost));
+        const newStacks = Math.max(0, afterimageStacks - selectedAction.cost);
+        await setAfterimageStacks(newStacks);
       }
 
       setSelectedAction(null);
@@ -222,8 +227,6 @@ export function MaelleCharacterSheet({
     setShowTargetingModal(false);
     onCancelTargeting?.();
   };
-
-  const abilityPoints = character.charges || 0;
 
   // Define Maelle's new abilities
   const basicAttack = {
@@ -316,7 +319,6 @@ export function MaelleCharacterSheet({
       </div>
     </div>
 
-
       <div className="px-4 pt-4">
         {portraitUrl && (
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
@@ -327,7 +329,7 @@ export function MaelleCharacterSheet({
                 src={portraitUrl} 
                 alt={`${character.name} portrait`}
                 className="w-full h-full object-cover"
-                style={{ imageRendering: 'crisp-edges' }}  // Fixed: use valid value
+                style={{ imageRendering: 'crisp-edges' }}
               />
             </div>
           </div>
@@ -613,14 +615,14 @@ export function MaelleCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={getValidTargets()}
         playerPosition={playerPosition}
-        sessionId={sessionId} // Add this
-        playerId={character.id} // Add this
+        sessionId={sessionId}
+        playerId={character.id}
         onSelectEnemy={(enemy) => {
           setSelectedTarget(enemy.id);
         }}
         selectedEnemyId={selectedTarget}
         abilityName={selectedAction?.name}
-        abilityRange={5} // Maelle is melee only
+        abilityRange={5}
       />
 
       <InventoryModal

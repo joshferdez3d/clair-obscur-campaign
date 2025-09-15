@@ -2356,227 +2356,228 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     });
   }
   // ========== Sample Data ==========
-  static async initializeSampleData(): Promise<void> {
-    console.log('📊 Initializing sample character data with combat state...');
+  // ========== Sample Data ==========
+static async initializeSampleData(): Promise<void> {
+  console.log('📊 Initializing sample character data with combat state...');
 
-    const sampleCharacters: CharacterDoc[] = [
-      {
-        name: 'Maelle',
-        role: 'Phantom Blade Duelist',
-        stats: { str: 12, dex: 16, con: 13, int: 10, wis: 11, cha: 14 },
-        currentHP: 28,
-        maxHP: 28,
-        stance: 'offensive',
-        charges: 0,
-        maxCharges: 5,
-        level: 3,
-        portraitUrl: '/portraits/maelle.jpg',
-        backgroundColor: '#8B5A2B',
-        inventory: [],
-        gold: 150,
-        combatState: {
-          ...CombatStateHelpers.createDefaultCombatState(),
-          lastUpdated: serverTimestamp(),
-          lastSyncedAt: serverTimestamp()
-        },
-        afterimageStacks: 0,
-        maxAfterimageStacks: 5,
-        phantomStrikeUsed: false,
-        abilities: [
-          {
-            id: 'fencers-slash',
-            name: "Fencer's Slash",
-            description: 'A precise sword attack that gains +1 afterimage stack.',
-            type: 'action',
-            damage: '1d8 + DEX',
-            range: '5 feet'
-          },
-          {
-            id: 'flourish-chain',
-            name: 'Flourish Chain',
-            description: 'Consume 2 afterimage stacks for an additional attack.',
-            type: 'bonus_action',
-            damage: '1d8 + DEX',
-            range: '5 feet'
-          },
-          {
-            id: 'dazzling-feint',
-            name: 'Dazzling Feint',
-            description: 'Consume 1 stack to gain advantage on next attack.',
-            type: 'bonus_action',
-            effect: 'Advantage on next attack',
-            range: 'Self'
-          },
-          {
-            id: 'phantom-strike',
-            name: 'Phantom Strike',
-            description: 'Ultimate: Consume 3+ stacks for devastating combo attack.',
-            type: 'action',
-            damage: 'Special',
-            range: '5 feet'
-          }
-        ],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+  const sampleCharacters: CharacterDoc[] = [
+    {
+      name: 'Maelle',
+      role: 'Phantom Blade Duelist',
+      stats: { str: 12, dex: 16, con: 13, int: 10, wis: 11, cha: 14 },
+      currentHP: 28,
+      maxHP: 28,
+      stance: 'offensive',
+      charges: 0,
+      maxCharges: 5,
+      level: 3,
+      portraitUrl: '/portraits/maelle.jpg',
+      backgroundColor: '#8B5A2B',
+      inventory: [],
+      gold: 150,
+      combatState: {
+        ...CombatStateHelpers.createDefaultCombatState(),
+        lastUpdated: serverTimestamp(),
+        lastSyncedAt: serverTimestamp()
       },
-      {
-        name: 'Gustave',
-        role: 'Engineering Vanguard',
-        stats: { str: 16, dex: 12, con: 15, int: 14, wis: 11, cha: 10 },
-        currentHP: 34,
-        maxHP: 34,
-        charges: 0,
-        maxCharges: 3,
-        level: 3,
-        portraitUrl: '/portraits/gustave.jpg',
-        backgroundColor: '#2D4A3E',
-        inventory: [],
-        gold: 200,
-        combatState: {
-          ...CombatStateHelpers.createDefaultCombatState(),
-          lastUpdated: serverTimestamp(),
-          lastSyncedAt: serverTimestamp()
+      afterimageStacks: 0,
+      maxAfterimageStacks: 5,
+      phantomStrikeUsed: false,
+      abilities: [
+        {
+          id: 'fencers-slash',
+          name: "Fencer's Slash",
+          description: 'A precise sword attack that gains +1 afterimage stack.',
+          type: 'action',
+          damage: '1d8 + DEX',
+          range: '5 feet'
         },
-        abilities: [
-          {
-            id: 'sword-slash',
-            name: 'Sword Slash',
-            description: 'Basic melee attack with sword.',
-            type: 'action',
-            damage: '1d8 + STR',
-            range: '5 feet'
-          },
-          {
-            id: 'prosthetic-strike',
-            name: 'Prosthetic Strike',
-            description: 'Enhanced strike using prosthetic arm. Consumes 1 Overload charge.',
-            type: 'action',
-            damage: '1d8 + STR + 1d6 (overload)',
-            range: '5 feet',
-            costsCharges: 1
-          },
-          {
-            id: 'deploy-turret',
-            name: 'Deploy Turret',
-            description: 'Deploy a defensive turret. Consumes 2 Overload charges.',
-            type: 'action',
-            effect: 'Deploys turret with 15 HP, AC 12',
-            range: '10 feet',
-            costsCharges: 2
-          }
-        ],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        {
+          id: 'flourish-chain',
+          name: 'Flourish Chain',
+          description: 'Consume 2 afterimage stacks for an additional attack.',
+          type: 'bonus_action',
+          damage: '1d8 + DEX',
+          range: '5 feet'
+        },
+        {
+          id: 'dazzling-feint',
+          name: 'Dazzling Feint',
+          description: 'Consume 1 stack to gain advantage on next attack.',
+          type: 'bonus_action',
+          effect: 'Advantage on next attack',
+          range: 'Self'
+        },
+        {
+          id: 'phantom-strike',
+          name: 'Phantom Strike',
+          description: 'Ultimate: Consume 3+ stacks for devastating combo attack.',
+          type: 'action',
+          damage: 'Special',
+          range: '5 feet'
+        }
+      ],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    {
+      name: 'Gustave',
+      role: 'Engineering Vanguard',
+      stats: { str: 16, dex: 12, con: 15, int: 14, wis: 11, cha: 10 },
+      currentHP: 34,
+      maxHP: 34,
+      charges: 0,
+      maxCharges: 3,
+      level: 3,
+      portraitUrl: '/portraits/gustave.jpg',
+      backgroundColor: '#2D4A3E',
+      inventory: [],
+      gold: 200,
+      combatState: {
+        ...CombatStateHelpers.createDefaultCombatState(),
+        lastUpdated: serverTimestamp(),
+        lastSyncedAt: serverTimestamp()
       },
-      {
-        name: 'Lune',
-        role: 'Elemental Scholar',
-        stats: { str: 10, dex: 12, con: 13, int: 16, wis: 14, cha: 11 },
-        currentHP: 24,
-        maxHP: 24,
-        charges: 0,
-        maxCharges: 4,
-        level: 3,
-        portraitUrl: '/portraits/lune.jpg',
-        backgroundColor: '#4A5568',
-        inventory: [],
-        gold: 125,
-        combatState: {
-          ...CombatStateHelpers.createDefaultCombatState(),
-          lastUpdated: serverTimestamp(),
-          lastSyncedAt: serverTimestamp()
+      abilities: [
+        {
+          id: 'sword-slash',
+          name: 'Sword Slash',
+          description: 'Basic melee attack with sword.',
+          type: 'action',
+          damage: '1d8 + STR',
+          range: '5 feet'
         },
-        abilities: [
-          {
-            id: 'elemental-bolt',
-            name: 'Elemental Bolt',
-            description: 'Ranged elemental attack. Roll 1d4 for element type.',
-            type: 'action',
-            damage: '1d8 + INT',
-            range: '60 feet'
-          },
-          {
-            id: 'elemental-strike',
-            name: 'Elemental Strike',
-            description: 'Melee attack that applies elemental stain.',
-            type: 'action',
-            damage: '1d6 + INT',
-            range: '5 feet'
-          },
-          {
-            id: 'twin-catalyst',
-            name: 'Twin Catalyst',
-            description: 'Consume 2 stains to cast two bolts.',
-            type: 'action',
-            damage: '2 × (1d8 + INT)',
-            range: '60 feet'
-          }
-        ],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        {
+          id: 'prosthetic-strike',
+          name: 'Prosthetic Strike',
+          description: 'Enhanced strike using prosthetic arm. Consumes 1 Overload charge.',
+          type: 'action',
+          damage: '1d8 + STR + 1d6 (overload)',
+          range: '5 feet',
+          costsCharges: 1
+        },
+        {
+          id: 'deploy-turret',
+          name: 'Deploy Turret',
+          description: 'Deploy a defensive turret. Consumes 2 Overload charges.',
+          type: 'action',
+          effect: 'Deploys turret with 15 HP, AC 12',
+          range: '10 feet',
+          costsCharges: 2
+        }
+      ],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    {
+      name: 'Lune',
+      role: 'Elemental Scholar',
+      stats: { str: 10, dex: 12, con: 13, int: 16, wis: 14, cha: 11 },
+      currentHP: 24,
+      maxHP: 24,
+      charges: 0,
+      maxCharges: 4,
+      level: 3,
+      portraitUrl: '/portraits/lune.jpg',
+      backgroundColor: '#4A5568',
+      inventory: [],
+      gold: 125,
+      combatState: {
+        ...CombatStateHelpers.createDefaultCombatState(),
+        lastUpdated: serverTimestamp(),
+        lastSyncedAt: serverTimestamp()
       },
-      {
-        name: 'Sciel',
-        role: 'Tarot Mystic',
-        stats: { str: 13, dex: 14, con: 12, int: 11, wis: 15, cha: 16 },
-        currentHP: 26,
-        maxHP: 26,
-        charges: 0,
-        maxCharges: 4,
-        level: 3,
-        portraitUrl: '/portraits/sciel.jpg',
-        backgroundColor: '#553C7B',
-        inventory: [],
-        gold: 175,
-        combatState: {
-          ...CombatStateHelpers.createDefaultCombatState(),
-          lastUpdated: serverTimestamp(),
-          lastSyncedAt: serverTimestamp()
+      abilities: [
+        {
+          id: 'elemental-bolt',
+          name: 'Elemental Bolt',
+          description: 'Ranged elemental attack. Roll 1d4 for element type.',
+          type: 'action',
+          damage: '1d8 + INT',
+          range: '60 feet'
         },
-        abilities: [
-          {
-            id: 'card-toss',
-            name: 'Card Toss',
-            description: 'Throw a tarot card as a ranged attack.',
-            type: 'action',
-            damage: '1d6 + CHA',
-            range: '30 feet'
-          },
-          {
-            id: 'guiding-cards',
-            name: 'Guiding Cards',
-            description: 'Grant advantage to ally. Builds Foretell stacks.',
-            type: 'bonus_action',
-            effect: 'Ally gains advantage',
-            range: '30 feet'
-          },
-          {
-            id: 'moonlit-ward',
-            name: 'Moonlit Ward',
-            description: 'Protective barrier using Foretell energy.',
-            type: 'reaction',
-            effect: '+2 AC until end of turn',
-            range: 'Self or ally'
-          }
-        ],
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }
-    ];
+        {
+          id: 'elemental-strike',
+          name: 'Elemental Strike',
+          description: 'Melee attack that applies elemental stain.',
+          type: 'action',
+          damage: '1d6 + INT',
+          range: '5 feet'
+        },
+        {
+          id: 'twin-catalyst',
+          name: 'Twin Catalyst',
+          description: 'Consume 2 stains to cast two bolts.',
+          type: 'action',
+          damage: '2 × (1d8 + INT)',
+          range: '60 feet'
+        }
+      ],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    },
+    {
+      name: 'Sciel',
+      role: 'Tarot Mystic',
+      stats: { str: 13, dex: 14, con: 12, int: 11, wis: 15, cha: 16 },
+      currentHP: 26,
+      maxHP: 26,
+      charges: 0,
+      maxCharges: 4,
+      level: 3,
+      portraitUrl: '/portraits/sciel.jpg',
+      backgroundColor: '#553C7B',
+      inventory: [],
+      gold: 175,
+      combatState: {
+        ...CombatStateHelpers.createDefaultCombatState(),
+        lastUpdated: serverTimestamp(),
+        lastSyncedAt: serverTimestamp()
+      },
+      abilities: [
+        {
+          id: 'card-toss',
+          name: 'Card Toss',
+          description: 'Throw a tarot card as a ranged attack.',
+          type: 'action',
+          damage: '1d6 + CHA',
+          range: '30 feet'
+        },
+        {
+          id: 'guiding-cards',
+          name: 'Guiding Cards',
+          description: 'Grant advantage to ally. Builds Foretell stacks.',
+          type: 'bonus_action',
+          effect: 'Ally gains advantage',
+          range: '30 feet'
+        },
+        {
+          id: 'moonlit-ward',
+          name: 'Moonlit Ward',
+          description: 'Protective barrier using Foretell energy.',
+          type: 'reaction',
+          effect: '+2 AC until end of turn',
+          range: 'Self or ally'
+        }
+      ],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }
+  ];
 
-    const promises = sampleCharacters.map(async (characterData, index) => {
-      const characterId = ['maelle', 'gustave', 'lune', 'sciel'][index];
-      const characterRef = doc(db, 'characters', characterId);
-      
-      try {
-        await setDoc(characterRef, characterData);
-        console.log(`✅ Initialized character: ${characterData.name} with combat state`);
-      } catch (error) {
-        console.error(`❌ Error initializing ${characterData.name}:`, error);
-      }
-    });
+  const promises = sampleCharacters.map(async (characterData, index) => {
+    const characterId = ['maelle', 'gustave', 'lune', 'sciel'][index];
+    const characterRef = doc(db, 'characters', characterId);
+    
+    try {
+      await setDoc(characterRef, characterData);
+      console.log(`✅ Initialized character: ${characterData.name} with combat state`);
+    } catch (error) {
+      console.error(`❌ Error initializing ${characterData.name}:`, error);
+    }
+  });
 
-    await Promise.all(promises);
-    console.log('✅ All sample characters initialized with combat state support');
-  }
+  await Promise.all(promises);
+  console.log('✅ All sample characters initialized with combat state support');
+}
 }

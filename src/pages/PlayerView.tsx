@@ -69,7 +69,7 @@ export function PlayerView() {
       // Sync our persistent state with the current battle state
       persistentCombatState.syncWithCombatRound(currentRound, currentTurn);
     }
-  }, [  session?.combatState?.isActive, session?.combatState?.round, session?.combatState?.currentTurn, characterId, persistentCombatState]);
+  }, [session?.combatState?.isActive, session?.combatState?.round, session?.combatState?.currentTurn, characterId, persistentCombatState]);
 
   // NEW: Auto-reset hasActedThisTurn when it's a new turn
   useEffect(() => {
@@ -268,7 +268,7 @@ export function PlayerView() {
 
   // Debug trace - now using persistent state values
   console.log(
-    `PlayerView ${characterId}: myTurn=${myTurn}, hasActed=${persistentCombatState.hasActedThisTurn}, overcharge=${persistentCombatState.overchargePoints}, stains=${persistentCombatState.elementalStains.length}, stacks=${Object.keys(persistentCombatState.foretellStacks).length}, bonusCD=${persistentCombatState.bonusActionCooldown}, currentTurn=${session?.combatState?.currentTurn}`
+    `PlayerView ${characterId}: myTurn=${myTurn}, hasActed=${persistentCombatState.hasActedThisTurn}, overcharge=${persistentCombatState.overchargePoints}, stains=${persistentCombatState.elementalStains.length}, bonusCD=${persistentCombatState.bonusActionCooldown}, currentTurn=${session?.combatState?.currentTurn}`
   );
 
   // ----- Render Character Sheets -----
@@ -279,7 +279,6 @@ export function PlayerView() {
       <MaelleCharacterSheet
         character={character}
         onHPChange={handleHPChange}
-        onAbilityPointsChange={handleAbilityPointsChange}
         isMyTurn={myTurn}
         combatActive={combatActive}
         availableEnemies={availableEnemies}
@@ -288,15 +287,17 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
-        afterimageStacks={maelleAfterimage.afterimageState.afterimageStacks}
-        onAfterimageChange={handleAfterimageChange}
-        phantomStrikeAvailable={maelleAfterimage.afterimageState.phantomStrikeAvailable}
-        onPhantomStrikeUse={handlePhantomStrikeUse}
         sessionId={sessionId || 'test-session'}
         onActionComplete={() => {
-          console.log('Maelle action completed, marking turn as acted');
           persistentCombatState.setHasActedThisTurn(true);
         }}
+        // PERSISTENT STATE PROPS - Remove duplicates and incorrect props
+        afterimageStacks={persistentCombatState.afterimageStacks}
+        setAfterimageStacks={persistentCombatState.setAfterimageStacks}
+        phantomStrikeAvailable={persistentCombatState.phantomStrikeAvailable}
+        setPhantomStrikeAvailable={persistentCombatState.setPhantomStrikeAvailable}
+        abilityPoints={character.charges || 0}
+        setAbilityPoints={changeCharges}
       />
     );
   }
@@ -306,16 +307,13 @@ export function PlayerView() {
       <GustaveCharacterSheet
         character={character}
         onHPChange={handleHPChange}
-        // REMOVE these old callbacks:
-        // onAbilityPointsChange={handleAbilityPointsChange}
-        // onOverchargePointsChange={handleOverchargePointsChange}
         onAbilityUse={handleAbilityUse}
 
         // ADD: Pass persistent state values and setters
         overchargePoints={persistentCombatState.overchargePoints}
         setOverchargePoints={persistentCombatState.setOverchargePoints}
         abilityPoints={character.charges || 0}
-        setAbilityPoints={changeCharges} // or create a proper setter
+        setAbilityPoints={changeCharges}
         activeTurretId={persistentCombatState.activeTurretId}
         setActiveTurretId={persistentCombatState.setActiveTurretId}
         turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
@@ -331,7 +329,7 @@ export function PlayerView() {
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
         sessionId={sessionId}
-        allTokens={session?.tokens || []}
+        allTokens={tokensArray}
         session={session}
       />
     );
@@ -351,21 +349,23 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
-        elementalStains={persistentCombatState.elementalStains}
-        onStainsChange={persistentCombatState.setElementalStains}
-        sessionId={sessionId}
+        sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
         session={session}
+        // PERSISTENT STATE PROPS
+        elementalStains={persistentCombatState.elementalStains}
+        setElementalStains={persistentCombatState.setElementalStains}
+        abilityPoints={character.charges || 0}
+        setAbilityPoints={changeCharges}
       />
     );
-  }
+  } 
 
   if (character.name.toLowerCase() === 'sciel') {
     return (
       <ScielCharacterSheet
         character={character}
         onHPChange={handleHPChange}
-        onAbilityPointsChange={handleAbilityPointsChange} // Add this line
         onAbilityUse={handleAbilityUse}
         isMyTurn={myTurn}
         combatActive={combatActive}
@@ -375,15 +375,20 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
-        sessionId={sessionId}
+        sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
         onActionComplete={() => {
-          console.log('Sciel action completed, marking turn as acted');
           persistentCombatState.setHasActedThisTurn(true);
         }}
+        // PERSISTENT STATE PROPS
+        chargedFateCard={persistentCombatState.chargedFateCard}
+        setChargedFateCard={persistentCombatState.setChargedFateCard}
+        abilityPoints={character.charges || 0}
+        setAbilityPoints={changeCharges}
       />
     );
   }
+  
   // Fallback
   return (
     <div className="min-h-screen bg-clair-dark flex items-center justify-center">

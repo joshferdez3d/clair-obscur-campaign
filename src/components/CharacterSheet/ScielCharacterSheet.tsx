@@ -19,7 +19,6 @@ import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 interface ScielCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
-  onAbilityPointsChange: (delta: number) => void;
   onAbilityUse: (ability: any) => void;
   isLoading?: boolean;
   isMyTurn?: boolean;
@@ -39,7 +38,13 @@ interface ScielCharacterSheetProps {
   hasActedThisTurn?: boolean;
   sessionId?: string;
   allTokens?: BattleToken[];
-  onActionComplete?: () => void; // Add this callback to signal turn should end
+  onActionComplete?: () => void;
+  
+  // Persistent state props
+  chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
+  setChargedFateCard: (card: 'explosive' | 'switch' | 'vanish' | null) => Promise<void>;
+  abilityPoints: number;
+  setAbilityPoints: (points: number) => Promise<void>;
 }
 
 type FateCard = 'explosive' | 'switch' | 'vanish' | null;
@@ -47,7 +52,6 @@ type FateCard = 'explosive' | 'switch' | 'vanish' | null;
 export function ScielCharacterSheet({
   character,
   onHPChange,
-  onAbilityPointsChange,
   onAbilityUse,
   isLoading = false,
   isMyTurn = false,
@@ -61,6 +65,11 @@ export function ScielCharacterSheet({
   sessionId = 'test-session',
   allTokens = [],
   onActionComplete,
+  // Persistent state props
+  chargedFateCard,
+  setChargedFateCard,
+  abilityPoints,
+  setAbilityPoints,
 }: ScielCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
@@ -68,11 +77,9 @@ export function ScielCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
-  const [isAbilityProcessing, setIsAbilityProcessing] = useState(false);
   const [usedFatesGambit, setUsedFatesGambit] = useState(false);
 
   // New state for Sciel's reworked abilities
-  const [chargedFateCard, setChargedFateCard] = useState<FateCard>(null);
   const [showBonusAction, setShowBonusAction] = useState(false);
 
   const [selectedAction, setSelectedAction] = useState<{
@@ -144,20 +151,30 @@ export function ScielCharacterSheet({
     return availableEnemies;
   };
 
-  // Handle Fate's Gambit - randomly select a card type
-  const handleFatesGambit = () => {
-    const cardTypes: FateCard[] = ['explosive', 'switch', 'vanish'];
-    const randomCard = cardTypes[Math.floor(Math.random() * cardTypes.length)];
-    setChargedFateCard(randomCard);
-    onAbilityPointsChange?.(-2);
-    setUsedFatesGambit(true);
-    
-    if (onTargetSelect) {
-      onTargetSelect('fate_gambit_used', 0, 'ability', 'fates_gambit');
+  const handleFatesGambit = async () => {
+    if (abilityPoints < 2) {
+      alert('Not enough ability points for Fate\'s Gambit!');
+      return;
     }
+
+    // Consume ability points
+    await setAbilityPoints(abilityPoints - 2);
+
+    // Random fate card selection
+    const fateCards: Array<'explosive' | 'switch' | 'vanish'> = ['explosive', 'switch', 'vanish'];
+    const randomCard = fateCards[Math.floor(Math.random() * fateCards.length)];
     
-    setSelectedAction(null);
-    // Don't end turn - allow Card Toss to be used
+    // Set the charged fate card
+    await setChargedFateCard(randomCard);
+
+    // Show feedback to player
+    const cardNames = {
+      explosive: '💥 Explosive',
+      switch: '🔄 Switch',
+      vanish: '👻 Vanish'
+    };
+
+    alert(`Fate chosen! Your next Card Toss will be enhanced with ${cardNames[randomCard]} power!`);
   };
 
   // Handle Crescendo of Fate activation
@@ -167,16 +184,15 @@ export function ScielCharacterSheet({
       return;
     }
 
-    const currentPoints = character.charges || 0;
-    if (currentPoints < 3) {
-      alert('Not enough ability points! Need 3, have ' + currentPoints);
+    if (abilityPoints < 3) {
+      alert('Not enough ability points! Need 3, have ' + abilityPoints);
       return;
     }
 
     try {
       await triggerUltimate('sciel', 'Crescendo of Fate');
       await StormService.activateStorm(sessionId, 5);
-      onAbilityPointsChange?.(-3);
+      await setAbilityPoints(abilityPoints - 3);
       
       if (onTargetSelect) {
         onTargetSelect('storm_activated', 0, 'ultimate', 'crescendo_of_fate');
@@ -195,9 +211,8 @@ export function ScielCharacterSheet({
 
     // Check ability point costs
     if (action.type === 'ability' && action.cost) {
-      const currentPoints = character.charges || 0;
-      if (currentPoints < action.cost) {
-        alert(`Not enough ability points! Need ${action.cost}, have ${currentPoints}`);
+      if (abilityPoints < action.cost) {
+        alert(`Not enough ability points! Need ${action.cost}, have ${abilityPoints}`);
         return;
       }
     }
@@ -230,8 +245,8 @@ export function ScielCharacterSheet({
       const hit = finalAC >= enemy.ac;
 
       // Generate ability point only for regular card toss hits
-      if (hit && onAbilityPointsChange && !chargedFateCard) {
-        await onAbilityPointsChange(1);
+      if (hit && !chargedFateCard) {
+        await setAbilityPoints(Math.min(3, abilityPoints + 1));
         console.log('Generated ability point for successful regular card toss');
       }
 
@@ -283,7 +298,7 @@ export function ScielCharacterSheet({
           });
         }
         
-        setChargedFateCard(null);
+        await setChargedFateCard(null);
       } else {
         // Regular card toss
         await FirestoreService.createAttackAction(
@@ -295,10 +310,6 @@ export function ScielCharacterSheet({
           'Card Toss'
         );
       }
-
-      // if (onTargetSelect) {
-      //   onTargetSelect(selectedTarget, hit ? parseInt(acRoll) : 0, 'basic', 'card_toss');
-      // }
 
       setSelectedAction(null);
       setSelectedTarget('');
@@ -328,8 +339,7 @@ export function ScielCharacterSheet({
         duration: 1
       });
 
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      // REMOVED onTargetSelect to prevent duplicate action
+      await setAbilityPoints(abilityPoints - selectedAction.cost!);
       
       setSelectedAction(null);
       setSelectedTarget('');
@@ -356,8 +366,7 @@ export function ScielCharacterSheet({
         duration: 1
       });
 
-      onAbilityPointsChange?.(-selectedAction.cost!);
-      // REMOVED onTargetSelect to prevent duplicate action
+      await setAbilityPoints(abilityPoints - selectedAction.cost!);
       
       setSelectedAction(null);
       setSelectedTarget('');
@@ -385,8 +394,6 @@ export function ScielCharacterSheet({
     setShowTargetingModal(false);
     onCancelTargeting?.();
   };
-
-  const abilityPoints = character.charges || 0;
 
   // Define Sciel's actions
   const basicAttack = {
@@ -838,7 +845,7 @@ export function ScielCharacterSheet({
         playerPosition={playerPosition}
         sessionId={sessionId}
         playerId={character.id}
-        onSelectEnemy={(target) => {
+       onSelectEnemy={(target) => {
           setSelectedTarget(target.id);
           setShowTargetingModal(false);
         }}

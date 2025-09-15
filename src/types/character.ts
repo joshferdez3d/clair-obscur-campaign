@@ -26,32 +26,31 @@ export interface Ability {
 
 export type Stance = 'offensive' | 'defensive' | 'agile';
 
-// FIXED: Add CharacterCombatState import and interface here
-  export interface CharacterCombatState {
-    // Gustave state
-    overchargePoints: number;
-    activeTurretId: string | null;
-    turretsDeployedThisBattle: number;
-    
-    // Lune state
-    elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
-    
-    // Sciel state
-    foretellStacks: Record<string, number>;
-    foretellChainCharged: boolean;
-    
-    // Maelle state - ADD THESE MISSING PROPERTIES
-    afterimageStacks: number;
-    phantomStrikeAvailable: boolean;
-    
-    // Universal state
-    bonusActionCooldown: number;
-    hasActedThisTurn: boolean;
-    lastCombatRound: number;
-    lastCombatTurn: string;
-    lastUpdated: Date;
-    lastSyncedAt: Date;
-  }
+export interface CharacterCombatState {
+  // Gustave state
+  overchargePoints: number;
+  activeTurretId: string | null;
+  turretsDeployedThisBattle: number;
+  
+  // Lune state
+  elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
+  
+  // Sciel state - UPDATED: Remove old foretell properties, add new fate card system
+  chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
+  
+  // Maelle state
+  afterimageStacks: number;
+  phantomStrikeAvailable: boolean;
+  
+  // Universal state
+  bonusActionCooldown: number;
+  hasActedThisTurn: boolean;
+  lastCombatRound: number;
+  lastCombatTurn: string;
+  lastUpdated: Date;
+  lastSyncedAt: Date;
+}
+
 export interface CombatState {
   isActive: boolean;
   round: number;
@@ -68,7 +67,6 @@ export interface CombatStateDoc {
   lastUpdated?: any;       // Firebase Timestamp
   lastSyncedAt?: any;      // Firebase Timestamp
 }
-
 
 // src/types/character.ts
 export interface Character {
@@ -128,8 +126,9 @@ export interface CharacterDoc {
     activeTurretId: string | null;
     turretsDeployedThisBattle: number;
     elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
-    foretellStacks: Record<string, number>;
-    foretellChainCharged: boolean;
+    chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
+    afterimageStacks: number;
+    phantomStrikeAvailable: boolean;
     bonusActionCooldown: number;
     hasActedThisTurn: boolean;
     lastCombatRound: number;
@@ -148,54 +147,67 @@ export interface CharacterDoc {
 }
 
 // NEW: Helper functions for combat state management
-  export const CombatStateHelpers = {
-    createDefaultCombatState: (): CharacterCombatState => ({
+export class CombatStateHelpers {
+  static createDefaultCombatState(): CharacterCombatState {
+    return {
+      // Gustave defaults
       overchargePoints: 0,
       activeTurretId: null,
       turretsDeployedThisBattle: 0,
-      elementalStains: [],
-      foretellStacks: {},
-      foretellChainCharged: false,
       
-      // ADD MISSING MAELLE PROPERTIES
+      // Lune defaults
+      elementalStains: [],
+      
+      // Sciel defaults - UPDATED: Remove foretell, add fate card
+      chargedFateCard: null,
+      
+      // Maelle defaults
       afterimageStacks: 0,
       phantomStrikeAvailable: true,
       
+      // Universal defaults
       bonusActionCooldown: 0,
       hasActedThisTurn: false,
       lastCombatRound: 0,
       lastCombatTurn: '',
       lastUpdated: new Date(),
-      lastSyncedAt: new Date()
-    }),
-    
-    resetForNewBattle: (currentState: CharacterCombatState): CharacterCombatState => ({
+      lastSyncedAt: new Date(),
+    };
+  }
+
+  static resetForNewBattle(currentState: CharacterCombatState): CharacterCombatState {
+    return {
       ...currentState,
+      // Reset combat-specific state but preserve progression
       overchargePoints: 0,
       activeTurretId: null,
       turretsDeployedThisBattle: 0,
       elementalStains: [],
-      foretellStacks: {},
-      foretellChainCharged: false,
-      
-      // RESET MAELLE STATE
+      chargedFateCard: null, // UPDATED: Reset fate card instead of foretell
       afterimageStacks: 0,
       phantomStrikeAvailable: true,
-      
       bonusActionCooldown: 0,
       hasActedThisTurn: false,
       lastCombatRound: 0,
       lastCombatTurn: '',
-      lastUpdated: new Date()
-    }),
+      lastUpdated: new Date(),
+    };
+  }
 
-    shouldResetCombatState: (
-      combatState: CharacterCombatState,
-      currentRound: number,
-      currentTurn: string
-    ): boolean => {
-      return currentRound === 1 && currentTurn !== combatState.lastCombatTurn;
-    }
-  };
+  // ADD this missing method that was referenced:
+  static resetForNewCombat(currentState: CharacterCombatState): CharacterCombatState {
+    // Alias for resetForNewBattle to maintain compatibility
+    return this.resetForNewBattle(currentState);
+  }
+
+  static shouldResetCombatState(
+    combatState: CharacterCombatState, 
+    currentRound: number, 
+    currentTurn: string
+  ): boolean {
+    return combatState.lastCombatRound !== currentRound || 
+           combatState.lastCombatTurn !== currentTurn;
+  }
+}
 
 export default Character;

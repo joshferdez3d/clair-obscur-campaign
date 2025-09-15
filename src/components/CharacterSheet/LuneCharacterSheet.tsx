@@ -1,5 +1,5 @@
 // src/components/CharacterSheet/LuneCharacterSheet.tsx
-import React, { useState, useEffect } from 'react'; // Make sure useEffect is included
+import React, { useState, useEffect } from 'react';
 import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPSyncService } from '../../services/HPSyncService';
@@ -10,11 +10,11 @@ import type { Character, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../services/firebase';
-import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
-import { InventoryModal } from './InventoryModal'; // Add this import
-import { InventoryService } from '../../services/inventoryService'; // Add this import
-import type { InventoryItem } from '../../types'; // Add this import
-import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
+import { Package } from 'lucide-react';
+import { InventoryModal } from './InventoryModal';
+import { InventoryService } from '../../services/inventoryService';
+import type { InventoryItem } from '../../types';
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 
 interface LuneCharacterSheetProps {
   character: Character;
@@ -36,15 +36,15 @@ interface LuneCharacterSheetProps {
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
   hasActedThisTurn?: boolean;
-  elementalStains?: Array<'fire' | 'ice' | 'nature' | 'light'>;
-  onStainsChange?: (stains: Array<'fire' | 'ice' | 'nature' | 'light'>) => void;
-
-  // For abilities that need AoE or special targeting
   sessionId?: string;
   allTokens?: BattleToken[];
-  
-  // Combat state tracking for ultimate reset
   session?: any;
+
+  // Persistent state props
+  elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
+  setElementalStains: (stains: Array<'fire' | 'ice' | 'nature' | 'light'>) => Promise<void>;
+  abilityPoints: number;
+  setAbilityPoints: (points: number) => Promise<void>;
 }
 
 type ElementType = 'fire' | 'ice' | 'nature' | 'light';
@@ -120,11 +120,14 @@ export function LuneCharacterSheet({
   onEndTurn,
   onCancelTargeting,
   hasActedThisTurn = false,
-  elementalStains = [],
-  onStainsChange,
   sessionId = 'test-session',
   allTokens = [],
   session,
+  // Persistent state props
+  elementalStains,
+  setElementalStains,
+  abilityPoints,
+  setAbilityPoints,
 }: LuneCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [selectedTargets, setSelectedTargets] = useState<string[]>([]);
@@ -140,7 +143,6 @@ export function LuneCharacterSheet({
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
 
-
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'ultimate' | 'heal';
     id: string;
@@ -154,11 +156,11 @@ export function LuneCharacterSheet({
     requiresSpecificStain?: ElementType;
   } | null>(null);
 
-    const handleOpenInventory = () => {
-      setShowInventoryModal(true);
-    };  
+  const handleOpenInventory = () => {
+    setShowInventoryModal(true);
+  };  
 
-    const getCharacterPortrait = (name: string) => {
+  const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
       'gustave': '/tokens/characters/gustave.jpg',
       'lune': '/tokens/characters/lune.jpg',
@@ -170,7 +172,6 @@ export function LuneCharacterSheet({
 
   const portraitUrl = getCharacterPortrait(character.name);
   const getCharacterGradient = () => 'bg-gradient-to-br from-clair-mystical-600 to-clair-mystical-800';
-
 
   // Calculate distance for range validation
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -198,22 +199,21 @@ export function LuneCharacterSheet({
   };
 
   // Add stain to collection
-  const addStain = (element: ElementType) => {
+  const addStain = async (element: ElementType) => {
     if (elementalStains.length >= 5) return;
     const newStains = [...elementalStains, element];
-    onStainsChange?.(newStains);
+    await setElementalStains(newStains);
   };
 
   // Remove oldest stains
-// Remove oldest stains
-  const consumeStains = (count: number): ElementType[] => {
+  const consumeStains = async (count: number): Promise<ElementType[]> => {
     if (elementalStains.length < count) return [];
     const consumed = elementalStains.slice(0, count);
     const remaining = elementalStains.slice(count);
-    console.log('🔄 Consuming stains:', consumed, 'Remaining:', remaining);
-    onStainsChange?.(remaining);
+    await setElementalStains(remaining);
     return consumed;
   };
+
   // Get unique available elements for ultimate
   const getAvailableElements = (): ElementType[] => {
     return Array.from(new Set(elementalStains));
@@ -225,13 +225,13 @@ export function LuneCharacterSheet({
   };
 
   // Consume specific stain type
-  const consumeSpecificStain = (stainType: ElementType): boolean => {
+  const consumeSpecificStain = async (stainType: ElementType): Promise<boolean> => {
     const stainIndex = elementalStains.indexOf(stainType);
     if (stainIndex === -1) return false;
     
     const newStains = [...elementalStains];
     newStains.splice(stainIndex, 1);
-    onStainsChange?.(newStains);
+    await setElementalStains(newStains);
     return true;
   };
 
@@ -293,11 +293,13 @@ export function LuneCharacterSheet({
   // Handle action selection
   const handleActionSelect = (action: any) => {
     if (hasActedThisTurn) return;
+    
     // Check if Elemental Strike is on cooldown
     if (action.id === 'elemental_strike' && hasActiveElementalStrikeEffect()) {
       alert('Elemental Strike is on cooldown! Wait for the current status effect to expire.');
       return;
     }
+    
     // Check if we have enough stains for abilities
     if (action.type === 'ability' && action.cost) {
       if (elementalStains.length < action.cost) {
@@ -434,8 +436,8 @@ export function LuneCharacterSheet({
   };
 
   const executeUltimate = async (element: ElementType) => {
-    console.log(`🌟 Starting Elemental Genesis - ${element}`);
-    console.log('🧊 Selected ice wall orientation:', selectedIceWallOrientation);
+    console.log(`Starting Elemental Genesis - ${element}`);
+    console.log('Selected ice wall orientation:', selectedIceWallOrientation);
 
     try {
       await triggerUltimate('lune', 'Elemental Genesis');
@@ -487,7 +489,7 @@ export function LuneCharacterSheet({
         actionData.wallType = selectedIceWallOrientation;
       }
       
-      console.log('🧊 Action data being sent:', JSON.stringify(actionData, null, 2));
+      console.log('Action data being sent:', JSON.stringify(actionData, null, 2));
       const action = await FirestoreService.createUltimateAction(sessionId, actionData);
       console.log('Ultimate action created successfully:', action);
 
@@ -559,6 +561,7 @@ export function LuneCharacterSheet({
       const rolledElement = ELEMENT_MAP[elementRollNum];
       addStain(rolledElement);
     }
+    
     try {
       // Track which element was consumed for Elemental Strike BEFORE consuming
       let consumedElement: ElementType | null = null;
@@ -566,7 +569,7 @@ export function LuneCharacterSheet({
       if (selectedAction.id === 'elemental_strike' && elementalStains.length > 0) {
         // Get the first (oldest) stain that will be consumed
         consumedElement = elementalStains[0];
-        console.log('🎯 Elemental Strike will consume:', consumedElement, 'from stains:', elementalStains);
+        console.log('Elemental Strike will consume:', consumedElement, 'from stains:', elementalStains);
       }
 
       if (selectedAction.multiTarget) {
@@ -584,12 +587,12 @@ export function LuneCharacterSheet({
       // Consume stains AFTER recording which element was consumed
       if (selectedAction.cost && typeof selectedAction.cost === 'number') {
         const consumedStains = consumeStains(selectedAction.cost);
-        console.log('✨ Consumed stains:', consumedStains);
+        console.log('Consumed stains:', consumedStains);
       }
 
       // Apply status effect for Elemental Strike (only for single target)
       if (selectedAction.id === 'elemental_strike' && consumedElement && selectedTarget) {
-        console.log('🔮 Applying status effect:', consumedElement, 'to target:', selectedTarget);
+        console.log('Applying status effect:', consumedElement, 'to target:', selectedTarget);
         
         const statusEffectMap: Record<ElementType, any> = {
           fire: { turnsRemaining: 3, damage: 5, appliedOnRound: session?.combatState?.round || 1 },
@@ -608,10 +611,10 @@ export function LuneCharacterSheet({
             
             await FirestoreService.updateBattleSession(sessionId, updateData);
             
-            console.log(`✅ Applied ${consumedElement} status effect to ${selectedTarget}`);
+            console.log(`Applied ${consumedElement} status effect to ${selectedTarget}`);
           }
         } else {
-          console.log('🌿 Nature element - push effect will be handled by GM');
+          console.log('Nature element - push effect will be handled by GM');
         }
       }
 
@@ -689,23 +692,23 @@ export function LuneCharacterSheet({
         </div>
       </div>
 
-
       <div className="px-4 pt-4">
-      {portraitUrl && (
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
-          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
-          <div className="flex justify-center">
-            <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
-              <img 
-                src={portraitUrl} 
-                alt={`${character.name} portrait`}
-                className="w-full h-full object-cover"
-                style={{ imageRendering: 'crisp-edges' }}
-              />
+        {portraitUrl && (
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
+            <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
+                <img 
+                  src={portraitUrl} 
+                  alt={`${character.name} portrait`}
+                  className="w-full h-full object-cover"
+                  style={{ imageRendering: 'crisp-edges' }}
+                />
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+        
         {/* Action Status */}
         {isMyTurn && combatActive && hasActedThisTurn && (
           <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
@@ -810,71 +813,71 @@ export function LuneCharacterSheet({
                 <h4 className="text-sm font-bold text-clair-mystical-300 mb-2">Abilities</h4>
                 <div className="space-y-2">
                   {abilities.map((ability) => {
-                  // Check if Elemental Strike is on cooldown
-                  const isElementalStrikeOnCooldown = ability.id === 'elemental_strike' && hasActiveElementalStrikeEffect();
-                  
-                  // Create the condition once to use in both places
-                  const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
-                    isElementalStrikeOnCooldown ||
-                    (ability.requiresSpecificStain 
-                      ? !hasStainType(ability.requiresSpecificStain)
-                      : elementalStains.length < (typeof ability.cost === 'number' ? ability.cost : 0)
-                    );
+                    // Check if Elemental Strike is on cooldown
+                    const isElementalStrikeOnCooldown = ability.id === 'elemental_strike' && hasActiveElementalStrikeEffect();
+                    
+                    // Create the condition once to use in both places
+                    const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
+                      isElementalStrikeOnCooldown ||
+                      (ability.requiresSpecificStain 
+                        ? !hasStainType(ability.requiresSpecificStain)
+                        : elementalStains.length < (typeof ability.cost === 'number' ? ability.cost : 0)
+                      );
 
-                  return (
-                    <button
-                      key={ability.id}
-                      onClick={() => handleActionSelect(ability)}
-                      disabled={isDisabled}
-                      className={`w-full p-3 rounded-lg transition-colors text-left border ${
-                        isDisabled
-                          ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
-                          : ability.isHealing 
-                            ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
-                            : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
-                      }`}
-                    >
-                      <div className="flex items-center">
-                        {ability.isHealing ? (
-                          <Heart className="w-4 h-4 mr-2" />
-                        ) : (
-                          <Zap className="w-4 h-4 mr-2" />
-                        )}
-                        <span className="font-bold">{ability.name}</span>
-                        <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                          {ability.requiresSpecificStain ? `${ability.requiresSpecificStain} stain` : `${ability.cost} stains`}
-                        </span>
-                        {isElementalStrikeOnCooldown && (
-                          <span className="ml-2 text-xs bg-red-900 text-red-200 px-2 py-1 rounded">
-                            ON COOLDOWN
+                    return (
+                      <button
+                        key={ability.id}
+                        onClick={() => handleActionSelect(ability)}
+                        disabled={isDisabled}
+                        className={`w-full p-3 rounded-lg transition-colors text-left border ${
+                          isDisabled
+                            ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed opacity-40'
+                            : ability.isHealing 
+                              ? 'bg-green-700 hover:bg-green-600 text-white border-green-500 hover:border-green-400'
+                              : 'bg-clair-mystical-700 hover:bg-clair-mystical-600 text-white border-clair-mystical-500 hover:border-clair-mystical-400'
+                        }`}
+                      >
+                        <div className="flex items-center">
+                          {ability.isHealing ? (
+                            <Heart className="w-4 h-4 mr-2" />
+                          ) : (
+                            <Zap className="w-4 h-4 mr-2" />
+                          )}
+                          <span className="font-bold">{ability.name}</span>
+                          <span className="ml-2 text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                            {ability.requiresSpecificStain ? `${ability.requiresSpecificStain} stain` : `${ability.cost} stains`}
                           </span>
-                        )}
-                      </div>
-                      <div className="text-sm opacity-90 mt-1">
-                        {isElementalStrikeOnCooldown 
-                          ? 'Wait for current status effect to expire'
-                          : ability.description
-                        }
-                      </div>
-                      <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
-                    </button>
-                  );
-                })}
+                          {isElementalStrikeOnCooldown && (
+                            <span className="ml-2 text-xs bg-red-900 text-red-200 px-2 py-1 rounded">
+                              ON COOLDOWN
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-sm opacity-90 mt-1">
+                          {isElementalStrikeOnCooldown 
+                            ? 'Wait for current status effect to expire'
+                            : ability.description
+                          }
+                        </div>
+                        <div className="text-xs text-clair-gold-200 mt-1">{ability.damage}</div>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               {/* Ultimate Ability - Elemental Genesis */}
               <div className="mt-4">
                 <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
-                  <button
-                    onClick={() => handleActionSelect(ultimateAbility)}
-                    disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed}
-                    className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
-                      !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed
-                        ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400'
-                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
-                    }`}
-                  >
+                <button
+                  onClick={() => handleActionSelect(ultimateAbility)}
+                  disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed}
+                  className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
+                    !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed
+                      ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400'
+                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+                  }`}
+                >
                   <div className="flex items-center">
                     <span className="text-xl mr-2">🌟</span>
                     <span className="font-bold">{ultimateAbility.name}</span>
@@ -883,15 +886,15 @@ export function LuneCharacterSheet({
                     </span>
                     <span className="ml-2 text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                   </div>
-                     <div className="text-sm opacity-90 mt-1">
-                      {elementalGenesisUsed 
-                        ? '⚡ Already used this combat!'
-                        : elementalStains.length < 3 
-                          ? 'Need at least 3 stains to use'
-                          : ultimateAbility.description
-                      }
-                    </div>
-                  </button>
+                  <div className="text-sm opacity-90 mt-1">
+                    {elementalGenesisUsed 
+                      ? '⚡ Already used this combat!'
+                      : elementalStains.length < 3 
+                        ? 'Need at least 3 stains to use'
+                        : ultimateAbility.description
+                    }
+                  </div>
+                </button>
               </div>
             </div>
           ) : (

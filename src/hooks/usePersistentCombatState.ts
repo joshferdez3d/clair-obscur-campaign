@@ -1,4 +1,5 @@
-// src/hooks/usePersistentCombatState.ts
+// src/hooks/usePersistentCombatState.ts - Updated for new character systems
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { doc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -19,9 +20,8 @@ interface PersistentCombatStateHook {
   // Lune state
   elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
   
-  // Sciel state
-  foretellStacks: Record<string, number>;
-  foretellChainCharged: boolean;
+  // Sciel state - UPDATED: New fate card system
+  chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
   
   // Maelle state
   afterimageStacks: number;
@@ -36,8 +36,10 @@ interface PersistentCombatStateHook {
   setActiveTurretId: (id: string | null) => Promise<void>;
   setTurretsDeployedThisBattle: (count: number) => Promise<void>;
   setElementalStains: (stains: Array<'fire' | 'ice' | 'nature' | 'light'>) => Promise<void>;
-  setForetellStacks: (stacks: Record<string, number>) => Promise<void>;
-  setForetellChainCharged: (charged: boolean) => Promise<void>;
+  
+  // Sciel update functions - UPDATED
+  setChargedFateCard: (card: 'explosive' | 'switch' | 'vanish' | null) => Promise<void>;
+  
   setBonusActionCooldown: (cooldown: number) => Promise<void>;
   setHasActedThisTurn: (acted: boolean) => Promise<void>;
   
@@ -128,12 +130,9 @@ export function usePersistentCombatState(
     updateCombatState({ elementalStains: [...stains] });
   }, [updateCombatState]);
 
-  const setForetellStacks = useCallback(async (stacks: Record<string, number>) => {
-    updateCombatState({ foretellStacks: { ...stacks } });
-  }, [updateCombatState]);
-
-  const setForetellChainCharged = useCallback(async (charged: boolean) => {
-    updateCombatState({ foretellChainCharged: charged });
+  // UPDATED: New Sciel setter
+  const setChargedFateCard = useCallback(async (card: 'explosive' | 'switch' | 'vanish' | null) => {
+    updateCombatState({ chargedFateCard: card });
   }, [updateCombatState]);
 
   const setBonusActionCooldown = useCallback(async (cooldown: number) => {
@@ -144,9 +143,9 @@ export function usePersistentCombatState(
     updateCombatState({ hasActedThisTurn: acted });
   }, [updateCombatState]);
 
-  // Maelle setter functions
+  // Maelle setters
   const setAfterimageStacks = useCallback(async (stacks: number) => {
-    updateCombatState({ afterimageStacks: Math.max(0, Math.min(3, stacks)) });
+    updateCombatState({ afterimageStacks: Math.max(0, Math.min(5, stacks)) });
   }, [updateCombatState]);
 
   const setPhantomStrikeAvailable = useCallback(async (available: boolean) => {
@@ -160,84 +159,63 @@ export function usePersistentCombatState(
 
   // Reset for new battle
   const resetForNewBattle = useCallback(async () => {
-    console.log(`🔄 Resetting combat state for new battle: ${characterId}`);
-    const resetState = CombatStateHelpers.resetForNewBattle(combatState);
+    const resetState = CombatStateHelpers.resetForNewBattle(combatState); // ✅ CORRECT METHOD NAME
     updateCombatState(resetState);
-  }, [characterId, combatState, updateCombatState]);
+  }, [combatState, updateCombatState]);
 
-  // Sync with combat round/turn
+  // Sync with combat round
   const syncWithCombatRound = useCallback(async (round: number, turn: string) => {
-    console.log(`🔄 Syncing ${characterId} with round ${round}, turn ${turn}`);
-    
-    if (CombatStateHelpers.shouldResetCombatState(combatState, round, turn)) {
-      console.log(`🔄 Resetting combat state for new battle: ${characterId}`);
-      await resetForNewBattle();
-      return;
-    }
-    
-    const updates: Partial<CharacterCombatState> = {
-      lastCombatRound: round,
-      lastCombatTurn: turn
-    };
-    
-    if (turn !== combatState.lastCombatTurn) {
-      updates.hasActedThisTurn = false;
-      
-      if (combatState.bonusActionCooldown > 0) {
-        updates.bonusActionCooldown = Math.max(0, combatState.bonusActionCooldown - 1);
-      }
-    }
-    
-    updateCombatState(updates);
-  }, [characterId, combatState, resetForNewBattle, updateCombatState]);
+    if (combatState.lastCombatRound !== round || combatState.lastCombatTurn !== turn) {
+      let updates: Partial<CharacterCombatState> = {
+        lastCombatRound: round,
+        lastCombatTurn: turn,
+      };
 
-  // Firebase listener setup - CRITICAL MISSING PIECE
+      // Reset turn-specific state if it's a new turn
+      if (combatState.lastCombatTurn !== turn) {
+        updates = {
+          ...updates,
+          hasActedThisTurn: false,
+          bonusActionCooldown: Math.max(0, combatState.bonusActionCooldown - 1),
+        };
+      }
+
+      updateCombatState(updates);
+    }
+  }, [combatState, updateCombatState]);
+
+  // Set up real-time listener
   useEffect(() => {
     if (!characterId) {
       setLoading(false);
       return;
     }
 
-    console.log(`🔄 Setting up persistent combat state for ${characterId}`);
+    console.log(`🔗 Setting up combat state listener for ${characterId}`);
     
     const characterRef = doc(db, 'characters', characterId);
     
     const unsubscribe = onSnapshot(
       characterRef,
-      async (doc) => {
-        if (!doc.exists()) {
-          setError(`Character ${characterId} not found`);
+      (docSnapshot) => {
+        if (!docSnapshot.exists()) {
+          console.warn(`⚠️ Character ${characterId} not found`);
+          setError('Character not found');
           setLoading(false);
           return;
         }
 
-        const data = doc.data();
-        
-        // Get existing combat state or create default with ALL required properties
-        let newCombatState: CharacterCombatState;
-        
-        if (data?.combatState) {
-          newCombatState = {
-            ...CombatStateHelpers.createDefaultCombatState(), // Start with defaults
-            ...data.combatState, // Override with saved values
-            lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
-            lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
-          };
-        } else {
-          newCombatState = CombatStateHelpers.createDefaultCombatState();
-        }
-
-        // Initialize combat state in Firebase if it doesn't exist
-        if (!data?.combatState) {
-          console.log(`📝 Initializing combat state for ${characterId}`);
-          await updateDoc(characterRef, {
-            combatState: {
-              ...newCombatState,
-              lastUpdated: serverTimestamp(),
-              lastSyncedAt: serverTimestamp()
+        const data = docSnapshot.data();
+        const newCombatState: CharacterCombatState = data.combatState
+          ? {
+              // Start with defaults to ensure all properties exist
+              ...CombatStateHelpers.createDefaultCombatState(),
+              // Override with saved values
+              ...data.combatState,
+              lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
+              lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
             }
-          });
-        }
+          : CombatStateHelpers.createDefaultCombatState();
 
         if (!updatingRef.current) {
           setCombatState(newCombatState);
@@ -275,8 +253,10 @@ export function usePersistentCombatState(
     activeTurretId: combatState.activeTurretId,
     turretsDeployedThisBattle: combatState.turretsDeployedThisBattle,
     elementalStains: combatState.elementalStains,
-    foretellStacks: combatState.foretellStacks,
-    foretellChainCharged: combatState.foretellChainCharged,
+    
+    // UPDATED: New Sciel state
+    chargedFateCard: combatState.chargedFateCard,
+    
     bonusActionCooldown: combatState.bonusActionCooldown,
     hasActedThisTurn: combatState.hasActedThisTurn,
     
@@ -289,8 +269,10 @@ export function usePersistentCombatState(
     setActiveTurretId,
     setTurretsDeployedThisBattle,
     setElementalStains,
-    setForetellStacks,
-    setForetellChainCharged,
+    
+    // UPDATED: New Sciel setter
+    setChargedFateCard,
+    
     setBonusActionCooldown,
     setHasActedThisTurn,
     
