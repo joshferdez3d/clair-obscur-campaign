@@ -1,4 +1,6 @@
 // src/types/index.ts - Complete and corrected type definitions
+export * from './character';
+import type { Character } from './character'; // Add this explicit import
 
 // Basic interfaces
 export interface Position {
@@ -35,7 +37,6 @@ export interface InventoryItem {
   addedBy: string; // GM who added the item
   addedAt: Date;
 }
-
 export type Stance = 'offensive' | 'defensive' | 'agile';
 
 // Enhanced BattleToken interface to include AC
@@ -351,23 +352,6 @@ export interface LightBlindEffect {
   createdOnRound: number; // Round when created
 }
 
-export interface Character {
-  id: string;
-  name: string;
-  role: string;
-  stats: Stats;
-  currentHP: number;
-  maxHP: number;
-  abilities: Ability[];
-  stance?: Stance;
-  charges?: number;
-  maxCharges?: number;
-  level: number;
-  portraitUrl?: string;
-  backgroundColor?: string;
-  inventory?: InventoryItem[]; 
-  gold: number; 
-}
 
 export interface BattleMap {
   id: string;
@@ -467,25 +451,6 @@ export interface PlayerAction {
   timestamp: Date;
 }
 
-// Firebase document interfaces
-export interface CharacterDoc {
-  name: string;
-  role: string;
-  stats: Stats;
-  currentHP: number;
-  maxHP: number;
-  abilities: Ability[];
-  stance?: Stance;
-  charges?: number;
-  maxCharges?: number;
-  level: number;
-  portraitUrl?: string;
-  backgroundColor?: string;
-  createdAt: any;
-  updatedAt: any;
-  inventory?: InventoryItem[]; // ADD THIS LINE
-  gold?: number;
-}
 
 // Enhanced BattleSessionDoc to include terrain effects
 export interface BattleSessionDoc {

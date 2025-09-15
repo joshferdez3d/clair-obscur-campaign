@@ -1,3 +1,8 @@
+// src/types/character.ts - EXTENDED FOR PERSISTENCE
+
+// Import InventoryItem from index to fix the missing type error
+import type { InventoryItem } from './index';
+
 export interface Stats {
   str: number;
   dex: number;
@@ -21,6 +26,52 @@ export interface Ability {
 
 export type Stance = 'offensive' | 'defensive' | 'agile';
 
+// FIXED: Add CharacterCombatState import and interface here
+export interface CharacterCombatState {
+  // Gustave-specific
+  overchargePoints: number;
+  activeTurretId: string | null;
+  turretsDeployedThisBattle: number;
+  
+  // Lune-specific
+  elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
+  
+  // Sciel-specific (keeping for backwards compatibility, but may not be used)
+  foretellStacks: Record<string, number>;
+  foretellChainCharged: boolean;
+  
+  // All characters
+  bonusActionCooldown: number;
+  hasActedThisTurn: boolean;
+  
+  // Session tracking
+  lastCombatRound: number;
+  lastCombatTurn: string;
+  
+  // Timestamps for debugging
+  lastUpdated: Date;
+  lastSyncedAt: Date;
+}
+
+export interface CombatState {
+  isActive: boolean;
+  round: number;
+  currentTurn: string;     // characterId whose turn it is
+  lastUpdated: Date;
+  lastSyncedAt: Date;
+}
+
+// Shape as stored in Firestore (Timestamps instead of Date)
+export interface CombatStateDoc {
+  isActive?: boolean;
+  round?: number;
+  currentTurn?: string;
+  lastUpdated?: any;       // Firebase Timestamp
+  lastSyncedAt?: any;      // Firebase Timestamp
+}
+
+
+// src/types/character.ts
 export interface Character {
   id: string;
   name: string;
@@ -30,15 +81,18 @@ export interface Character {
   maxHP: number;
   abilities: Ability[];
   
-  // Character-specific mechanics
+  // Character-specific mechanics (existing)
   stance?: Stance; // Maelle only
-  charges?: number; // Gustave: Overload, Lune: Stains, Sciel: Foretell
+  charges?: number; // Basic charges system
   maxCharges?: number;
 
-  // NEW: Maelle's Afterimage system
-  afterimageStacks?: number; // 0-5 (max 7 at higher levels)
-  maxAfterimageStacks?: number; // Default 5, increases to 7 at level 7
-  phantomStrikeUsed?: boolean; // Track ultimate usage per long rest
+  // NEW: Persistent combat state - ADD THIS PROPERTY
+  combatState?: CharacterCombatState;
+  
+  // Maelle's Afterimage system - ADD THESE PROPERTIES
+  afterimageStacks?: number;
+  maxAfterimageStacks?: number;
+  phantomStrikeUsed?: boolean;
   
   // Character progression
   level: number;
@@ -46,101 +100,97 @@ export interface Character {
   // Display
   portraitUrl?: string;
   backgroundColor?: string;
+  
+  // Inventory (existing)
+  inventory?: InventoryItem[];
+  gold: number;
 }
 
-// NEW: Extended interface specifically for Maelle's combat state
-export interface MaelleCombatState {
-  afterimageStacks: number;
-  maxAfterimageStacks: number;
-  phantomStrikeAvailable: boolean;
-  temporalEchoAvailable?: boolean; // Level 7+ ability
-  phaseDashAvailable?: boolean; // Level 5+ ability
+// src/types/character.ts - Update the CharacterDoc interface
+export interface CharacterDoc {
+  name: string;
+  role: string;
+  stats: Stats;
+  currentHP: number;
+  maxHP: number;
+  abilities: Ability[];
+  stance?: Stance;
+  charges?: number;
+  maxCharges?: number;
+  level: number;
+  portraitUrl?: string;
+  backgroundColor?: string;
+  inventory?: InventoryItem[];
+  gold?: number;
+  
+  // ADD: Add persistent combat state in Firebase
+  combatState?: {
+    overchargePoints: number;
+    activeTurretId: string | null;
+    turretsDeployedThisBattle: number;
+    elementalStains: Array<'fire' | 'ice' | 'nature' | 'light'>;
+    foretellStacks: Record<string, number>;
+    foretellChainCharged: boolean;
+    bonusActionCooldown: number;
+    hasActedThisTurn: boolean;
+    lastCombatRound: number;
+    lastCombatTurn: string;
+    lastUpdated: any; // Firebase Timestamp
+    lastSyncedAt: any; // Firebase Timestamp
+  };
+  
+  // ADD: Add Maelle afterimage state to CharacterDoc
+  afterimageStacks?: number;
+  maxAfterimageStacks?: number;
+  phantomStrikeUsed?: boolean;
+  
+  createdAt: any;
+  updatedAt: any;
 }
 
-// NEW: Afterimage stack manipulation functions
-export const AfterimageHelpers = {
-  // Add stacks, respecting maximum
-  addStacks: (current: number, toAdd: number, max: number = 5): number => {
-    return Math.min(max, current + toAdd);
-  },
+// NEW: Helper functions for combat state management
+export const CombatStateHelpers = {
+  // Create default combat state for a character
+  createDefaultCombatState: (): CharacterCombatState => ({
+    overchargePoints: 0,
+    activeTurretId: null,
+    turretsDeployedThisBattle: 0,
+    elementalStains: [],
+    foretellStacks: {},
+    foretellChainCharged: false,
+    bonusActionCooldown: 0,
+    hasActedThisTurn: false,
+    lastCombatRound: 0,
+    lastCombatTurn: '',
+    lastUpdated: new Date(),
+    lastSyncedAt: new Date()
+  }),
   
-  // Remove stacks, minimum 0
-  removeStacks: (current: number, toRemove: number): number => {
-    return Math.max(0, current - toRemove);
-  },
+  // Reset combat state for new battle
+  resetForNewBattle: (currentState: CharacterCombatState): CharacterCombatState => ({
+    ...currentState,
+    overchargePoints: 0,
+    activeTurretId: null,
+    turretsDeployedThisBattle: 0,
+    elementalStains: [],
+    foretellStacks: {},
+    foretellChainCharged: false,
+    bonusActionCooldown: 0,
+    hasActedThisTurn: false,
+    lastCombatRound: 0,
+    lastCombatTurn: '',
+    lastUpdated: new Date()
+  }),
   
-  // Check if ability can be used
-  canUseAbility: (stacksRequired: number, currentStacks: number): boolean => {
-    return currentStacks >= stacksRequired;
-  },
-  
-  // Check if Phantom Strike is available
-  canUsePhantomStrike: (currentStacks: number, isAvailable: boolean): boolean => {
-    return currentStacks >= 3 && isAvailable;
+  // Check if combat state needs reset (new combat session)
+  shouldResetCombatState: (
+    combatState: CharacterCombatState,
+    currentRound: number,
+    currentTurn: string
+  ): boolean => {
+    // Reset if it's a new combat (round 1, turn different from last)
+    return currentRound === 1 && currentTurn !== combatState.lastCombatTurn;
   }
 };
 
-// Update the existing character data to include Maelle's new system
-export const updateMaelleCharacter = (character: Character): Character => {
-  if (character.name.toLowerCase() === 'maelle') {
-    return {
-      ...character,
-      role: 'Phantom Blade Duelist',
-      afterimageStacks: 0,
-      maxAfterimageStacks: character.level >= 7 ? 7 : 5,
-      phantomStrikeUsed: false,
-      // Remove old stance system
-      stance: undefined,
-      abilities: [
-        {
-          id: 'phantom_thrust',
-          name: 'Phantom Thrust',
-          description: 'Rapier attack that builds Afterimage stacks',
-          type: 'action',
-          damage: '1d8 + DEX piercing'
-        },
-        {
-          id: 'spectral_feint',
-          name: 'Spectral Feint',
-          description: 'Mark target with disadvantage (Bonus Action)',
-          type: 'bonus_action',
-          damage: 'Mark target',
-          costsCharges: 1
-        },
-        {
-          id: 'blade_flurry',
-          name: 'Blade Flurry',
-          description: '3 attacks with escalating damage',
-          type: 'action',
-          damage: '3 attacks, +1d4 per hit after 1st',
-          costsCharges: 2
-        },
-        {
-          id: 'mirror_step',
-          name: 'Mirror Step',
-          description: 'Teleport to avoid attack (Reaction)',
-          type: 'reaction',
-          damage: 'Avoid attack + 15ft teleport',
-          costsCharges: 1
-        },
-        {
-          id: 'crescendo_strike',
-          name: 'Crescendo Strike',
-          description: 'Consume all stacks for massive damage',
-          type: 'action',
-          damage: '+1d6 per stack consumed',
-          costsCharges: 99 // Special handling - costs all stacks
-        },
-        {
-          id: 'phantom_strike',
-          name: 'Phantom Strike',
-          description: 'Ultimate: Teleport between all enemies',
-          type: 'action',
-          damage: '2d6 + DEX per enemy, scaling',
-          costsCharges: 3 // Minimum requirement
-        }
-      ]
-    };
-  }
-  return character;
-};
+export default Character;

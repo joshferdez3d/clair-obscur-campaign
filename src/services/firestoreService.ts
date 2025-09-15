@@ -28,14 +28,16 @@ import type {
   InitiativeEntry,
   GMCombatAction, // Import from types file
   ActiveBuff, // NEW: Import for buff/debuff tracking  
-  VanishedEnemy 
+  VanishedEnemy,
+  CharacterCombatState
 } from '../types';
+import { CombatStateHelpers } from '../types/character'; // NEW IMPORT
 import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
   static async resetBattleSession(sessionId: string) {
-    console.log('🔄 Starting battle session reset with inventory/gold preservation...');
+    console.log('🔄 Starting battle session reset with combat state preservation...');
     
     try {
       const session = await this.getBattleSession(sessionId);
@@ -47,19 +49,22 @@ export class FirestoreService {
       
       // 1. Save current inventory and gold for all characters BEFORE reset
       const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
-      const preservedData: Record<string, { inventory: any[], gold: number }> = {};
+      const preservedData: Record<string, { 
+        inventory: any[], 
+        gold: number,
+        combatState: CharacterCombatState 
+      }> = {};
       
       for (const characterId of characterIds) {
-        const characterRef = doc(db, 'characters', characterId);
-        const characterSnap = await getDoc(characterRef);
+        const character = await this.getCharacter(characterId);
         
-        if (characterSnap.exists()) {
-          const data = characterSnap.data();
+        if (character) {
           preservedData[characterId] = {
-            inventory: data.inventory || [],
-            gold: data.gold ?? 0
+            inventory: character.inventory || [],
+            gold: character.gold ?? 0,
+            combatState: character.combatState || CombatStateHelpers.createDefaultCombatState()
           };
-          console.log(`📦 Preserved ${characterId}: ${data.inventory?.length || 0} items, ${data.gold || 0} gold`);
+          console.log(`📦 Preserved ${characterId}: ${character.inventory?.length || 0} items, ${character.gold || 0} gold, combat state`);
         }
       }
 
@@ -93,34 +98,39 @@ export class FirestoreService {
       // 3. Reinitialize sample data (this will overwrite characters)
       await this.initializeSampleData();
 
-      console.log('🔄 Restoring inventory and gold...');
+      console.log('🔄 Restoring inventory, gold, and resetting combat state...');
 
-      // 4. Restore the preserved inventory and gold data
+      // 4. Restore inventory/gold and reset combat state for new battle
       for (const characterId of characterIds) {
         if (preservedData[characterId]) {
+          const preserved = preservedData[characterId];
+          
+          // Reset combat state for new battle
+          const newCombatState = CombatStateHelpers.resetForNewBattle(preserved.combatState);
+          
           const characterRef = doc(db, 'characters', characterId);
           await updateDoc(characterRef, {
-            inventory: preservedData[characterId].inventory,
-            gold: preservedData[characterId].gold,
-            updatedAt: serverTimestamp()
+            inventory: preserved.inventory,
+            gold: preserved.gold,
+            combatState: {
+              ...newCombatState,
+              lastUpdated: serverTimestamp(),
+              lastSyncedAt: serverTimestamp()
+            },
+            updatedAt: serverTimestamp(),
           });
-          console.log(`✅ Restored ${characterId}: ${preservedData[characterId].inventory.length} items, ${preservedData[characterId].gold} gold`);
+          
+          console.log(`✅ Restored and reset ${characterId}: ${preserved.inventory.length} items, ${preserved.gold} gold, fresh combat state`);
         }
       }
 
-      console.log('✅ Battle session reset complete with preserved inventory/gold');
-      console.log('- Cleared all tokens, combat state, and pending actions');
-      console.log('- Recreated character documents with full stats');
-      console.log('- Restored proper initiative order with characterIds');
-      console.log('- Reset player HP to maximum values');
-      console.log('- 💰 PRESERVED all inventory and gold data');
-      
-      return true;
+      console.log('✅ Battle session reset complete with combat state management!');
     } catch (error) {
-      console.error('❌ Failed to reset battle session:', error);
+      console.error('❌ Error during battle session reset:', error);
       throw error;
     }
   }
+
 
 
   // NEW: Create switch card action
@@ -624,20 +634,107 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
   // ========== Characters ==========
   static async getCharacter(characterId: string): Promise<Character | null> {
     try {
-      const ref = doc(db, 'characters', characterId);
-      const snap = await getDoc(ref);
-      if (!snap.exists()) return null;
-      const data = snap.data() as CharacterDoc;
-      return { 
-        id: snap.id, 
-        ...data,
-        gold: data.gold ?? 0 // Provide default value if gold doesn't exist
+      const characterRef = doc(db, 'characters', characterId);
+      const characterSnap = await getDoc(characterRef);
+
+      if (!characterSnap.exists()) {
+        console.warn(`Character ${characterId} not found`);
+        return null;
+      }
+
+      const data = characterSnap.data() as CharacterDoc;
+      
+      // Convert Firebase timestamps and ensure combat state exists
+      const character: Character = {
+        id: characterId,
+        name: data.name,
+        role: data.role,
+        stats: data.stats,
+        currentHP: data.currentHP,
+        maxHP: data.maxHP,
+        abilities: data.abilities,
+        stance: data.stance,
+        charges: data.charges,
+        maxCharges: data.maxCharges,
+        level: data.level,
+        portraitUrl: data.portraitUrl,
+        backgroundColor: data.backgroundColor,
+        inventory: data.inventory || [],
+        gold: data.gold || 0,
+        
+        // NEW: Include combat state, create default if missing
+        combatState: data.combatState ? {
+          ...data.combatState,
+          lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
+          lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
+        } : CombatStateHelpers.createDefaultCombatState(),
+        
+        // Maelle afterimage state
+        afterimageStacks: data.afterimageStacks,
+        maxAfterimageStacks: data.maxAfterimageStacks,
+        phantomStrikeUsed: data.phantomStrikeUsed
       };
-    } catch (e) {
-      console.error('getCharacter error:', e);
+
+      console.log(`✅ Loaded character ${characterId} with combat state:`, character.combatState);
+      return character;
+    } catch (error) {
+      console.error(`Error fetching character ${characterId}:`, error);
       return null;
     }
   }
+
+  static async updateCharacterCombatState(
+    characterId: string, 
+    combatState: Partial<CharacterCombatState>
+  ): Promise<void> {
+    try {
+      const characterRef = doc(db, 'characters', characterId);
+      
+      // Prepare update data with server timestamps
+      const updateData = {
+        combatState: {
+          ...combatState,
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        }
+      };
+
+      await updateDoc(characterRef, updateData);
+      console.log(`💾 Updated combat state for ${characterId}:`, combatState);
+    } catch (error) {
+      console.error(`❌ Failed to update combat state for ${characterId}:`, error);
+      throw error;
+    }
+  }
+
+  static async resetCharacterCombatState(characterId: string): Promise<void> {
+    try {
+      const defaultState = CombatStateHelpers.createDefaultCombatState();
+      await this.updateCharacterCombatState(characterId, defaultState);
+      console.log(`🔄 Reset combat state for ${characterId}`);
+    } catch (error) {
+      console.error(`❌ Failed to reset combat state for ${characterId}:`, error);
+      throw error;
+    }
+  }
+
+    static async initializeCharacterCombatState(characterId: string): Promise<void> {
+    try {
+      const character = await this.getCharacter(characterId);
+      if (!character || character.combatState) {
+        return; // Already has combat state
+      }
+
+      const defaultState = CombatStateHelpers.createDefaultCombatState();
+      await this.updateCharacterCombatState(characterId, defaultState);
+      console.log(`📝 Initialized combat state for ${characterId}`);
+    } catch (error) {
+      console.error(`❌ Failed to initialize combat state for ${characterId}:`, error);
+      throw error;
+    }
+  }
+
+
 
   static async updateCharacterHP(characterId: string, newHP: number) {
     const ref = doc(db, 'characters', characterId);
@@ -2209,142 +2306,272 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
 
   static subscribeToCharacter(
     characterId: string,
-    cb: (character: Character | null) => void
-  ) {
-    const ref = doc(db, 'characters', characterId);
-    return onSnapshot(
-      ref,
-      snap => {
-        if (!snap.exists()) return cb(null);
-        const data = snap.data() as CharacterDoc;
-        cb({ 
-          id: snap.id, 
-          ...data,
-          gold: data.gold ?? 0 // Provide default value if gold doesn't exist
-        });
-      },
-      err => {
-        console.error('Character listener error:', err);
-        cb(null);
+    callback: (character: Character | null) => void
+  ): () => void {
+    const characterRef = doc(db, 'characters', characterId);
+
+    return onSnapshot(characterRef, (doc) => {
+      if (!doc.exists()) {
+        callback(null);
+        return;
       }
-    );
+
+      const data = doc.data() as CharacterDoc;
+      
+      const character: Character = {
+        id: characterId,
+        name: data.name,
+        role: data.role,
+        stats: data.stats,
+        currentHP: data.currentHP,
+        maxHP: data.maxHP,
+        abilities: data.abilities,
+        stance: data.stance,
+        charges: data.charges,
+        maxCharges: data.maxCharges,
+        level: data.level,
+        portraitUrl: data.portraitUrl,
+        backgroundColor: data.backgroundColor,
+        inventory: data.inventory || [],
+        gold: data.gold || 0,
+        
+        // NEW: Include combat state with proper date conversion
+        combatState: data.combatState ? {
+          ...data.combatState,
+          lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
+          lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
+        } : CombatStateHelpers.createDefaultCombatState(),
+        
+        afterimageStacks: data.afterimageStacks,
+        maxAfterimageStacks: data.maxAfterimageStacks,
+        phantomStrikeUsed: data.phantomStrikeUsed
+      };
+
+      callback(character);
+    });
   }
   // ========== Sample Data ==========
-  static async initializeSampleData() {
-    const characters = [
+  static async initializeSampleData(): Promise<void> {
+    console.log('📊 Initializing sample character data with combat state...');
+
+    const sampleCharacters: CharacterDoc[] = [
       {
-        id: 'maelle',
         name: 'Maelle',
-        role: 'Stance Fencer',
+        role: 'Phantom Blade Duelist',
         stats: { str: 12, dex: 16, con: 13, int: 10, wis: 11, cha: 14 },
-        currentHP: 25,
-        maxHP: 25,
-        stance: 'stanceless' as const,
+        currentHP: 28,
+        maxHP: 28,
+        stance: 'offensive',
         charges: 0,
         maxCharges: 5,
-        level: 1,
+        level: 3,
+        portraitUrl: '/portraits/maelle.jpg',
+        backgroundColor: '#8B5A2B',
+        inventory: [],
+        gold: 150,
+        combatState: {
+          ...CombatStateHelpers.createDefaultCombatState(),
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        },
+        afterimageStacks: 0,
+        maxAfterimageStacks: 5,
+        phantomStrikeUsed: false,
         abilities: [
           {
-            id: 'fencers_slash',
+            id: 'fencers-slash',
             name: "Fencer's Slash",
-            description: 'Precise rapier strike. Changes stance after attack.',
-            type: 'action' as const,
-            damage: '1d8 + DEX slashing'
+            description: 'A precise sword attack that gains +1 afterimage stack.',
+            type: 'action',
+            damage: '1d8 + DEX',
+            range: '5 feet'
           },
           {
-            id: 'flourish_chain',
+            id: 'flourish-chain',
             name: 'Flourish Chain',
-            description: 'Two rapid strikes. If both hit, +1d6 radiant damage.',
-            type: 'action' as const,
-            damage: '2 attacks, +1d6 radiant if both hit'
+            description: 'Consume 2 afterimage stacks for an additional attack.',
+            type: 'bonus_action',
+            damage: '1d8 + DEX',
+            range: '5 feet'
+          },
+          {
+            id: 'dazzling-feint',
+            name: 'Dazzling Feint',
+            description: 'Consume 1 stack to gain advantage on next attack.',
+            type: 'bonus_action',
+            effect: 'Advantage on next attack',
+            range: 'Self'
+          },
+          {
+            id: 'phantom-strike',
+            name: 'Phantom Strike',
+            description: 'Ultimate: Consume 3+ stacks for devastating combo attack.',
+            type: 'action',
+            damage: 'Special',
+            range: '5 feet'
           }
         ],
-        portraitUrl: '/tokens/maelle.png',
-        backgroundColor: '#3B82F6' // NEW: Royal blue (was '#6B46C1' purple)
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       },
       {
-        id: 'gustave',
         name: 'Gustave',
-        role: 'Engineer',
+        role: 'Engineering Vanguard',
         stats: { str: 16, dex: 12, con: 15, int: 14, wis: 11, cha: 10 },
-        currentHP: 30,
-        maxHP: 30,
+        currentHP: 34,
+        maxHP: 34,
         charges: 0,
-        maxCharges: 5,
-        level: 1,
+        maxCharges: 3,
+        level: 3,
+        portraitUrl: '/portraits/gustave.jpg',
+        backgroundColor: '#2D4A3E',
+        inventory: [],
+        gold: 200,
+        combatState: {
+          ...CombatStateHelpers.createDefaultCombatState(),
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        },
         abilities: [
-          { id: 'sword_slash', name: 'Sword Slash', description: 'Melee attack', type: 'action' as const, damage: '1d8 + STR' },
-          { id: 'pistol_shot', name: 'Pistol Shot', description: 'Ranged attack', type: 'action' as const, damage: '1d10 + DEX' },
-          { id: 'prosthetic_strike', name: 'Prosthetic Strike', description: 'Energy blast', type: 'action' as const, damage: '1d10' },
-          { id: 'deploy_turret', name: 'Deploy Turret Prototype', description: 'Place turret', type: 'action' as const, damage: '—' },
-          { id: 'overcharge_burst', name: 'Overcharge Burst', description: 'AoE lightning', type: 'action' as const, damage: '6d6 lightning' }
+          {
+            id: 'sword-slash',
+            name: 'Sword Slash',
+            description: 'Basic melee attack with sword.',
+            type: 'action',
+            damage: '1d8 + STR',
+            range: '5 feet'
+          },
+          {
+            id: 'prosthetic-strike',
+            name: 'Prosthetic Strike',
+            description: 'Enhanced strike using prosthetic arm. Consumes 1 Overload charge.',
+            type: 'action',
+            damage: '1d8 + STR + 1d6 (overload)',
+            range: '5 feet',
+            costsCharges: 1
+          },
+          {
+            id: 'deploy-turret',
+            name: 'Deploy Turret',
+            description: 'Deploy a defensive turret. Consumes 2 Overload charges.',
+            type: 'action',
+            effect: 'Deploys turret with 15 HP, AC 12',
+            range: '10 feet',
+            costsCharges: 2
+          }
         ],
-        portraitUrl: '/tokens/gustave.png',
-        backgroundColor: '#dc2626'
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       },
       {
-        id: 'lune',
         name: 'Lune',
         role: 'Elemental Scholar',
         stats: { str: 10, dex: 12, con: 13, int: 16, wis: 14, cha: 11 },
-        currentHP: 22,
-        maxHP: 22,
-        charges: 0,
-        maxCharges: 5,
-        level: 1,
-        abilities: [{ id: 'elemental_bolt', name: 'Elemental Bolt', description: 'Ranged spell', type: 'action' as const, damage: '1d10 elemental' }],
-        backgroundColor: '#7c3aed'
-      },
-      {
-        id: 'sciel',
-        name: 'Sciel',
-        role: 'Tarot Warrior',
-        stats: { str: 13, dex: 14, con: 12, int: 11, wis: 15, cha: 16 },
         currentHP: 24,
         maxHP: 24,
         charges: 0,
-        maxCharges: 3,
-        level: 1,
-        abilities: [{ id: 'card_toss', name: 'Card Toss', description: 'Ranged spell', type: 'action' as const, damage: '1d6 + 1d4' }],
-        backgroundColor: '#059669'
+        maxCharges: 4,
+        level: 3,
+        portraitUrl: '/portraits/lune.jpg',
+        backgroundColor: '#4A5568',
+        inventory: [],
+        gold: 125,
+        combatState: {
+          ...CombatStateHelpers.createDefaultCombatState(),
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        },
+        abilities: [
+          {
+            id: 'elemental-bolt',
+            name: 'Elemental Bolt',
+            description: 'Ranged elemental attack. Roll 1d4 for element type.',
+            type: 'action',
+            damage: '1d8 + INT',
+            range: '60 feet'
+          },
+          {
+            id: 'elemental-strike',
+            name: 'Elemental Strike',
+            description: 'Melee attack that applies elemental stain.',
+            type: 'action',
+            damage: '1d6 + INT',
+            range: '5 feet'
+          },
+          {
+            id: 'twin-catalyst',
+            name: 'Twin Catalyst',
+            description: 'Consume 2 stains to cast two bolts.',
+            type: 'action',
+            damage: '2 × (1d8 + INT)',
+            range: '60 feet'
+          }
+        ],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+      {
+        name: 'Sciel',
+        role: 'Tarot Mystic',
+        stats: { str: 13, dex: 14, con: 12, int: 11, wis: 15, cha: 16 },
+        currentHP: 26,
+        maxHP: 26,
+        charges: 0,
+        maxCharges: 4,
+        level: 3,
+        portraitUrl: '/portraits/sciel.jpg',
+        backgroundColor: '#553C7B',
+        inventory: [],
+        gold: 175,
+        combatState: {
+          ...CombatStateHelpers.createDefaultCombatState(),
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        },
+        abilities: [
+          {
+            id: 'card-toss',
+            name: 'Card Toss',
+            description: 'Throw a tarot card as a ranged attack.',
+            type: 'action',
+            damage: '1d6 + CHA',
+            range: '30 feet'
+          },
+          {
+            id: 'guiding-cards',
+            name: 'Guiding Cards',
+            description: 'Grant advantage to ally. Builds Foretell stacks.',
+            type: 'bonus_action',
+            effect: 'Ally gains advantage',
+            range: '30 feet'
+          },
+          {
+            id: 'moonlit-ward',
+            name: 'Moonlit Ward',
+            description: 'Protective barrier using Foretell energy.',
+            type: 'reaction',
+            effect: '+2 AC until end of turn',
+            range: 'Self or ally'
+          }
+        ],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       }
     ];
 
-    const battleSession: BattleSessionDoc = {
-      name: 'Test Session',
-      characters: ['maelle', 'gustave', 'lune', 'sciel'],
-      battleState: { isActive: false, currentTurn: 'maelle', turnOrder: ['maelle', 'gustave', 'lune', 'sciel'], round: 1, mapId: 'test-map' },
-      combatState: {
-        isActive: false,
-        currentTurn: 'maelle',
-        turnOrder: ['maelle', 'gustave', 'lune', 'sciel'],
-        round: 1,
-        phase: 'setup',
-        initiativeOrder: [
-          { id: 'sciel', name: 'Sciel', initiative: 16, type: 'player', characterId: 'sciel', hasActed: false },
-          { id: 'maelle', name: 'Maelle', initiative: 15, type: 'player', characterId: 'maelle', hasActed: false },
-          { id: 'lune', name: 'Lune', initiative: 14, type: 'player', characterId: 'lune', hasActed: false },
-          { id: 'gustave', name: 'Gustave', initiative: 12, type: 'player', characterId: 'gustave', hasActed: false }
-        ]
-      },
-      pendingActions: [],
-      enemyHP: {},
-      tokens: {
-        'token-maelle': { id: 'token-maelle', characterId: 'maelle', name: 'Maelle', position: { x: 2, y: 2 }, type: 'player', hp: 25, maxHp: 25, color: '#3B82F6'},
-        'token-gustave': { id: 'token-gustave', characterId: 'gustave', name: 'Gustave', position: { x: 4, y: 2 }, type: 'player', hp: 30, maxHp: 30, color: '#dc2626' },
-        'token-lune': { id: 'token-lune', characterId: 'lune', name: 'Lune', position: { x: 6, y: 2 }, type: 'player', hp: 22, maxHp: 22, color: '#7c3aed' },
-        'token-sciel': { id: 'token-sciel', characterId: 'sciel', name: 'Sciel', position: { x: 8, y: 2 }, type: 'player', hp: 24, maxHp: 24, color: '#059669' }
-      },
-      mapId: 'test-map',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
+    const promises = sampleCharacters.map(async (characterData, index) => {
+      const characterId = ['maelle', 'gustave', 'lune', 'sciel'][index];
+      const characterRef = doc(db, 'characters', characterId);
+      
+      try {
+        await setDoc(characterRef, characterData);
+        console.log(`✅ Initialized character: ${characterData.name} with combat state`);
+      } catch (error) {
+        console.error(`❌ Error initializing ${characterData.name}:`, error);
+      }
+    });
 
-    for (const c of characters) {
-      const { id, ...data } = c;
-      await setDoc(doc(db, 'characters', id), { ...data, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    }
-    await setDoc(doc(db, 'battleSessions', 'test-session'), battleSession);
-    console.log('Sample data initialized');
+    await Promise.all(promises);
+    console.log('✅ All sample characters initialized with combat state support');
   }
 }
