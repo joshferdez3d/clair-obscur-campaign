@@ -2282,6 +2282,174 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     });
   }
 
+  static async resetBattleSession(sessionId: string) {
+    console.log('🔄 Starting battle session reset with combat state preservation...');
+    
+    try {
+      const session = await this.getBattleSession(sessionId);
+      if (!session) {
+        throw new Error('Session not found');
+      }
+
+      console.log('💰 Preserving inventory and gold data...');
+      
+      // 1. Save current inventory and gold for all characters BEFORE reset
+      const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
+      const preservedData: Record<string, { 
+        inventory: any[], 
+        gold: number,
+        combatState: CharacterCombatState 
+      }> = {};
+      
+      for (const characterId of characterIds) {
+        const character = await this.getCharacter(characterId);
+        
+        if (character) {
+          preservedData[characterId] = {
+            inventory: character.inventory || [],
+            gold: character.gold ?? 0,
+            combatState: character.combatState || CombatStateHelpers.createDefaultCombatState()
+          };
+          console.log(`📦 Preserved ${characterId}: ${character.inventory?.length || 0} items, ${character.gold || 0} gold, combat state`);
+        }
+      }
+
+      console.log('🗑️ Clearing battle session...');
+
+      // 2. Clear the session completely first
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: {}, // This will be replaced with default player tokens
+        combatState: {
+          isActive: false,
+          currentTurn: '',
+          turnOrder: [],
+          round: 1,
+          phase: 'setup',
+          initiativeOrder: [],
+        },
+        pendingActions: [],
+        enemyData: {},
+        stormState: {
+          isActive: false,
+          currentTurn: 0,
+          totalTurns: 0,
+          pendingRolls: [],
+        },
+        updatedAt: serverTimestamp(),
+      });
+
+      console.log('📊 Reinitializing sample data...');
+
+      // 3. Reinitialize sample data (this will overwrite characters)
+      await this.initializeSampleData();
+
+      // 4. CREATE DEFAULT PLAYER TOKENS (NEW!)
+      console.log('🎭 Creating default player tokens on battle map...');
+      await this.createDefaultPlayerTokens(sessionId);
+
+      console.log('🔄 Restoring inventory, gold, and resetting combat state...');
+
+      // 5. Restore inventory/gold and reset combat state for new battle
+      for (const characterId of characterIds) {
+        if (preservedData[characterId]) {
+          const preserved = preservedData[characterId];
+          
+          // Reset combat state for new battle
+          const newCombatState = CombatStateHelpers.resetForNewBattle(preserved.combatState);
+          
+          const characterRef = doc(db, 'characters', characterId);
+          await updateDoc(characterRef, {
+            inventory: preserved.inventory,
+            gold: preserved.gold,
+            combatState: {
+              ...newCombatState,
+              lastUpdated: serverTimestamp(),
+              lastSyncedAt: serverTimestamp()
+            },
+            updatedAt: serverTimestamp(),
+          });
+          
+          console.log(`✅ Restored and reset ${characterId}: ${preserved.inventory.length} items, ${preserved.gold} gold, fresh combat state`);
+        }
+      }
+
+      console.log('✅ Battle session reset complete with default player tokens!');
+    } catch (error) {
+      console.error('❌ Error during battle session reset:', error);
+      throw error;
+    }
+  }
+
+  static async createDefaultPlayerTokens(sessionId: string): Promise<void> {
+    console.log('🎭 Creating default player tokens...');
+    
+    const defaultPlayerTokens = {
+      'player-maelle': {
+        id: 'player-maelle',
+        characterId: 'maelle',
+        name: 'Maelle',
+        position: { x: 2, y: 12 }, // Bottom left area
+        type: 'player' as const,
+        hp: 28,
+        maxHp: 28,
+        ac: 15,
+        size: 1,
+        color: '#4f46e5' // Royal blue
+      },
+      'player-gustave': {
+        id: 'player-gustave',
+        characterId: 'gustave',
+        name: 'Gustave',
+        position: { x: 4, y: 12 }, // Bottom left area
+        type: 'player' as const,
+        hp: 32,
+        maxHp: 32,
+        ac: 16,
+        size: 1,
+        color: '#dc2626' // Red
+      },
+      'player-lune': {
+        id: 'player-lune',
+        characterId: 'lune',
+        name: 'Lune',
+        position: { x: 6, y: 12 }, // Bottom left area
+        type: 'player' as const,
+        hp: 22,
+        maxHp: 22,
+        ac: 13,
+        size: 1,
+        color: '#7c3aed' // Purple
+      },
+      'player-sciel': {
+        id: 'player-sciel',
+        characterId: 'sciel',
+        name: 'Sciel',
+        position: { x: 8, y: 12 }, // Bottom left area
+        type: 'player' as const,
+        hp: 26,
+        maxHp: 26,
+        ac: 14,
+        size: 1,
+        color: '#059669' // Green
+      }
+    };
+
+    try {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: defaultPlayerTokens,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ Default player tokens created successfully');
+    } catch (error) {
+      console.error('❌ Failed to create default player tokens:', error);
+      throw error;
+    }
+  }
+
+
 
   static subscribeToBattleSession(
     sessionId: string,
