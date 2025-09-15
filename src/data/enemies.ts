@@ -1,7 +1,7 @@
 
 import type { EnemyData } from '../types';
 
-export const ENEMY_TEMPLATES: { [key: string]: EnemyData } = {
+export const enemies: { [key: string]: EnemyData } = {
   // Bénisseur — Burly Glaivebearer
   'benisseur': {
     id: 'benisseur',
@@ -232,6 +232,7 @@ export const ENEMY_TEMPLATES: { [key: string]: EnemyData } = {
     color: '#9370DB'
   }
 };
+export const ENEMY_TEMPLATES = enemies;
 
 // Enemy categories for organization
 export const ENEMY_CATEGORIES = {

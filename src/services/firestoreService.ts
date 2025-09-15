@@ -90,6 +90,14 @@ export class FirestoreService {
     }
   }
 
+  static async createPendingAction(sessionId: string, action: any): Promise<void> {
+    const sessionRef = doc(db, 'sessions', sessionId);
+    await updateDoc(sessionRef, {
+      pendingAction: action,
+      lastUpdated: serverTimestamp()
+    });
+  }
+
 
  static async resetBattleSession(sessionId: string) {
   console.log('🔄 Starting complete battle session reset with tokens and initiative...');

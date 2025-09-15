@@ -49,6 +49,7 @@ export interface BattleToken {
   hp?: number;
   maxHp?: number;
   size?: number;
+  speed?: number; // Add this line
   color?: string;
   ac?: number; // Make sure this exists for enemy tokens
   statusEffects?: {
