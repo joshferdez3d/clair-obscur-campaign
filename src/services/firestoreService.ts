@@ -36,6 +36,7 @@ import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
+
   static async resetBattleSession(sessionId: string) {
     console.log('🔄 Starting battle session reset with combat state preservation...');
     
@@ -73,7 +74,7 @@ export class FirestoreService {
       // 2. Clear the session completely first
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
-        tokens: {},
+        tokens: {}, // This will be replaced with default player tokens
         combatState: {
           isActive: false,
           currentTurn: '',
@@ -98,9 +99,13 @@ export class FirestoreService {
       // 3. Reinitialize sample data (this will overwrite characters)
       await this.initializeSampleData();
 
+      // 4. CREATE DEFAULT PLAYER TOKENS (NEW!)
+      console.log('🎭 Creating default player tokens on battle map...');
+      await this.createDefaultPlayerTokens(sessionId);
+
       console.log('🔄 Restoring inventory, gold, and resetting combat state...');
 
-      // 4. Restore inventory/gold and reset combat state for new battle
+      // 5. Restore inventory/gold and reset combat state for new battle
       for (const characterId of characterIds) {
         if (preservedData[characterId]) {
           const preserved = preservedData[characterId];
@@ -124,7 +129,7 @@ export class FirestoreService {
         }
       }
 
-      console.log('✅ Battle session reset complete with combat state management!');
+      console.log('✅ Battle session reset complete with default player tokens!');
     } catch (error) {
       console.error('❌ Error during battle session reset:', error);
       throw error;
@@ -2280,105 +2285,6 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       'luneElementalGenesisUsed': false, // Reset Lune's ultimate on combat end
       updatedAt: serverTimestamp()
     });
-  }
-
-  static async resetBattleSession(sessionId: string) {
-    console.log('🔄 Starting battle session reset with combat state preservation...');
-    
-    try {
-      const session = await this.getBattleSession(sessionId);
-      if (!session) {
-        throw new Error('Session not found');
-      }
-
-      console.log('💰 Preserving inventory and gold data...');
-      
-      // 1. Save current inventory and gold for all characters BEFORE reset
-      const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
-      const preservedData: Record<string, { 
-        inventory: any[], 
-        gold: number,
-        combatState: CharacterCombatState 
-      }> = {};
-      
-      for (const characterId of characterIds) {
-        const character = await this.getCharacter(characterId);
-        
-        if (character) {
-          preservedData[characterId] = {
-            inventory: character.inventory || [],
-            gold: character.gold ?? 0,
-            combatState: character.combatState || CombatStateHelpers.createDefaultCombatState()
-          };
-          console.log(`📦 Preserved ${characterId}: ${character.inventory?.length || 0} items, ${character.gold || 0} gold, combat state`);
-        }
-      }
-
-      console.log('🗑️ Clearing battle session...');
-
-      // 2. Clear the session completely first
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, {
-        tokens: {}, // This will be replaced with default player tokens
-        combatState: {
-          isActive: false,
-          currentTurn: '',
-          turnOrder: [],
-          round: 1,
-          phase: 'setup',
-          initiativeOrder: [],
-        },
-        pendingActions: [],
-        enemyData: {},
-        stormState: {
-          isActive: false,
-          currentTurn: 0,
-          totalTurns: 0,
-          pendingRolls: [],
-        },
-        updatedAt: serverTimestamp(),
-      });
-
-      console.log('📊 Reinitializing sample data...');
-
-      // 3. Reinitialize sample data (this will overwrite characters)
-      await this.initializeSampleData();
-
-      // 4. CREATE DEFAULT PLAYER TOKENS (NEW!)
-      console.log('🎭 Creating default player tokens on battle map...');
-      await this.createDefaultPlayerTokens(sessionId);
-
-      console.log('🔄 Restoring inventory, gold, and resetting combat state...');
-
-      // 5. Restore inventory/gold and reset combat state for new battle
-      for (const characterId of characterIds) {
-        if (preservedData[characterId]) {
-          const preserved = preservedData[characterId];
-          
-          // Reset combat state for new battle
-          const newCombatState = CombatStateHelpers.resetForNewBattle(preserved.combatState);
-          
-          const characterRef = doc(db, 'characters', characterId);
-          await updateDoc(characterRef, {
-            inventory: preserved.inventory,
-            gold: preserved.gold,
-            combatState: {
-              ...newCombatState,
-              lastUpdated: serverTimestamp(),
-              lastSyncedAt: serverTimestamp()
-            },
-            updatedAt: serverTimestamp(),
-          });
-          
-          console.log(`✅ Restored and reset ${characterId}: ${preserved.inventory.length} items, ${preserved.gold} gold, fresh combat state`);
-        }
-      }
-
-      console.log('✅ Battle session reset complete with default player tokens!');
-    } catch (error) {
-      console.error('❌ Error during battle session reset:', error);
-      throw error;
-    }
   }
 
   static async createDefaultPlayerTokens(sessionId: string): Promise<void> {
