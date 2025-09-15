@@ -663,11 +663,14 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
         gold: data.gold || 0,
         
         // NEW: Include combat state, create default if missing
-        combatState: data.combatState ? {
-          ...data.combatState,
-          lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
-          lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
-        } : CombatStateHelpers.createDefaultCombatState(),
+      combatState: data.combatState ? {
+        // Start with defaults to ensure all properties exist
+        ...CombatStateHelpers.createDefaultCombatState(),
+        // Override with saved values
+        ...data.combatState,
+        lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
+        lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
+      } : CombatStateHelpers.createDefaultCombatState(),
         
         // Maelle afterimage state
         afterimageStacks: data.afterimageStacks,
@@ -2337,11 +2340,13 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
         
         // NEW: Include combat state with proper date conversion
         combatState: data.combatState ? {
+          // Start with defaults to ensure all properties exist
+          ...CombatStateHelpers.createDefaultCombatState(),
+          // Override with saved values
           ...data.combatState,
           lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
           lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
         } : CombatStateHelpers.createDefaultCombatState(),
-        
         afterimageStacks: data.afterimageStacks,
         maxAfterimageStacks: data.maxAfterimageStacks,
         phantomStrikeUsed: data.phantomStrikeUsed

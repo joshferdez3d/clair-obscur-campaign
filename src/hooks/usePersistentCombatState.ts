@@ -1,6 +1,6 @@
 // src/hooks/usePersistentCombatState.ts
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore'; // Add onSnapshot here
+import { doc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import type { CharacterCombatState } from '../types/character';
 import { CombatStateHelpers } from '../types/character';
@@ -23,6 +23,10 @@ interface PersistentCombatStateHook {
   foretellStacks: Record<string, number>;
   foretellChainCharged: boolean;
   
+  // Maelle state
+  afterimageStacks: number;
+  phantomStrikeAvailable: boolean;
+  
   // Universal state
   bonusActionCooldown: number;
   hasActedThisTurn: boolean;
@@ -36,6 +40,10 @@ interface PersistentCombatStateHook {
   setForetellChainCharged: (charged: boolean) => Promise<void>;
   setBonusActionCooldown: (cooldown: number) => Promise<void>;
   setHasActedThisTurn: (acted: boolean) => Promise<void>;
+  
+  // Maelle update functions
+  setAfterimageStacks: (stacks: number) => Promise<void>;
+  setPhantomStrikeAvailable: (available: boolean) => Promise<void>;
   
   // Batch update function
   updateMultiple: (updates: Partial<CharacterCombatState>) => Promise<void>;
@@ -55,84 +63,11 @@ export function usePersistentCombatState(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // Track if we're in the middle of an update to prevent loops
   const updatingRef = useRef(false);
-  
-  // Debounce timer for batching updates
   const updateTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pendingUpdatesRef = useRef<Partial<CharacterCombatState>>({});
 
-  // Initialize and listen to Firebase
-  useEffect(() => {
-    if (!characterId) {
-      setLoading(false);
-      return;
-    }
-
-    console.log(`🔄 Setting up persistent combat state for ${characterId}`);
-    
-    const characterRef = doc(db, 'characters', characterId);
-    
-    const unsubscribe = onSnapshot(
-      characterRef,
-        async (doc: any) => { // Add type annotation
-          if (!doc.exists()) {
-            setError(`Character ${characterId} not found`);
-            setLoading(false);
-            return;
-          }
-
-        const data = doc.data();
-        
-        // Get existing combat state or create default
-        let newCombatState = data.combatState 
-          ? {
-              ...data.combatState,
-              lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
-              lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
-            }
-          : CombatStateHelpers.createDefaultCombatState();
-
-        // Initialize combat state in Firebase if it doesn't exist
-        if (!data.combatState) {
-          console.log(`📝 Initializing combat state for ${characterId}`);
-          await updateDoc(characterRef, {
-            combatState: {
-              ...newCombatState,
-              lastUpdated: serverTimestamp(),
-              lastSyncedAt: serverTimestamp()
-            }
-          });
-        }
-
-        // Only update local state if we're not in the middle of our own update
-        if (!updatingRef.current) {
-          setCombatState(newCombatState);
-          console.log(`✅ Combat state loaded for ${characterId}:`, newCombatState);
-        }
-        
-        setLoading(false);
-        setError(null);
-      },
-      (error: any) => { // Add type annotation
-        console.error(`❌ Error loading combat state for ${characterId}:`, error);
-        setError(error.message);
-        setLoading(false);
-      }
-    );
-
-    return () => {
-      console.log(`🔌 Disconnecting combat state listener for ${characterId}`);
-      unsubscribe();
-      
-      // Clear any pending updates
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current);
-      }
-    };
-  }, [characterId]);
-
-  // Debounced update function to batch rapid changes
+  // Define debounced update function
   const debouncedUpdate = useCallback(async () => {
     if (!characterId || Object.keys(pendingUpdatesRef.current).length === 0) {
       return;
@@ -166,18 +101,14 @@ export function usePersistentCombatState(
 
   // Generic update function that batches changes
   const updateCombatState = useCallback((updates: Partial<CharacterCombatState>) => {
-    // Update local state immediately (optimistic update)
     setCombatState(prev => ({ ...prev, ...updates }));
-    
-    // Add to pending updates
     pendingUpdatesRef.current = { ...pendingUpdatesRef.current, ...updates };
     
-    // Clear existing timer and set new one
     if (updateTimerRef.current) {
       clearTimeout(updateTimerRef.current);
     }
     
-    updateTimerRef.current = setTimeout(debouncedUpdate, 300); // 300ms debounce
+    updateTimerRef.current = setTimeout(debouncedUpdate, 300);
   }, [debouncedUpdate]);
 
   // Individual setter functions
@@ -213,6 +144,15 @@ export function usePersistentCombatState(
     updateCombatState({ hasActedThisTurn: acted });
   }, [updateCombatState]);
 
+  // Maelle setter functions
+  const setAfterimageStacks = useCallback(async (stacks: number) => {
+    updateCombatState({ afterimageStacks: Math.max(0, Math.min(3, stacks)) });
+  }, [updateCombatState]);
+
+  const setPhantomStrikeAvailable = useCallback(async (available: boolean) => {
+    updateCombatState({ phantomStrikeAvailable: available });
+  }, [updateCombatState]);
+
   // Batch update function
   const updateMultiple = useCallback(async (updates: Partial<CharacterCombatState>) => {
     updateCombatState(updates);
@@ -227,18 +167,102 @@ export function usePersistentCombatState(
 
   // Sync with combat round/turn
   const syncWithCombatRound = useCallback(async (round: number, turn: string) => {
-    const shouldReset = CombatStateHelpers.shouldResetCombatState(combatState, round, turn);
+    console.log(`🔄 Syncing ${characterId} with round ${round}, turn ${turn}`);
     
-    if (shouldReset) {
-      console.log(`🔄 Auto-resetting combat state - new battle detected`);
+    if (CombatStateHelpers.shouldResetCombatState(combatState, round, turn)) {
+      console.log(`🔄 Resetting combat state for new battle: ${characterId}`);
       await resetForNewBattle();
-    } else {
-      updateCombatState({
-        lastCombatRound: round,
-        lastCombatTurn: turn
-      });
+      return;
     }
-  }, [combatState, resetForNewBattle, updateCombatState]);
+    
+    const updates: Partial<CharacterCombatState> = {
+      lastCombatRound: round,
+      lastCombatTurn: turn
+    };
+    
+    if (turn !== combatState.lastCombatTurn) {
+      updates.hasActedThisTurn = false;
+      
+      if (combatState.bonusActionCooldown > 0) {
+        updates.bonusActionCooldown = Math.max(0, combatState.bonusActionCooldown - 1);
+      }
+    }
+    
+    updateCombatState(updates);
+  }, [characterId, combatState, resetForNewBattle, updateCombatState]);
+
+  // Firebase listener setup - CRITICAL MISSING PIECE
+  useEffect(() => {
+    if (!characterId) {
+      setLoading(false);
+      return;
+    }
+
+    console.log(`🔄 Setting up persistent combat state for ${characterId}`);
+    
+    const characterRef = doc(db, 'characters', characterId);
+    
+    const unsubscribe = onSnapshot(
+      characterRef,
+      async (doc) => {
+        if (!doc.exists()) {
+          setError(`Character ${characterId} not found`);
+          setLoading(false);
+          return;
+        }
+
+        const data = doc.data();
+        
+        // Get existing combat state or create default with ALL required properties
+        let newCombatState: CharacterCombatState;
+        
+        if (data?.combatState) {
+          newCombatState = {
+            ...CombatStateHelpers.createDefaultCombatState(), // Start with defaults
+            ...data.combatState, // Override with saved values
+            lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
+            lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
+          };
+        } else {
+          newCombatState = CombatStateHelpers.createDefaultCombatState();
+        }
+
+        // Initialize combat state in Firebase if it doesn't exist
+        if (!data?.combatState) {
+          console.log(`📝 Initializing combat state for ${characterId}`);
+          await updateDoc(characterRef, {
+            combatState: {
+              ...newCombatState,
+              lastUpdated: serverTimestamp(),
+              lastSyncedAt: serverTimestamp()
+            }
+          });
+        }
+
+        if (!updatingRef.current) {
+          setCombatState(newCombatState);
+          console.log(`✅ Combat state loaded for ${characterId}:`, newCombatState);
+        }
+        
+        setLoading(false);
+        setError(null);
+      },
+      (error) => {
+        console.error(`❌ Error loading combat state for ${characterId}:`, error);
+        setError(error.message);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      console.log(`🔌 Disconnecting combat state listener for ${characterId}`);
+      unsubscribe();
+      
+      if (updateTimerRef.current) {
+        clearTimeout(updateTimerRef.current);
+      }
+    };
+  }, [characterId]);
 
   return {
     // State
@@ -256,6 +280,10 @@ export function usePersistentCombatState(
     bonusActionCooldown: combatState.bonusActionCooldown,
     hasActedThisTurn: combatState.hasActedThisTurn,
     
+    // Maelle state values
+    afterimageStacks: combatState.afterimageStacks,
+    phantomStrikeAvailable: combatState.phantomStrikeAvailable,
+    
     // Setters
     setOverchargePoints,
     setActiveTurretId,
@@ -265,6 +293,10 @@ export function usePersistentCombatState(
     setForetellChainCharged,
     setBonusActionCooldown,
     setHasActedThisTurn,
+    
+    // Maelle setters
+    setAfterimageStacks,
+    setPhantomStrikeAvailable,
     
     // Batch operations
     updateMultiple,
