@@ -287,6 +287,7 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
+        // setHasActedThisTurn={persistentCombatState.setHasActedThisTurn} // ADD THIS LINE
         sessionId={sessionId || 'test-session'}
         onActionComplete={() => {
           persistentCombatState.setHasActedThisTurn(true);
@@ -318,7 +319,8 @@ export function PlayerView() {
         setActiveTurretId={persistentCombatState.setActiveTurretId}
         turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
         setTurretsDeployedThisBattle={persistentCombatState.setTurretsDeployedThisBattle}
-        
+        setHasActedThisTurn={persistentCombatState.setHasActedThisTurn}
+
         // Keep existing props
         isMyTurn={myTurn}
         combatActive={combatActive}

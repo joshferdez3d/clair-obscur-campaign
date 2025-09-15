@@ -26,7 +26,8 @@ interface GustaveCharacterSheetProps {
   setActiveTurretId: (id: string | null) => Promise<void>;
   turretsDeployedThisBattle: number;
   setTurretsDeployedThisBattle: (count: number) => Promise<void>;
-  
+  setHasActedThisTurn?: (acted: boolean) => Promise<void>; // ADD THIS LINE
+
   onAbilityUse: (ability: Ability) => void;
   isLoading?: boolean;
   isMyTurn?: boolean;
@@ -73,6 +74,7 @@ export function GustaveCharacterSheet({
   onEndTurn,
   onCancelTargeting,
   hasActedThisTurn = false,
+  setHasActedThisTurn,
   sessionId = 'test-session',
   allTokens = [],
   session,
@@ -142,9 +144,25 @@ export function GustaveCharacterSheet({
     });
   };
 
-  const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn) return;
+  useEffect(() => {
+    console.log('🔍 GUSTAVE STATE DEBUG:', {
+      hasActedThisTurn,
+      abilityPoints,
+      overchargePoints,
+      isMyTurn,
+      combatActive,
+      hasSetterFunction: !!setHasActedThisTurn
+    });
+  }, [hasActedThisTurn, abilityPoints, overchargePoints, isMyTurn, combatActive, setHasActedThisTurn]);
 
+  const handleActionSelect = (action: any) => {
+    // FIXED: Add hasActed validation first
+    if (hasActedThisTurn) {
+      console.log('Player has already acted this turn');
+      return;
+    }
+
+    // FIXED: Better ability point validation
     if (action.type === 'ability' && action.cost) {
       if (action.cost > abilityPoints) {
         alert(`Not enough ability points! Need ${action.cost}, have ${abilityPoints}`);
@@ -161,10 +179,26 @@ export function GustaveCharacterSheet({
         alert('Maximum 2 turrets per battle reached!');
         return;
       }
+      // FIXED: Check ability points for turret deployment
+      if (abilityPoints < 3) {
+        alert(`Not enough ability points for turret! Need 3, have ${abilityPoints}`);
+        return;
+      }
     }
 
     if (action.id === 'overcharge_burst' && overchargePoints < 3) {
       alert(`Need 3 Overcharge points for ultimate! Currently have ${overchargePoints}`);
+      return;
+    }
+
+    if (action.id === 'leaders_sacrifice' && abilityPoints < 1) {
+      alert(`Not enough ability points for Leader's Sacrifice! Need 1, have ${abilityPoints}`);
+      return;
+    }
+
+    // FIXED: Add validation for prosthetic strike
+    if (action.id === 'prosthetic_strike' && abilityPoints < 2) {
+      alert(`Not enough ability points for Prosthetic Strike! Need 2, have ${abilityPoints}`);
       return;
     }
 
@@ -192,8 +226,13 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'deploy_turret');
         }
 
-        // Use persistent state setter
+        // FIXED: Consume ability points BEFORE setting hasActed
         await setAbilityPoints(abilityPoints - 3);
+        
+        // Then set hasActed
+        if (setHasActedThisTurn) {
+          await setHasActedThisTurn(true);
+        }
         
         console.log('Turret placement action created for GM');
       } catch (error) {
@@ -223,6 +262,11 @@ export function GustaveCharacterSheet({
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'self_destruct_turret');
         }
+        
+        // Set hasActed for self destruct
+        if (setHasActedThisTurn) {
+          await setHasActedThisTurn(true);
+        }
 
         console.log('Turret self destruct initiated');
       } catch (error) {
@@ -246,9 +290,14 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
         }
 
-        // Use persistent state setter
+        // FIXED: Consume ability points BEFORE setting hasActed
         await setAbilityPoints(abilityPoints - 1);
-        
+
+        // Then set hasActed
+        if (setHasActedThisTurn) {
+          await setHasActedThisTurn(true);
+        }
+          
         if (onEndTurn) {
           onEndTurn();
         }
@@ -312,10 +361,16 @@ export function GustaveCharacterSheet({
           acRoll: 999,
         });
 
-        // Use persistent state setter to reset overcharge
+        // FIXED: Reset overcharge BEFORE setting hasActed
         await setOverchargePoints(0);
 
+        // Then set hasActed
+        if (setHasActedThisTurn) {
+          await setHasActedThisTurn(true);
+        }
+
         console.log(`Overcharge Burst created AoE popup for ${targets.length} target(s).`);
+
       } catch (e) {
         console.error('Failed to create Overcharge Burst AoE action:', e);
         alert('Failed to create Overcharge Burst action. Please try again.');
@@ -330,7 +385,7 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    // Handle regular attacks with persistent state updates
+    // FIXED: Handle regular attacks with proper resource management
     if (selectedTarget && acRoll && onTargetSelect) {
       let finalAC = parseInt(acRoll, 10);
 
@@ -342,19 +397,40 @@ export function GustaveCharacterSheet({
         }
       }
 
+      // Call onTargetSelect first to register the attack
       onTargetSelect(selectedTarget, finalAC, selectedAction.type, selectedAction.id);
 
-      // CRITICAL FIX: Add overcharge and ability points for successful sword attacks
-      if (selectedAction.id === 'sword_slash') {
-        // Sword attacks build both overcharge and ability points
-        await setOverchargePoints(Math.min(3, overchargePoints + 1));
-        await setAbilityPoints(Math.min(5, abilityPoints + 1));
-        console.log('🗡️ Sword attack: +1 Overcharge, +1 Ability Point');
-      }
+      try {
+        // FIXED: Handle resource costs based on action type
+        if (selectedAction.type === 'ability' && selectedAction.cost) {
+          // Consume ability points for abilities like prosthetic_strike
+          await setAbilityPoints(abilityPoints - selectedAction.cost);
+          console.log(`Consumed ${selectedAction.cost} ability points for ${selectedAction.name}`);
+        }
 
-      // Handle ability costs
-      if (selectedAction.type === 'ability' && selectedAction.cost) {
-        await setAbilityPoints(abilityPoints - selectedAction.cost);
+        // FIXED: Only add overcharge/ability points for SUCCESSFUL sword attacks
+        if (selectedAction.id === 'sword_slash') {
+          const enemy = availableEnemies.find((e) => e.id === selectedTarget);
+          const hit = enemy ? finalAC >= (enemy.ac || 10) : true; // Assume hit if no enemy data
+          
+          if (hit) {
+            // Sword attacks build both overcharge and ability points when they HIT
+            await setOverchargePoints(Math.min(3, overchargePoints + 1));
+            await setAbilityPoints(Math.min(5, abilityPoints + 1));
+            console.log('🗡️ Sword attack HIT: +1 Overcharge, +1 Ability Point');
+          } else {
+            console.log('🗡️ Sword attack MISSED: No resource gain');
+          }
+        }
+
+        // FIXED: Set hasActed AFTER all resource changes are complete
+        if (setHasActedThisTurn) {
+          await setHasActedThisTurn(true);
+        }
+
+      } catch (error) {
+        console.error('Error updating resources:', error);
+        alert('Failed to update resources. Please refresh and try again.');
       }
 
       setSelectedAction(null);
