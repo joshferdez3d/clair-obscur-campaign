@@ -1,5 +1,5 @@
 // src/components/CharacterSheet/GustaveCharacterSheet.tsx
-import React, { useState, useEffect } from 'react'; // Make sure useEffect is included
+import React, { useState, useEffect } from 'react';
 import { User, Sword, Zap, Target, Eye, Shield, Sparkles, Circle, Wrench } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
@@ -7,17 +7,26 @@ import { StatDisplay } from './StatDisplay';
 import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character, Ability, Position, BattleToken } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
-import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
-import { InventoryModal } from './InventoryModal'; // Add this import
-import { InventoryService } from '../../services/inventoryService'; // Add this import
-import type { InventoryItem } from '../../types'; // Add this import
-import { useRealtimeInventory } from '../../hooks/useRealtimeInventory'; // Add this import
+import { Package } from 'lucide-react';
+import { InventoryModal } from './InventoryModal';
+import { InventoryService } from '../../services/inventoryService';
+import type { InventoryItem } from '../../types';
+import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 
 interface GustaveCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
-  onAbilityPointsChange: (delta: number) => void;
-  onOverchargePointsChange: (delta: number) => void;
+  
+  // Persistent state props
+  overchargePoints: number;
+  setOverchargePoints: (points: number) => Promise<void>;
+  abilityPoints: number;
+  setAbilityPoints: (points: number) => Promise<void>;
+  activeTurretId: string | null;
+  setActiveTurretId: (id: string | null) => Promise<void>;
+  turretsDeployedThisBattle: number;
+  setTurretsDeployedThisBattle: (count: number) => Promise<void>;
+  
   onAbilityUse: (ability: Ability) => void;
   isLoading?: boolean;
   isMyTurn?: boolean;
@@ -36,23 +45,23 @@ interface GustaveCharacterSheetProps {
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
   hasActedThisTurn?: boolean;
-  overchargePoints?: number;
-
-  // Needed for Overcharge Burst + popup writing
   sessionId?: string;
   allTokens?: BattleToken[];
-  session?: any; // Or use your specific session type
-
-  activeTurretId: string | null;          // ID of currently active turret
-  turretsDeployedThisBattle: number;      // Total turrets deployed this battle (max 2)
-  onSelfDestructTurret?: (turretId: string) => void;  // Self destruct callback
+  session?: any;
+  onSelfDestructTurret?: (turretId: string) => void;
 }
 
 export function GustaveCharacterSheet({
   character,
   onHPChange,
-  onAbilityPointsChange,
-  onOverchargePointsChange,
+  overchargePoints,
+  setOverchargePoints,
+  abilityPoints,
+  setAbilityPoints,
+  activeTurretId,
+  setActiveTurretId,
+  turretsDeployedThisBattle,
+  setTurretsDeployedThisBattle,
   onAbilityUse,
   isLoading = false,
   isMyTurn = false,
@@ -64,12 +73,9 @@ export function GustaveCharacterSheet({
   onEndTurn,
   onCancelTargeting,
   hasActedThisTurn = false,
-  overchargePoints = 0,
   sessionId = 'test-session',
   allTokens = [],
   session,
-  activeTurretId,
-  turretsDeployedThisBattle,
   onSelfDestructTurret,
 }: GustaveCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
@@ -92,8 +98,6 @@ export function GustaveCharacterSheet({
     setShowInventoryModal(true);
   };
 
-
-
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
       'gustave': '/tokens/characters/gustave.jpg',
@@ -105,7 +109,6 @@ export function GustaveCharacterSheet({
   };
 
   const portraitUrl = getCharacterPortrait(character.name);
-
   const getCharacterGradient = () => 'bg-gradient-to-br from-red-600 to-red-800';
 
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -143,9 +146,8 @@ export function GustaveCharacterSheet({
     if (hasActedThisTurn) return;
 
     if (action.type === 'ability' && action.cost) {
-      const currentPoints = character.charges || 0;
-      if (action.cost > currentPoints) {
-        alert(`Not enough ability points! Need ${action.cost}, have ${currentPoints}`);
+      if (action.cost > abilityPoints) {
+        alert(`Not enough ability points! Need ${action.cost}, have ${abilityPoints}`);
         return;
       }
     }
@@ -190,7 +192,8 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'deploy_turret');
         }
 
-        onAbilityPointsChange?.(-3);
+        // Use persistent state setter
+        await setAbilityPoints(abilityPoints - 3);
         
         console.log('Turret placement action created for GM');
       } catch (error) {
@@ -243,7 +246,8 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
         }
 
-        onAbilityPointsChange?.(-1);
+        // Use persistent state setter
+        await setAbilityPoints(abilityPoints - 1);
         
         if (onEndTurn) {
           onEndTurn();
@@ -308,7 +312,8 @@ export function GustaveCharacterSheet({
           acRoll: 999,
         });
 
-        onOverchargePointsChange?.(-3);
+        // Use persistent state setter to reset overcharge
+        await setOverchargePoints(0);
 
         console.log(`Overcharge Burst created AoE popup for ${targets.length} target(s).`);
       } catch (e) {
@@ -325,6 +330,7 @@ export function GustaveCharacterSheet({
       return;
     }
 
+    // Handle regular attacks with persistent state updates
     if (selectedTarget && acRoll && onTargetSelect) {
       let finalAC = parseInt(acRoll, 10);
 
@@ -338,8 +344,17 @@ export function GustaveCharacterSheet({
 
       onTargetSelect(selectedTarget, finalAC, selectedAction.type, selectedAction.id);
 
+      // CRITICAL FIX: Add overcharge and ability points for successful sword attacks
+      if (selectedAction.id === 'sword_slash') {
+        // Sword attacks build both overcharge and ability points
+        await setOverchargePoints(Math.min(3, overchargePoints + 1));
+        await setAbilityPoints(Math.min(5, abilityPoints + 1));
+        console.log('🗡️ Sword attack: +1 Overcharge, +1 Ability Point');
+      }
+
+      // Handle ability costs
       if (selectedAction.type === 'ability' && selectedAction.cost) {
-        onAbilityPointsChange?.(-selectedAction.cost);
+        await setAbilityPoints(abilityPoints - selectedAction.cost);
       }
 
       setSelectedAction(null);
@@ -355,8 +370,6 @@ export function GustaveCharacterSheet({
     setShowTargetingModal(false);
     onCancelTargeting?.();
   };
-
-  const abilityPoints = character.charges || 0;
 
   const basicActions = [
     {
@@ -434,58 +447,58 @@ export function GustaveCharacterSheet({
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
-          {/* CHARACTER HEADER */}
-    <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
-            {portraitUrl ? (
-              <img 
-                src={portraitUrl} 
-                alt={character.name}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  console.error(`Failed to load image for ${character.name}`);
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                }}
-              />
-            ) : (
-              <User className="w-8 h-8 text-clair-gold-200" />
-            )}
-          </div>
-          <div>
-            <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
-            <p className="font-serif italic text-clair-gold-200 text-sm">{character.role}</p>
-          </div>
-        </div>
-        
-        {/* Turn Indicator */}
-        {isMyTurn && combatActive && (
-          <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
-            Your Turn
-          </div>
-        )}
-      </div>
-    </div>
-
-
-      <div className="px-4 pt-4">
-      {portraitUrl && (
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
-          <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
-          <div className="flex justify-center">
-            <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
-              <img 
-                src={portraitUrl} 
-                alt={`${character.name} portrait`}
-                className="w-full h-full object-cover"
-                style={{ imageRendering: 'crisp-edges' }}  // Fixed: use valid value
-              />
+      {/* CHARACTER HEADER */}
+      <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
+              {portraitUrl ? (
+                <img 
+                  src={portraitUrl} 
+                  alt={character.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    console.error(`Failed to load image for ${character.name}`);
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                  }}
+                />
+              ) : (
+                <User className="w-8 h-8 text-clair-gold-200" />
+              )}
+            </div>
+            <div>
+              <h1 className="font-serif text-2xl font-bold text-clair-gold-50">{character.name}</h1>
+              <p className="font-serif italic text-clair-gold-200 text-sm">{character.role}</p>
             </div>
           </div>
+          
+          {/* Turn Indicator */}
+          {isMyTurn && combatActive && (
+            <div className="bg-clair-gold-500 text-clair-shadow-900 px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-clair">
+              Your Turn
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      <div className="px-4 pt-4">
+        {portraitUrl && (
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-4">
+            <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
+                <img 
+                  src={portraitUrl} 
+                  alt={`${character.name} portrait`}
+                  className="w-full h-full object-cover"
+                  style={{ imageRendering: 'crisp-edges' }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Action Status */}
         {isMyTurn && combatActive && hasActedThisTurn && (
           <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
@@ -727,7 +740,7 @@ export function GustaveCharacterSheet({
                 </div>
               ) : (
                 <>
-                  {/* NEW: Modal Trigger for Enemy Selection */}
+                  {/* Enemy Selection */}
                   <div className="space-y-3">
                     <button
                       onClick={() => setShowTargetingModal(true)}
@@ -812,12 +825,10 @@ export function GustaveCharacterSheet({
         onClose={() => setShowTargetingModal(false)}
         enemies={availableEnemies}
         playerPosition={playerPosition}
-        sessionId={sessionId} // Add this
-        playerId={character.id} // Add this
+        sessionId={sessionId}
+        playerId={character.id}
         onSelectEnemy={(enemy) => {
           setSelectedTarget(enemy.id);
-          // Remove the FirestoreService.updateTargetingState call here
-          // since it's now handled inside the modal
           setShowTargetingModal(false);
         }}
         selectedEnemyId={selectedTarget}

@@ -306,8 +306,22 @@ export function PlayerView() {
       <GustaveCharacterSheet
         character={character}
         onHPChange={handleHPChange}
-        onAbilityPointsChange={handleAbilityPointsChange}
+        // REMOVE these old callbacks:
+        // onAbilityPointsChange={handleAbilityPointsChange}
+        // onOverchargePointsChange={handleOverchargePointsChange}
         onAbilityUse={handleAbilityUse}
+
+        // ADD: Pass persistent state values and setters
+        overchargePoints={persistentCombatState.overchargePoints}
+        setOverchargePoints={persistentCombatState.setOverchargePoints}
+        abilityPoints={character.charges || 0}
+        setAbilityPoints={changeCharges} // or create a proper setter
+        activeTurretId={persistentCombatState.activeTurretId}
+        setActiveTurretId={persistentCombatState.setActiveTurretId}
+        turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
+        setTurretsDeployedThisBattle={persistentCombatState.setTurretsDeployedThisBattle}
+        
+        // Keep existing props
         isMyTurn={myTurn}
         combatActive={combatActive}
         availableEnemies={availableEnemies}
@@ -316,13 +330,9 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         hasActedThisTurn={persistentCombatState.hasActedThisTurn}
-        onTurretDeploy={handleTurretDeploy}
-        overchargePoints={persistentCombatState.overchargePoints}
-        onOverchargePointsChange={handleOverchargePointsChange}
-        allTokens={tokensArray}
-        sessionId={sessionId!}
-        activeTurretId={persistentCombatState.activeTurretId}
-        turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
+        sessionId={sessionId}
+        allTokens={session?.tokens || []}
+        session={session}
       />
     );
   }
