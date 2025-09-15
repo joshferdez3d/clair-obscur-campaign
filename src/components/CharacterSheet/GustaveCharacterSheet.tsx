@@ -1,4 +1,4 @@
-// src/components/CharacterSheet/GustaveCharacterSheet.tsx
+// src/components/CharacterSheet/GustaveCharacterSheet.tsx - STREAMLINED VERSION
 import React, { useState, useEffect } from 'react';
 import { User, Sword, Zap, Target, Eye, Shield, Sparkles, Circle, Wrench } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
@@ -26,7 +26,7 @@ interface GustaveCharacterSheetProps {
   setActiveTurretId: (id: string | null) => Promise<void>;
   turretsDeployedThisBattle: number;
   setTurretsDeployedThisBattle: (count: number) => Promise<void>;
-  setHasActedThisTurn?: (acted: boolean) => Promise<void>; // ADD THIS LINE
+  // REMOVED: setHasActedThisTurn - no longer needed
 
   onAbilityUse: (ability: Ability) => void;
   isLoading?: boolean;
@@ -45,7 +45,7 @@ interface GustaveCharacterSheetProps {
   onTurretDeploy?: (position: { x: number; y: number }) => void;
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
-  hasActedThisTurn?: boolean;
+  // REMOVED: hasActedThisTurn - no longer needed
   sessionId?: string;
   allTokens?: BattleToken[];
   session?: any;
@@ -73,8 +73,7 @@ export function GustaveCharacterSheet({
   onTurretDeploy,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn = false,
-  setHasActedThisTurn,
+  // REMOVED: hasActedThisTurn and setHasActedThisTurn
   sessionId = 'test-session',
   allTokens = [],
   session,
@@ -144,25 +143,20 @@ export function GustaveCharacterSheet({
     });
   };
 
+  // REMOVED: hasActed logging since we're not tracking it anymore
   useEffect(() => {
-    console.log('🔍 GUSTAVE STATE DEBUG:', {
-      hasActedThisTurn,
+    console.log('🔧 GUSTAVE STATE DEBUG:', {
       abilityPoints,
       overchargePoints,
       isMyTurn,
       combatActive,
-      hasSetterFunction: !!setHasActedThisTurn
     });
-  }, [hasActedThisTurn, abilityPoints, overchargePoints, isMyTurn, combatActive, setHasActedThisTurn]);
+  }, [abilityPoints, overchargePoints, isMyTurn, combatActive]);
 
   const handleActionSelect = (action: any) => {
-    // FIXED: Add hasActed validation first
-    if (hasActedThisTurn) {
-      console.log('Player has already acted this turn');
-      return;
-    }
+    // REMOVED: hasActed validation since we auto-end turn
 
-    // FIXED: Better ability point validation
+    // Ability point validation
     if (action.type === 'ability' && action.cost) {
       if (action.cost > abilityPoints) {
         alert(`Not enough ability points! Need ${action.cost}, have ${abilityPoints}`);
@@ -179,7 +173,6 @@ export function GustaveCharacterSheet({
         alert('Maximum 2 turrets per battle reached!');
         return;
       }
-      // FIXED: Check ability points for turret deployment
       if (abilityPoints < 3) {
         alert(`Not enough ability points for turret! Need 3, have ${abilityPoints}`);
         return;
@@ -196,7 +189,6 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    // FIXED: Add validation for prosthetic strike
     if (action.id === 'prosthetic_strike' && abilityPoints < 2) {
       alert(`Not enough ability points for Prosthetic Strike! Need 2, have ${abilityPoints}`);
       return;
@@ -207,6 +199,7 @@ export function GustaveCharacterSheet({
     setACRoll('');
   };
 
+  // UPDATED: Auto-end turn after actions
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
 
@@ -226,22 +219,23 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'deploy_turret');
         }
 
-        // FIXED: Consume ability points BEFORE setting hasActed
+        // Consume ability points
         await setAbilityPoints(abilityPoints - 3);
         
-        // Then set hasActed
-        if (setHasActedThisTurn) {
-          await setHasActedThisTurn(true);
-        }
-        
         console.log('Turret placement action created for GM');
+        
+        // STREAMLINED: Auto-end turn after successful action
+        setSelectedAction(null);
+        if (onEndTurn) {
+          onEndTurn();
+        }
+        return;
       } catch (error) {
         console.error('Failed to create turret placement action:', error);
         alert('Failed to create turret placement action. Please try again.');
+        setSelectedAction(null);
+        return;
       }
-      
-      setSelectedAction(null);
-      return;
     }
 
     if (selectedAction.id === 'self_destruct_turret' && activeTurretId) {
@@ -262,20 +256,21 @@ export function GustaveCharacterSheet({
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'self_destruct_turret');
         }
-        
-        // Set hasActed for self destruct
-        if (setHasActedThisTurn) {
-          await setHasActedThisTurn(true);
-        }
 
         console.log('Turret self destruct initiated');
+        
+        // STREAMLINED: Auto-end turn after successful action
+        setSelectedAction(null);
+        if (onEndTurn) {
+          onEndTurn();
+        }
+        return;
       } catch (error) {
         console.error('Failed to self destruct turret:', error);
         alert('Failed to self destruct turret. Please try again.');
+        setSelectedAction(null);
+        return;
       }
-      
-      setSelectedAction(null);
-      return;
     }
 
     if (selectedAction.id === 'leaders_sacrifice') {
@@ -290,26 +285,23 @@ export function GustaveCharacterSheet({
           onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
         }
 
-        // FIXED: Consume ability points BEFORE setting hasActed
+        // Consume ability points
         await setAbilityPoints(abilityPoints - 1);
 
-        // Then set hasActed
-        if (setHasActedThisTurn) {
-          await setHasActedThisTurn(true);
-        }
-          
+        console.log("Leader's Sacrifice activated - turn ended");
+        
+        // STREAMLINED: Auto-end turn (Leader's Sacrifice always ends turn immediately)
+        setSelectedAction(null);
         if (onEndTurn) {
           onEndTurn();
         }
-        
-        console.log("Leader's Sacrifice activated - turn ended");
+        return;
       } catch (error) {
         console.error("Failed to activate Leader's Sacrifice:", error);
         alert("Failed to activate Leader's Sacrifice. Please try again.");
+        setSelectedAction(null);
+        return;
       }
-      
-      setSelectedAction(null);
-      return;
     }
 
     if (selectedAction.id === 'overcharge_burst') {
@@ -361,15 +353,19 @@ export function GustaveCharacterSheet({
           acRoll: 999,
         });
 
-        // FIXED: Reset overcharge BEFORE setting hasActed
+        // Reset overcharge
         await setOverchargePoints(0);
 
-        // Then set hasActed
-        if (setHasActedThisTurn) {
-          await setHasActedThisTurn(true);
-        }
-
         console.log(`Overcharge Burst created AoE popup for ${targets.length} target(s).`);
+
+        // STREAMLINED: Auto-end turn after successful ultimate
+        setSelectedAction(null);
+        setSelectedTarget('');
+        setACRoll('');
+        if (onEndTurn) {
+          onEndTurn();
+        }
+        return;
 
       } catch (e) {
         console.error('Failed to create Overcharge Burst AoE action:', e);
@@ -377,15 +373,12 @@ export function GustaveCharacterSheet({
         if (onTargetSelect) {
           onTargetSelect('action_failed', 0, 'ability', 'overcharge_burst');
         }
+        setSelectedAction(null);
+        return;
       }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      return;
     }
 
-    // FIXED: Handle regular attacks with proper resource management
+    // Handle regular attacks
     if (selectedTarget && acRoll && onTargetSelect) {
       let finalAC = parseInt(acRoll, 10);
 
@@ -401,14 +394,14 @@ export function GustaveCharacterSheet({
       onTargetSelect(selectedTarget, finalAC, selectedAction.type, selectedAction.id);
 
       try {
-        // FIXED: Handle resource costs based on action type
+        // Handle resource costs based on action type
         if (selectedAction.type === 'ability' && selectedAction.cost) {
           // Consume ability points for abilities like prosthetic_strike
           await setAbilityPoints(abilityPoints - selectedAction.cost);
           console.log(`Consumed ${selectedAction.cost} ability points for ${selectedAction.name}`);
         }
 
-        // FIXED: Only add overcharge/ability points for SUCCESSFUL sword attacks
+        // Only add overcharge/ability points for SUCCESSFUL sword attacks
         if (selectedAction.id === 'sword_slash') {
           const enemy = availableEnemies.find((e) => e.id === selectedTarget);
           const hit = enemy ? finalAC >= (enemy.ac || 10) : true; // Assume hit if no enemy data
@@ -423,19 +416,21 @@ export function GustaveCharacterSheet({
           }
         }
 
-        // FIXED: Set hasActed AFTER all resource changes are complete
-        if (setHasActedThisTurn) {
-          await setHasActedThisTurn(true);
+        console.log(`${selectedAction.name} completed - ending turn`);
+
+        // STREAMLINED: Auto-end turn after successful attack
+        setSelectedAction(null);
+        setSelectedTarget('');
+        setACRoll('');
+        if (onEndTurn) {
+          onEndTurn();
         }
 
       } catch (error) {
         console.error('Error updating resources:', error);
         alert('Failed to update resources. Please refresh and try again.');
+        setSelectedAction(null);
       }
-
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
     }
   };
 
@@ -452,7 +447,7 @@ export function GustaveCharacterSheet({
       type: 'melee' as const,
       id: 'sword_slash',
       name: 'Sword Slash',
-      description: 'Melee weapon attack with sword',
+      description: 'Melee weapon attack with sword. Turn ends automatically.',
       damage: '1d8 + STR slashing',
       icon: Sword,
       range: '5ft',
@@ -461,7 +456,7 @@ export function GustaveCharacterSheet({
       type: 'ranged' as const,
       id: 'pistol_shot',
       name: 'Pistol Shot',
-      description: 'Ranged attack with pistol. No overcharge gain.',
+      description: 'Ranged attack with pistol. Turn ends automatically.',
       damage: '1d10 + DEX piercing',
       icon: Circle,
       range: 'Unlimited',
@@ -473,7 +468,7 @@ export function GustaveCharacterSheet({
       type: 'ability' as const,
       id: 'prosthetic_strike',
       name: 'Prosthetic Strike',
-      description: 'Energy blast from mechanical arm',
+      description: 'Energy blast from mechanical arm. Turn ends automatically.',
       damage: '1d10 bludgeoning',
       cost: 2,
       range: '5ft',
@@ -482,7 +477,7 @@ export function GustaveCharacterSheet({
       type: 'ability' as const,
       id: 'leaders_sacrifice',
       name: "Leader's Sacrifice",
-      description: 'End turn and protect an ally for 2 rounds',
+      description: 'End turn immediately and protect an ally for 2 rounds',
       damage: 'Redirects ally damage to you',
       cost: 1,
       range: 'Any ally',
@@ -492,7 +487,7 @@ export function GustaveCharacterSheet({
         type: 'ability' as const,
         id: 'self_destruct_turret',
         name: 'Self Destruct Turret',
-        description: 'Destroy turret, damaging nearby enemies',
+        description: 'Destroy turret, damaging nearby enemies. Turn ends automatically.',
         damage: '2d6 fire (10ft radius)',
         cost: 0,
         range: '10ft AoE',
@@ -503,7 +498,7 @@ export function GustaveCharacterSheet({
         name: turretsDeployedThisBattle >= 2 ? 'No Turrets Left' : 'Deploy Turret Prototype',
         description: turretsDeployedThisBattle >= 2 
           ? 'Maximum 2 turrets per battle' 
-          : 'Place turret that attacks enemies or supports allies',
+          : 'Place turret that attacks enemies. Turn ends automatically.',
         damage: 'No direct damage',
         cost: 3,
         range: '5ft placement radius',
@@ -515,7 +510,7 @@ export function GustaveCharacterSheet({
     type: 'ability' as const,
     id: 'overcharge_burst',
     name: 'Overcharge Burst',
-    description: 'Lightning explosion affecting all nearby units',
+    description: 'Lightning explosion affecting all nearby units. Turn ends automatically.',
     damage: '6d6 lightning (30ft radius)',
     cost: 0,
     range: '30ft AoE',
@@ -575,15 +570,7 @@ export function GustaveCharacterSheet({
           </div>
         )}
 
-        {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && (
-          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
-            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
-            <span className="font-sans text-clair-success">
-              Action completed this turn - Click "End Turn" when ready
-            </span>
-          </div>
-        )}
+        {/* REMOVED: Action Status notification since we auto-end turns */}
 
         {/* HP TRACKER */}
         <HPTracker currentHP={character.currentHP} maxHP={character.maxHP} onHPChange={onHPChange} isLoading={isLoading} showControls={false}/>
@@ -655,6 +642,15 @@ export function GustaveCharacterSheet({
         {/* Combat Actions */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600 mb-6">
           <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Combat Actions</h3>
+          
+          {/* UPDATED: Simplified instructions */}
+          {isMyTurn && combatActive && (
+            <div className="mb-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
+              <p className="text-green-200 text-sm font-bold">
+                🎯 Select any action below - your turn will end automatically after completion!
+              </p>
+            </div>
+          )}
 
           {!selectedAction ? (
             <div className="space-y-3">
@@ -668,7 +664,7 @@ export function GustaveCharacterSheet({
                       <button
                         key={action.id}
                         onClick={() => handleActionSelect(action)}
-                        disabled={!isMyTurn || !combatActive || hasActedThisTurn}
+                        disabled={!isMyTurn || !combatActive}
                         className="w-full bg-red-600 hover:bg-red-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                       >
                         <div className="flex items-center">
@@ -694,7 +690,7 @@ export function GustaveCharacterSheet({
                     <button
                       key={ability.id}
                       onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost || hasActedThisTurn}
+                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost}
                       className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                     >
                       <div className="flex items-center">
@@ -719,7 +715,7 @@ export function GustaveCharacterSheet({
                   <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate</h4>
                   <button
                     onClick={() => handleActionSelect(ultimateAbility)}
-                    disabled={!isMyTurn || !combatActive || hasActedThisTurn}
+                    disabled={!isMyTurn || !combatActive}
                     className="w-full bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white border-2 border-yellow-400"
                   >
                     <div className="flex items-center">
@@ -734,7 +730,7 @@ export function GustaveCharacterSheet({
               )}
             </div>
           ) : (
-            // Target Selection / Special flows
+            // Target Selection / Special flows (unchanged but no End Turn button needed)
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-bold text-clair-mystical-200">
@@ -755,6 +751,9 @@ export function GustaveCharacterSheet({
                     <p className="text-orange-300 text-xs mt-1">
                       Turrets deployed this battle: {turretsDeployedThisBattle}/2
                     </p>
+                    <p className="text-orange-400 text-xs mt-1 font-bold">
+                      ⚡ Turn will end automatically after placement
+                    </p>
                   </div>
                   <button 
                     onClick={handleConfirmAction} 
@@ -768,6 +767,9 @@ export function GustaveCharacterSheet({
                   <div className="p-3 bg-red-900 bg-opacity-30 rounded-lg">
                     <p className="text-red-200 text-sm">
                       Destroy your turret, dealing 2d6 fire damage to all enemies within 10ft.
+                    </p>
+                    <p className="text-red-400 text-xs mt-1 font-bold">
+                      ⚡ Turn will end automatically after destruction
                     </p>
                   </div>
                   <button 
@@ -805,6 +807,9 @@ export function GustaveCharacterSheet({
                   <div className="p-3 bg-yellow-900 bg-opacity-30 rounded-lg">
                     <p className="text-yellow-200 text-sm">
                       Area of effect ultimate! Affects all enemies within 30ft of you and 5ft of your turrets.
+                    </p>
+                    <p className="text-yellow-400 text-xs mt-1 font-bold">
+                      ⚡ Turn will end automatically after ultimate
                     </p>
                   </div>
                   <button
@@ -849,6 +854,12 @@ export function GustaveCharacterSheet({
                           />
                         </div>
                         
+                        <div className="p-2 bg-green-900 bg-opacity-20 rounded">
+                          <p className="text-green-300 text-xs">
+                            ⚡ Turn will end automatically after attack
+                          </p>
+                        </div>
+                        
                         <button
                           onClick={handleConfirmAction}
                           disabled={!acRoll}
@@ -864,26 +875,13 @@ export function GustaveCharacterSheet({
             </div>
           )}
 
-          {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && (
-            <button
-              onClick={onEndTurn}
-              disabled={!hasActedThisTurn}
-              className={`w-full mt-4 p-3 rounded-lg font-bold transition-colors ${
-                hasActedThisTurn
-                  ? 'bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <Eye className="w-5 h-5 inline mr-2" />
-              {hasActedThisTurn ? 'End Turn' : 'Take an action first'}
-            </button>
-          )}
+          {/* REMOVED: End Turn button - no longer needed */}
 
-          {/* Tips */}
+          {/* Tips - Updated */}
           <div className="mt-4 p-3 bg-clair-gold-900 bg-opacity-20 rounded-lg border border-clair-gold-600">
             <h4 className="font-serif font-bold text-clair-gold-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-clair-gold-300 space-y-1">
+              <li>⚡ Your turn ends automatically after any action</li>
               <li>• Melee attacks build both Ability and Overcharge points</li>
               <li>• Pistol shots have unlimited range but no Overcharge gain</li>
               <li>• Ranged attacks get -2 AC penalty per 5ft beyond 20ft</li>

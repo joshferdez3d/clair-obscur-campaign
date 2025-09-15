@@ -1,4 +1,4 @@
-// src/components/BattleMap/Token.tsx - Updated with coordinate offset support and no name tags
+// src/components/BattleMap/Token.tsx - Fixed with defensive programming
 import React from 'react';
 import { User, Heart } from 'lucide-react';
 import type { BattleToken, Position } from '../../types';
@@ -13,10 +13,9 @@ interface TokenProps {
   onClick?: (token: BattleToken) => void;
   onDragStart?: (token: BattleToken, event: React.DragEvent) => void;
   onDragEnd?: (token: BattleToken) => void;
-  coordinateOffset?: Position; // New prop for coordinate padding
+  coordinateOffset?: Position;
   isHighlighted?: boolean;
   isStormTarget?: boolean;
-
 }
 
 export function Token({ 
@@ -31,12 +30,26 @@ export function Token({
   onDragEnd,
   isHighlighted = false,
   isStormTarget,
-  coordinateOffset = { x: 0, y: 0 } // Default to no offset
+  coordinateOffset = { x: 0, y: 0 }
 }: TokenProps) {
-  const tokenSize = gridSize * (token.size || 1);
-  const left = (token.position.x * gridSize) + coordinateOffset.x;
-  const top = (token.position.y * gridSize) + coordinateOffset.y;
+  // DEFENSIVE PROGRAMMING: Ensure token has valid position
+  if (!token) {
+    console.error('Token component received undefined token');
+    return null;
+  }
 
+  // Provide default position if missing
+  const safePosition = token.position || { x: 0, y: 0 };
+  
+  // Validate position properties
+  if (typeof safePosition.x !== 'number' || typeof safePosition.y !== 'number') {
+    console.error('Token has invalid position:', token.id, safePosition);
+    return null;
+  }
+
+  const tokenSize = gridSize * (token.size || 1);
+  const left = (safePosition.x * gridSize) + coordinateOffset.x;
+  const top = (safePosition.y * gridSize) + coordinateOffset.y;
 
   const getTokenColor = (token: BattleToken): string => {
     if (token.color) return token.color;
@@ -53,22 +66,20 @@ export function Token({
     }
   };
 
-
   const getTokenBorder = () => {
     switch (token.characterId?.toLowerCase()) {
       case 'maelle':
-        return 'border-clair-royal-400'; // NEW: Royal blue border (was clair-mystical-400)
+        return 'border-clair-royal-400';
       case 'gustave':
         return 'border-red-500';
       case 'lune':
-        return 'border-clair-mystical-500'; // Unchanged - keeping purple
+        return 'border-clair-mystical-500';
       case 'sciel':
         return 'border-green-500';
       default:
         return 'border-clair-gold-400';
     }
   };
-
 
   const getHPPercentage = () => {
     if (!token.hp || !token.maxHp) return 100;
@@ -111,7 +122,6 @@ export function Token({
         'Noir Harbinger': 'Noir_Harbinger_Image.png',
         'Portier': 'Portier_Image.png',
         'Volester': 'Volester_Image.png',
-        // Add any other enemies here as you add them to the game
       };
       
       const filename = enemyImageMap[token.name];
@@ -119,7 +129,6 @@ export function Token({
         return `/tokens/enemies/${filename}`;
       }
       
-      // Fallback to a default enemy image if not in mapping
       return '/tokens/enemies/default-enemy.png';
     }
     
@@ -142,7 +151,6 @@ export function Token({
         return `/tokens/npc/${filename}`;
       }
       
-      // Fallback to a default NPC image if not in mapping
       return '/tokens/npc/default-npc.png';
     }
     
@@ -176,15 +184,14 @@ export function Token({
         className={`w-full h-full rounded-full border-4 ${getTokenBorder()} shadow-lg relative overflow-hidden ${
           isSelected ? 'ring-2 ring-white ring-opacity-60' : ''
           } ${isHighlighted ? 'border-red-500 border-opacity-100' : ''}`}
-
-          style={{
-              backgroundColor: getTokenColor(token),
-              boxShadow: isHighlighted
-                ? '0 0 30px rgba(239, 68, 68, 0.8)'
-                : isSelected
-                ? '0 0 20px rgba(255, 255, 255, 0.5)'
-                : '0 4px 8px rgba(0, 0, 0, 0.3)',
-            }}
+        style={{
+          backgroundColor: getTokenColor(token),
+          boxShadow: isHighlighted
+            ? '0 0 30px rgba(239, 68, 68, 0.8)'
+            : isSelected
+            ? '0 0 20px rgba(255, 255, 255, 0.5)'
+            : '0 4px 8px rgba(0, 0, 0, 0.3)',
+        }}
       >
         {/* Character Image */}
         {tokenImage ? (
@@ -232,66 +239,35 @@ export function Token({
       {/* Status Effect Indicators */}
       {token.statusEffects && (
         <div className="absolute -top-2 -left-2 flex gap-1">
-          {/* Existing status effects */}
           {token.statusEffects.fire && (
-            <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse" title={`Burning (${token.statusEffects.fire.turnsRemaining} turns)`}>
-              <span className="text-white text-xs font-bold">🔥</span>
-            </div>
-          )}
-          {token.statusEffects.ice && (
-            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center" title={`Frozen (${token.statusEffects.ice.turnsRemaining} turns)`}>
-              <span className="text-white text-xs font-bold">❄️</span>
-            </div>
-          )}
-          {token.statusEffects.blind && (
-            <div className="w-5 h-5 bg-yellow-300 rounded-full flex items-center justify-center animate-pulse" title={`Blinded (${token.statusEffects.blind.turnsRemaining} turns)`}>
-              <span className="text-gray-800 text-xs font-bold">👁️</span>
+            <div className="w-3 h-3 bg-red-500 rounded-full border border-red-400 flex items-center justify-center">
+              <span className="text-xs text-white font-bold">🔥</span>
             </div>
           )}
           
-          {/* NEW: Advantage/Disadvantage indicators */}
+          {token.statusEffects.ice && (
+            <div className="w-3 h-3 bg-blue-500 rounded-full border border-blue-400 flex items-center justify-center">
+              <span className="text-xs text-white font-bold">❄️</span>
+            </div>
+          )}
+          
+          {token.statusEffects.blind && (
+            <div className="w-3 h-3 bg-gray-700 rounded-full border border-gray-600 flex items-center justify-center">
+              <span className="text-xs text-white font-bold">👁️</span>
+            </div>
+          )}
+          
           {token.statusEffects.advantage && (
-            <div className="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center animate-pulse border border-green-300" title={`Advantage (${token.statusEffects.advantage.turnsRemaining} turns)`}>
-              <span className="text-white text-xs font-bold">⬆️</span>
+            <div className="w-3 h-3 bg-green-500 rounded-full border border-green-400 flex items-center justify-center">
+              <span className="text-xs text-white font-bold">+</span>
             </div>
           )}
+          
           {token.statusEffects.disadvantage && (
-            <div className="w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse border border-red-300" title={`Disadvantage (${token.statusEffects.disadvantage.turnsRemaining} turns)`}>
-              <span className="text-white text-xs font-bold">⬇️</span>
+            <div className="w-3 h-3 bg-red-600 rounded-full border border-red-500 flex items-center justify-center">
+              <span className="text-xs text-white font-bold">-</span>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Visual Overlay Effects */}
-      {token.statusEffects?.fire && (
-        <div className="absolute inset-0 rounded-full pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-t from-red-500/30 to-orange-500/20 rounded-full animate-pulse" />
-        </div>
-      )}
-      {token.statusEffects?.ice && (
-        <div className="absolute inset-0 rounded-full pointer-events-none">
-          <div className="absolute inset-0 bg-gradient-to-b from-blue-300/40 to-cyan-400/30 rounded-full" />
-          <div className="absolute inset-0 border-2 border-cyan-400/50 rounded-full" />
-        </div>
-      )}
-      {token.statusEffects?.blind && (
-        <div className="absolute inset-0 rounded-full pointer-events-none">
-          <div className="absolute inset-0 bg-yellow-200/20 rounded-full animate-pulse" />
-        </div>
-      )}
-
-      {/* NEW: Advantage/Disadvantage overlay effects */}
-      {token.statusEffects?.advantage && (
-        <div className="absolute inset-0 rounded-full pointer-events-none">
-          <div className="absolute inset-0 bg-green-300/25 rounded-full animate-pulse" />
-          <div className="absolute inset-0 border-2 border-green-400/40 rounded-full animate-pulse" />
-        </div>
-      )}
-      {token.statusEffects?.disadvantage && (
-        <div className="absolute inset-0 rounded-full pointer-events-none">
-          <div className="absolute inset-0 bg-red-300/25 rounded-full animate-pulse" />
-          <div className="absolute inset-0 border-2 border-red-400/40 rounded-full animate-pulse" />
         </div>
       )}
     </div>

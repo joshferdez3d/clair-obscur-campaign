@@ -107,7 +107,7 @@ export function GMView() {
     }
 
     const tokens = Object.values(session.tokens);
-    const turrets = tokens.filter((t) => t.name.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
+    const turrets = tokens.filter((t) => t.name?.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
 
     if (turrets.length === 0) return;
 
@@ -802,7 +802,7 @@ const handleResetSession = async () => {
   ) as GMCombatAction[];
 
   const isGustavesTurn = combatState.currentTurn === 'gustave';
-  const activeTurrets = tokens.filter((t) => t.name.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
+  const activeTurrets = tokens.filter((t) => t.name?.includes('Turret') && t.type === 'npc' && (t.hp ?? 0) > 0);
   const maelleToken = players.find((t) => t.characterId === 'maelle');
   const gustaveToken = players.find((t) => t.characterId === 'gustave');
 

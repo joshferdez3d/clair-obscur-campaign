@@ -1,4 +1,4 @@
-// src/components/CharacterSheet/LuneCharacterSheet.tsx
+// src/components/CharacterSheet/LuneCharacterSheet.tsx - STREAMLINED VERSION
 import React, { useState, useEffect } from 'react';
 import { User, Sparkles, Target, Eye, Zap, Circle, Heart } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
@@ -35,7 +35,7 @@ interface LuneCharacterSheetProps {
   onTargetSelect?: (targetId: string, acRoll: number, attackType: string, abilityId?: string) => void;
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
-  hasActedThisTurn?: boolean;
+  // REMOVED: hasActedThisTurn - no longer needed
   sessionId?: string;
   allTokens?: BattleToken[];
   session?: any;
@@ -119,7 +119,7 @@ export function LuneCharacterSheet({
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn = false,
+  // REMOVED: hasActedThisTurn
   sessionId = 'test-session',
   allTokens = [],
   session,
@@ -240,7 +240,7 @@ export function LuneCharacterSheet({
     type: 'basic' as const,
     id: 'elemental_bolt',
     name: 'Elemental Bolt',
-    description: 'Ranged spell attack with random element',
+    description: 'Ranged spell attack with random element. Turn ends automatically.',
     damage: '1d10 elemental',
     needsElement: true,
     icon: Circle,
@@ -252,7 +252,7 @@ export function LuneCharacterSheet({
       type: 'ability' as const,
       id: 'elemental_strike',
       name: 'Elemental Strike',
-      description: 'Consume 1 stain for enhanced damage + status effect',
+      description: 'Consume 1 stain for enhanced damage + status effect. Turn ends automatically.',
       damage: '1d10 + status effect',
       cost: 1,
       range: 'Unlimited',
@@ -261,7 +261,7 @@ export function LuneCharacterSheet({
       type: 'ability' as const,
       id: 'twin_catalyst',
       name: 'Twin Catalyst',
-      description: 'Fire two elemental bolts using oldest 2 stains',
+      description: 'Fire two elemental bolts using oldest 2 stains. Turn ends automatically.',
       damage: '2 × 1d10 elemental',
       cost: 2,
       multiTarget: true,
@@ -271,7 +271,7 @@ export function LuneCharacterSheet({
       type: 'heal' as const,
       id: 'natures_balm',
       name: "Nature's Balm",
-      description: 'Heal an ally (or yourself) for 2d6 HP (requires nature stain)',
+      description: 'Heal an ally (or yourself) for 2d6 HP. Turn ends automatically.',
       damage: '2d6 healing',
       cost: 'nature',
       range: 'Unlimited',
@@ -284,7 +284,7 @@ export function LuneCharacterSheet({
     type: 'ultimate' as const,
     id: 'elemental_genesis',
     name: 'Elemental Genesis',
-    description: 'Choose element for powerful terrain/support effect',
+    description: 'Choose element for powerful terrain/support effect. Turn ends automatically.',
     cost: 3,
     range: 'Battlefield',
     onePerRest: true
@@ -292,7 +292,7 @@ export function LuneCharacterSheet({
 
   // Handle action selection
   const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn) return;
+    // REMOVED: hasActedThisTurn check
     
     // Check if Elemental Strike is on cooldown
     if (action.id === 'elemental_strike' && hasActiveElementalStrikeEffect()) {
@@ -429,6 +429,11 @@ export function LuneCharacterSheet({
       setSelectedTarget('');
       setHealAmount('');
       
+      // STREAMLINED: Auto-end turn after healing
+      if (onEndTurn) {
+        onEndTurn();
+      }
+      
     } catch (error) {
       console.error('Failed to apply healing:', error);
       alert('Failed to apply healing. Please try again.');
@@ -498,7 +503,7 @@ export function LuneCharacterSheet({
     }
   };
 
-  // Confirm action execution
+  // UPDATED: Auto-end turn after actions
   const handleConfirmAction = async () => {
     if (!selectedAction) return;
 
@@ -509,7 +514,7 @@ export function LuneCharacterSheet({
     // Handle Nature's Balm healing
     if (selectedAction.id === 'natures_balm') {
       await handleConfirmHeal();
-      return;
+      return; // handleConfirmHeal handles turn ending
     }
 
     // Handle Elemental Genesis (Ultimate)
@@ -524,6 +529,11 @@ export function LuneCharacterSheet({
       }
       await executeUltimate(selectedUltimateElement);
       setSelectedAction(null);
+      
+      // STREAMLINED: Auto-end turn after ultimate
+      if (onEndTurn) {
+        onEndTurn();
+      }
       return;
     }
 
@@ -624,6 +634,12 @@ export function LuneCharacterSheet({
       setACRoll('');
       setElementRoll('');
       setShowTargetingModal(false);
+      
+      // STREAMLINED: Auto-end turn after action
+      if (onEndTurn) {
+        onEndTurn();
+      }
+      
     } catch (error) {
       console.error('Error executing action:', error);
       alert('Failed to execute action. Please try again.');
@@ -709,13 +725,14 @@ export function LuneCharacterSheet({
           </div>
         )}
         
-        {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && (
-          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
-            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
-            <span className="font-sans text-clair-success">
-              Action completed this turn - Click "End Turn" when ready
-            </span>
+        {/* REMOVED: Action Status notification since we auto-end turns */}
+
+        {/* STREAMLINED: Simple turn instruction */}
+        {isMyTurn && combatActive && (
+          <div className="mb-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
+            <p className="text-green-200 text-sm font-bold">
+              ⚡ Select any action below - your turn will end automatically after completion!
+            </p>
           </div>
         )}
 
@@ -796,7 +813,7 @@ export function LuneCharacterSheet({
                 <h4 className="text-sm font-bold text-gray-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={!isMyTurn || !combatActive || hasActedThisTurn}
+                  disabled={!isMyTurn || !combatActive}
                   className="w-full bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white border border-gray-500"
                 >
                   <div className="flex items-center">
@@ -817,7 +834,7 @@ export function LuneCharacterSheet({
                     const isElementalStrikeOnCooldown = ability.id === 'elemental_strike' && hasActiveElementalStrikeEffect();
                     
                     // Create the condition once to use in both places
-                    const isDisabled = !isMyTurn || !combatActive || hasActedThisTurn || 
+                    const isDisabled = !isMyTurn || !combatActive || 
                       isElementalStrikeOnCooldown ||
                       (ability.requiresSpecificStain 
                         ? !hasStainType(ability.requiresSpecificStain)
@@ -871,9 +888,9 @@ export function LuneCharacterSheet({
                 <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
                 <button
                   onClick={() => handleActionSelect(ultimateAbility)}
-                  disabled={!isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed}
+                  disabled={!isMyTurn || !combatActive || elementalStains.length < 3 || elementalGenesisUsed}
                   className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
-                    !isMyTurn || !combatActive || hasActedThisTurn || elementalStains.length < 3 || elementalGenesisUsed
+                    !isMyTurn || !combatActive || elementalStains.length < 3 || elementalGenesisUsed
                       ? 'bg-gray-600 cursor-not-allowed opacity-40 text-gray-400'
                       : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 shadow-lg hover:shadow-xl'
                   }`}
@@ -905,6 +922,9 @@ export function LuneCharacterSheet({
                   {selectedAction.isHealing ? '🌿' : '⚡'} {selectedAction.name}
                 </h4>
                 <p className="text-sm text-clair-mystical-300">{selectedAction.description}</p>
+                <p className="text-xs text-yellow-300 mt-1">
+                  ⚡ Turn will end automatically after this action
+                </p>
               </div>
 
               {/* Nature's Balm healing interface */}
@@ -1147,29 +1167,14 @@ export function LuneCharacterSheet({
               )}
             </div>
           )}
-        </div>
 
-        {/* END TURN BUTTON */}
-        <div className="mb-6">
-          {isMyTurn && combatActive && (
-            <button
-              onClick={onEndTurn}
-              disabled={!hasActedThisTurn}
-              className={`w-full py-3 px-4 rounded-lg font-bold transition-colors ${
-                hasActedThisTurn
-                  ? 'bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <Eye className="w-5 h-5 inline mr-2" />
-              {hasActedThisTurn ? 'End Turn' : 'Take an action first'}
-            </button>
-          )}
+          {/* REMOVED: End Turn button - no longer needed */}
 
-          {/* Tips */}
+          {/* Tips - Updated */}
           <div className="mt-4 p-3 bg-clair-mystical-900 bg-opacity-20 rounded-lg border border-clair-mystical-600">
             <h4 className="font-serif font-bold text-clair-mystical-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-clair-mystical-300 space-y-1">
+              <li>⚡ Your turn ends automatically after any action</li>
               <li>• Elemental Bolt generates stains based on 1d4 roll</li>
               <li>• Abilities consume oldest stains first</li>
               <li>• Fire burns, Ice freezes, Nature pushes, Light blinds</li>

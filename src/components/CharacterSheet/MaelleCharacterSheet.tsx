@@ -1,3 +1,4 @@
+// src/components/CharacterSheet/MaelleCharacterSheet.tsx - STREAMLINED VERSION  
 import React, { useState, useEffect } from 'react';
 import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } from 'lucide-react';
 import { HPTracker } from './HPTracker';
@@ -30,9 +31,9 @@ interface MaelleCharacterSheetProps {
   onTargetSelect?: (targetId: string, acRoll: number, type?: string, abilityId?: string) => void;
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
-  hasActedThisTurn?: boolean;
+  // REMOVED: hasActedThisTurn - no longer needed
   sessionId?: string;
-  onActionComplete?: () => void;
+  // REMOVED: onActionComplete - no longer needed
   
   // Persistent state props
   afterimageStacks: number;
@@ -54,9 +55,9 @@ export function MaelleCharacterSheet({
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn = false,
+  // REMOVED: hasActedThisTurn = false,
   sessionId,
-  onActionComplete,
+  // REMOVED: onActionComplete,
   // Persistent state props
   afterimageStacks,
   setAfterimageStacks,
@@ -115,7 +116,7 @@ export function MaelleCharacterSheet({
 
   // Handle action selection
   const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn && action.type !== 'ultimate') return;
+    // REMOVED: hasActedThisTurn check
 
     // Check stack requirements for abilities
     if (action.cost && afterimageStacks < action.cost) {
@@ -175,7 +176,11 @@ export function MaelleCharacterSheet({
       }, 100);
 
       setSelectedAction(null);
-      onActionComplete?.();
+      
+      // STREAMLINED: Auto-end turn after ultimate
+      if (onEndTurn) {
+        onEndTurn();
+      }
       return;
     }
 
@@ -187,6 +192,11 @@ export function MaelleCharacterSheet({
       }
       
       setSelectedAction(null);
+      
+      // STREAMLINED: Auto-end turn after ability
+      if (onEndTurn) {
+        onEndTurn();
+      }
       return;
     }
 
@@ -216,7 +226,11 @@ export function MaelleCharacterSheet({
       setSelectedTarget('');
       setACRoll('');
       setShowTargetingModal(false);
-      onActionComplete?.(); 
+      
+      // STREAMLINED: Auto-end turn after action
+      if (onEndTurn) {
+        onEndTurn();
+      }
     }
   };
 
@@ -233,7 +247,7 @@ export function MaelleCharacterSheet({
     type: 'basic' as const,
     id: 'phantom_thrust',
     name: 'Phantom Thrust',
-    description: 'Rapier attack that builds Afterimage stacks',
+    description: 'Rapier attack that builds Afterimage stacks. Turn ends automatically.',
     damage: '1d8 + DEX piercing',
     needsTarget: true,
     icon: Sword,
@@ -245,7 +259,7 @@ export function MaelleCharacterSheet({
       type: 'ability' as const,
       id: 'spectral_feint',
       name: 'Spectral Feint',
-      description: 'Mark target with disadvantage on attacks vs you',
+      description: 'Mark target with disadvantage on attacks vs you. Turn ends automatically.',
       damage: 'Mark target (Bonus Action)',
       cost: 1,
       needsTarget: false,
@@ -255,7 +269,7 @@ export function MaelleCharacterSheet({
       type: 'ability' as const,
       id: 'blade_flurry',
       name: 'Blade Flurry',
-      description: '3 attacks, bonus damage on each hit after first',
+      description: '3 attacks, bonus damage on each hit after first. Turn ends automatically.',
       damage: '3 attacks, +1d4 per hit after 1st',
       cost: 2,
       needsTarget: true,
@@ -265,7 +279,7 @@ export function MaelleCharacterSheet({
       type: 'ability' as const,
       id: 'mirror_step',
       name: 'Mirror Step',
-      description: 'Teleport to avoid attack (Reaction)',
+      description: 'Teleport to avoid attack (Reaction). Turn ends automatically.',
       damage: 'Avoid attack + teleport 15ft',
       cost: 1,
       needsTarget: false,
@@ -277,7 +291,7 @@ export function MaelleCharacterSheet({
     type: 'ultimate' as const,
     id: 'phantom_strike',
     name: 'Phantom Strike',
-    description: 'Teleport between all enemies within 50ft',
+    description: 'Teleport between all enemies within 50ft. Turn ends automatically.',
     damage: '2d6 + DEX per enemy, scaling',
     needsTarget: false,
   };
@@ -335,13 +349,15 @@ export function MaelleCharacterSheet({
           </div>
         </div>
       )}
-        {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && (
-          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
-            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
-            <span className="font-sans text-clair-success">
-              Action completed this turn - Click "End Turn" when ready
-            </span>
+
+        {/* REMOVED: Action Status display */}
+
+        {/* STREAMLINED: Simple turn instruction */}
+        {isMyTurn && combatActive && (
+          <div className="mb-4 p-3 bg-clair-royal-900 bg-opacity-20 rounded-lg border border-clair-royal-600">
+            <p className="text-clair-royal-200 text-sm font-bold">
+              ⚡ Select any action below - your turn will end automatically after completion!
+            </p>
           </div>
         )}
 
@@ -415,7 +431,7 @@ export function MaelleCharacterSheet({
                 </h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={!isMyTurn || !combatActive || hasActedThisTurn}
+                  disabled={!isMyTurn || !combatActive}
                   className="w-full bg-clair-royal-600 hover:bg-clair-royal-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                 >
                   <div className="flex items-center">
@@ -444,7 +460,7 @@ export function MaelleCharacterSheet({
                       <button
                         key={ability.id}
                         onClick={() => handleActionSelect(ability)}
-                        disabled={!isMyTurn || !combatActive || hasActedThisTurn || !canAfford}
+                        disabled={!isMyTurn || !combatActive || !canAfford}
                         className="w-full bg-clair-mystical-600 hover:bg-clair-mystical-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                       >
                         <div className="flex items-center justify-between">
@@ -500,6 +516,12 @@ export function MaelleCharacterSheet({
                 <button onClick={handleCancelAction} className="text-sm bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white">
                   Cancel
                 </button>
+              </div>
+
+              <div className="p-3 bg-clair-royal-900 bg-opacity-30 rounded-lg border border-clair-royal-600">
+                <p className="text-clair-royal-200 text-sm">
+                  ⚡ Turn will end automatically after this action
+                </p>
               </div>
 
               {selectedAction.needsTarget ? (
@@ -577,26 +599,13 @@ export function MaelleCharacterSheet({
             </div>
           )}
 
-          {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && (
-            <button
-              onClick={onEndTurn}
-              disabled={!hasActedThisTurn}
-              className={`w-full mt-4 p-3 rounded-lg font-bold transition-colors ${
-                hasActedThisTurn
-                  ? 'bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900'
-                  : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-              }`}
-            >
-              <Eye className="w-5 h-5 inline mr-2" />
-              {hasActedThisTurn ? 'End Turn' : 'Take an action first'}
-            </button>
-          )}
+          {/* REMOVED: End Turn button */}
 
           {/* Combat Tips */}
           <div className="mt-4 p-3 bg-clair-royal-900 bg-opacity-20 rounded-lg border border-clair-royal-600">
             <h4 className="font-serif font-bold text-clair-royal-400 text-sm mb-2">Phantom Blade Tips:</h4>
             <ul className="text-xs text-clair-royal-300 space-y-1">
+              <li>⚡ Your turn ends automatically after any action</li>
               <li>• Build Afterimage stacks with successful attacks</li>
               <li>• Critical hits grant 2 stacks instead of 1</li>
               <li>• Spend stacks strategically for powerful abilities</li>

@@ -1,4 +1,4 @@
-// src/pages/PlayerView.tsx - UPDATED WITH PERSISTENT COMBAT STATE
+// src/pages/PlayerView.tsx - UPDATED FOR STREAMLINED GUSTAVE
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { GustaveCharacterSheet } from '../components/CharacterSheet/GustaveCharacterSheet';
@@ -71,7 +71,7 @@ export function PlayerView() {
     }
   }, [session?.combatState?.isActive, session?.combatState?.round, session?.combatState?.currentTurn, characterId, persistentCombatState]);
 
-  // NEW: Auto-reset hasActedThisTurn when it's a new turn
+  // UPDATED: Auto-reset hasActedThisTurn when it's a new turn (but NOT for Gustave since he auto-ends turns)
   useEffect(() => {
     const currentTurn = session?.combatState?.currentTurn || '';
     
@@ -79,12 +79,15 @@ export function PlayerView() {
       currentTurnRef.current = currentTurn;
       
       // If it's this character's turn and they previously acted, reset the flag
-      if (currentTurn === characterId && persistentCombatState.hasActedThisTurn) {
+      // SKIP THIS FOR GUSTAVE since he doesn't use hasActedThisTurn tracking
+      if (currentTurn === characterId && 
+          persistentCombatState.hasActedThisTurn && 
+          character?.name.toLowerCase() !== 'gustave') {
         console.log(`New turn for ${characterId}, resetting hasActedThisTurn`);
         persistentCombatState.setHasActedThisTurn(false);
       }
     }
-  }, [session?.combatState?.currentTurn, characterId, persistentCombatState]);
+  }, [session?.combatState?.currentTurn, characterId, persistentCombatState, character?.name]);
 
   // Extract commonly used values
   const loading = characterLoading || combatLoading || persistentCombatState.loading;
@@ -155,8 +158,10 @@ export function PlayerView() {
     const abilityId = typeof ability === 'string' ? ability : ability.id;
     console.log(`${characterId} used ability: ${abilityId}`);
     
-    // Mark that the player has acted this turn
-    await persistentCombatState.setHasActedThisTurn(true);
+    // UPDATED: Only mark hasActed for non-Gustave characters (Gustave auto-ends turns)
+    if (character?.name.toLowerCase() !== 'gustave') {
+      await persistentCombatState.setHasActedThisTurn(true);
+    }
 
     // Handle character-specific ability effects
     if (character?.name.toLowerCase() === 'gustave') {
@@ -166,10 +171,12 @@ export function PlayerView() {
       }
     }
     
-    // Handle bonus action cooldown
-    const abilityObj = character?.abilities.find(a => a.id === abilityId);
-    if (abilityObj?.type === 'bonus_action') {
-      await persistentCombatState.setBonusActionCooldown(1);
+    // Handle bonus action cooldown (for non-Gustave characters)
+    if (character?.name.toLowerCase() !== 'gustave') {
+      const abilityObj = character?.abilities.find(a => a.id === abilityId);
+      if (abilityObj?.type === 'bonus_action') {
+        await persistentCombatState.setBonusActionCooldown(1);
+      }
     }
   };
 
@@ -192,7 +199,7 @@ export function PlayerView() {
       await addToken(turretToken);
       await persistentCombatState.setActiveTurretId(turretId);
       await persistentCombatState.setTurretsDeployedThisBattle(persistentCombatState.turretsDeployedThisBattle + 1);
-      await persistentCombatState.setHasActedThisTurn(true);
+      // REMOVED: setHasActedThisTurn for Gustave since he auto-ends turns
       
       console.log(`Deployed turret ${turretId} at position`, position);
     } catch (error) {
@@ -200,7 +207,7 @@ export function PlayerView() {
     }
   };
 
-  // FIXED: Fix parameter type issue by ensuring characterId is not undefined and fix signature
+  // UPDATED: Fixed parameter type and removed hasActed tracking for Gustave
   const handleTargetSelect = async (targetId: string, acRoll: number, attackType: string = 'melee', abilityId?: string) => {
     if (!playerToken || !characterId) return;
 
@@ -208,8 +215,10 @@ export function PlayerView() {
       const range = attackType === 'ranged' ? 30 : 5;
       await createAttackAction(characterId, targetId, playerToken.position, acRoll, range);
       
-      // Mark as acted
-      await persistentCombatState.setHasActedThisTurn(true);
+      // UPDATED: Only mark as acted for non-Gustave characters
+      if (character?.name.toLowerCase() !== 'gustave') {
+        await persistentCombatState.setHasActedThisTurn(true);
+      }
     } catch (error) {
       console.error('Error creating attack action:', error);
     }
@@ -220,7 +229,10 @@ export function PlayerView() {
   };
 
   const handleEndTurn = async () => {
-    await persistentCombatState.setHasActedThisTurn(false);
+    // UPDATED: Only reset hasActed for non-Gustave characters
+    if (character?.name.toLowerCase() !== 'gustave') {
+      await persistentCombatState.setHasActedThisTurn(false);
+    }
     await nextTurn();
   };
 
@@ -266,10 +278,16 @@ export function PlayerView() {
     );
   }
 
-  // Debug trace - now using persistent state values
-  console.log(
-    `PlayerView ${characterId}: myTurn=${myTurn}, hasActed=${persistentCombatState.hasActedThisTurn}, overcharge=${persistentCombatState.overchargePoints}, stains=${persistentCombatState.elementalStains.length}, bonusCD=${persistentCombatState.bonusActionCooldown}, currentTurn=${session?.combatState?.currentTurn}`
-  );
+  // UPDATED: Debug trace - distinguish Gustave's streamlined flow
+  if (character.name.toLowerCase() === 'gustave') {
+    console.log(
+      `PlayerView ${characterId} (STREAMLINED): myTurn=${myTurn}, overcharge=${persistentCombatState.overchargePoints}, currentTurn=${session?.combatState?.currentTurn}`
+    );
+  } else {
+    console.log(
+      `PlayerView ${characterId}: myTurn=${myTurn}, hasActed=${persistentCombatState.hasActedThisTurn}, overcharge=${persistentCombatState.overchargePoints}, stains=${persistentCombatState.elementalStains.length}, bonusCD=${persistentCombatState.bonusActionCooldown}, currentTurn=${session?.combatState?.currentTurn}`
+    );
+  }
 
   // ----- Render Character Sheets -----
   
@@ -286,13 +304,11 @@ export function PlayerView() {
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
-        hasActedThisTurn={persistentCombatState.hasActedThisTurn}
-        // setHasActedThisTurn={persistentCombatState.setHasActedThisTurn} // ADD THIS LINE
         sessionId={sessionId || 'test-session'}
-        onActionComplete={() => {
-          persistentCombatState.setHasActedThisTurn(true);
-        }}
-        // PERSISTENT STATE PROPS - Remove duplicates and incorrect props
+        // onActionComplete={() => {
+        //   persistentCombatState.setHasActedThisTurn(true);
+        // }}
+        // PERSISTENT STATE PROPS
         afterimageStacks={persistentCombatState.afterimageStacks}
         setAfterimageStacks={persistentCombatState.setAfterimageStacks}
         phantomStrikeAvailable={persistentCombatState.phantomStrikeAvailable}
@@ -303,6 +319,7 @@ export function PlayerView() {
     );
   }
 
+  // UPDATED: Streamlined Gustave - removed hasActedThisTurn props
   if (character.name.toLowerCase() === 'gustave') {
     return (
       <GustaveCharacterSheet
@@ -310,7 +327,7 @@ export function PlayerView() {
         onHPChange={handleHPChange}
         onAbilityUse={handleAbilityUse}
 
-        // ADD: Pass persistent state values and setters
+        // Pass persistent state values and setters
         overchargePoints={persistentCombatState.overchargePoints}
         setOverchargePoints={persistentCombatState.setOverchargePoints}
         abilityPoints={character.charges || 0}
@@ -319,7 +336,7 @@ export function PlayerView() {
         setActiveTurretId={persistentCombatState.setActiveTurretId}
         turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
         setTurretsDeployedThisBattle={persistentCombatState.setTurretsDeployedThisBattle}
-        setHasActedThisTurn={persistentCombatState.setHasActedThisTurn}
+        // REMOVED: setHasActedThisTurn and hasActedThisTurn - Gustave auto-ends turns
 
         // Keep existing props
         isMyTurn={myTurn}
@@ -329,7 +346,6 @@ export function PlayerView() {
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
-        hasActedThisTurn={persistentCombatState.hasActedThisTurn}
         sessionId={sessionId}
         allTokens={tokensArray}
         session={session}
@@ -350,7 +366,6 @@ export function PlayerView() {
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
-        hasActedThisTurn={persistentCombatState.hasActedThisTurn}
         sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
         session={session}
@@ -376,12 +391,11 @@ export function PlayerView() {
         onTargetSelect={handleTargetSelect}
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
-        hasActedThisTurn={persistentCombatState.hasActedThisTurn}
         sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
-        onActionComplete={() => {
-          persistentCombatState.setHasActedThisTurn(true);
-        }}
+        // onActionComplete={() => {
+        //   persistentCombatState.setHasActedThisTurn(true);
+        // }}
         // PERSISTENT STATE PROPS
         chargedFateCard={persistentCombatState.chargedFateCard}
         setChargedFateCard={persistentCombatState.setChargedFateCard}

@@ -1,4 +1,4 @@
-// src/components/CharacterSheet/ScielCharacterSheet.tsx
+// src/components/CharacterSheet/ScielCharacterSheet.tsx - STREAMLINED VERSION
 import React, { useState, useEffect } from 'react';
 import { User, Sparkles, Target, Eye, Zap, Circle, Heart, Shuffle } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
@@ -35,10 +35,10 @@ interface ScielCharacterSheetProps {
   onTargetSelect?: (targetId: string, acRoll: number, attackType: string, abilityId?: string) => void;
   onEndTurn?: () => void;
   onCancelTargeting?: () => void;
-  hasActedThisTurn?: boolean;
+  // REMOVED: hasActedThisTurn - no longer needed
   sessionId?: string;
   allTokens?: BattleToken[];
-  onActionComplete?: () => void;
+  // REMOVED: onActionComplete - no longer needed
   
   // Persistent state props
   chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
@@ -61,10 +61,10 @@ export function ScielCharacterSheet({
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
-  hasActedThisTurn = false,
+  // REMOVED: hasActedThisTurn = false,
   sessionId = 'test-session',
   allTokens = [],
-  onActionComplete,
+  // REMOVED: onActionComplete,
   // Persistent state props
   chargedFateCard,
   setChargedFateCard,
@@ -77,10 +77,6 @@ export function ScielCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
-  const [usedFatesGambit, setUsedFatesGambit] = useState(false);
-
-  // New state for Sciel's reworked abilities
-  const [showBonusAction, setShowBonusAction] = useState(false);
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'bonus';
@@ -126,13 +122,6 @@ export function ScielCharacterSheet({
     const penalty = Math.floor(extraDistance / 5) * 2;
     return Math.max(1, baseAC - penalty);
   };
-
-  // Reset usedFatesGambit when turn changes
-  useEffect(() => {
-    if (isMyTurn) {
-      setUsedFatesGambit(false);
-    }
-  }, [isMyTurn]);
 
   // Get valid targets based on ability type
   const getValidTargets = (targetType: 'enemy' | 'ally' = 'enemy') => {
@@ -198,7 +187,10 @@ export function ScielCharacterSheet({
         onTargetSelect('storm_activated', 0, 'ultimate', 'crescendo_of_fate');
       }
       
-      setShowBonusAction(hasActedThisTurn);
+      // STREAMLINED: Auto-end turn after ultimate
+      if (onEndTurn) {
+        onEndTurn();
+      }
     } catch (error) {
       console.error('Failed to activate Crescendo of Fate:', error);
       alert('Failed to activate storm system!');
@@ -207,7 +199,7 @@ export function ScielCharacterSheet({
 
   // Handle action selection
   const handleActionSelect = (action: any) => {
-    if (hasActedThisTurn && !action.isBonusAction && !usedFatesGambit) return;
+    // REMOVED: hasActedThisTurn checks
 
     // Check ability point costs
     if (action.type === 'ability' && action.cost) {
@@ -315,11 +307,11 @@ export function ScielCharacterSheet({
       setSelectedTarget('');
       setACRoll('');
       setShowTargetingModal(false);
-      setShowBonusAction(false);
-      setUsedFatesGambit(false);
       
-      // Signal that turn should end
-      onActionComplete?.();
+      // STREAMLINED: Auto-end turn after card toss
+      if (onEndTurn) {
+        onEndTurn();
+      }
       
       return;
     }
@@ -345,8 +337,10 @@ export function ScielCharacterSheet({
       setSelectedTarget('');
       setShowTargetingModal(false);
       
-      // Signal turn end
-      onActionComplete?.();
+      // STREAMLINED: Auto-end turn after ability
+      if (onEndTurn) {
+        onEndTurn();
+      }
       
       return;
     }
@@ -372,8 +366,10 @@ export function ScielCharacterSheet({
       setSelectedTarget('');
       setShowTargetingModal(false);
       
-      // Signal turn end
-      onActionComplete?.();
+      // STREAMLINED: Auto-end turn after ability
+      if (onEndTurn) {
+        onEndTurn();
+      }
       
       return;
     }
@@ -382,6 +378,7 @@ export function ScielCharacterSheet({
     if (selectedAction.id === 'fates_gambit') {
       handleFatesGambit();
       setSelectedAction(null);
+      // NOTE: Fate's Gambit doesn't end turn - allows Card Toss same turn
       return;
     }
   };
@@ -390,7 +387,6 @@ export function ScielCharacterSheet({
     setSelectedAction(null);
     setSelectedTarget('');
     setACRoll('');
-    setShowBonusAction(false);
     setShowTargetingModal(false);
     onCancelTargeting?.();
   };
@@ -401,8 +397,8 @@ export function ScielCharacterSheet({
     id: 'card_toss',
     name: 'Card Toss',
     description: chargedFateCard 
-      ? `Enhanced with ${chargedFateCard === 'explosive' ? '💥 Explosive' : chargedFateCard === 'switch' ? '🔄 Switch' : '👻 Vanish'} Card`
-      : 'Ranged attack with magical cards',
+      ? `Enhanced with ${chargedFateCard === 'explosive' ? '💥 Explosive' : chargedFateCard === 'switch' ? '🔄 Switch' : '👻 Vanish'} Card. Turn ends automatically.`
+      : 'Ranged attack with magical cards. Turn ends automatically.',
     damage: '1d6 slashing + 1d4 radiant',
     icon: Circle,
     range: 'Unlimited',
@@ -413,7 +409,7 @@ export function ScielCharacterSheet({
       type: 'ability' as const,
       id: 'rewrite_destiny',
       name: 'Rewrite Destiny',
-      description: 'Curse an enemy with disadvantage on their next turn',
+      description: 'Curse an enemy with disadvantage on their next turn. Turn ends automatically.',
       damage: 'Disadvantage debuff',
       cost: 1,
       range: 'Any enemy',
@@ -423,7 +419,7 @@ export function ScielCharacterSheet({
       type: 'ability' as const,
       id: 'glimpse_future',
       name: 'Glimpse Future',
-      description: 'Grant an ally advantage on their next turn',
+      description: 'Grant an ally advantage on their next turn. Turn ends automatically.',
       damage: 'Advantage buff',
       cost: 2,
       range: 'Any ally',
@@ -433,7 +429,7 @@ export function ScielCharacterSheet({
       type: 'ability' as const,
       id: 'fates_gambit',
       name: "Fate's Gambit",
-      description: 'Randomly enhance your next Card Toss with a special effect',
+      description: 'Randomly enhance your next Card Toss with a special effect. Allows Card Toss same turn.',
       damage: 'Card enhancement',
       cost: 2,
       range: 'Self',
@@ -501,13 +497,17 @@ export function ScielCharacterSheet({
           </div>
         )}
 
-        {/* Action Status */}
-        {isMyTurn && combatActive && hasActedThisTurn && !usedFatesGambit && (
-          <div className="bg-clair-success bg-opacity-20 border border-clair-success rounded-lg p-3 mb-4 flex items-center">
-            <div className="w-4 h-4 bg-clair-success rounded-full mr-3"></div>
-            <span className="font-sans text-clair-success">
-              Action completed this turn - Click "End Turn" when ready
-            </span>
+        {/* REMOVED: Action Status display */}
+
+        {/* STREAMLINED: Simple turn instruction */}
+        {isMyTurn && combatActive && (
+          <div className="mb-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
+            <p className="text-green-200 text-sm font-bold">
+              ⚡ Select any action below - your turn will end automatically after completion!
+            </p>
+            <p className="text-green-300 text-xs mt-1">
+              Note: Only Fate's Gambit → Card Toss allows two actions per turn
+            </p>
           </div>
         )}
 
@@ -596,14 +596,12 @@ export function ScielCharacterSheet({
                 <h4 className="text-sm font-bold text-green-300 mb-2">Basic Attack</h4>
                 <button
                   onClick={() => handleActionSelect(basicAttack)}
-                  disabled={!isMyTurn || !combatActive || (hasActedThisTurn && !usedFatesGambit) || isStormActive}
+                  disabled={!isMyTurn || !combatActive || isStormActive}
                   className={`w-full ${
-                    (hasActedThisTurn && !usedFatesGambit)
-                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                      : chargedFateCard
-                        ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 animate-pulse'
-                        : 'bg-green-600 hover:bg-green-700'
-                  } p-3 rounded-lg transition-colors text-left text-white`}
+                    chargedFateCard
+                      ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 animate-pulse'
+                      : 'bg-green-600 hover:bg-green-700'
+                  } disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white`}
                 >
                   <div className="flex items-center">
                     <Circle className="w-4 h-4 mr-2" />
@@ -628,9 +626,7 @@ export function ScielCharacterSheet({
                     const isDisabled = 
                       !isMyTurn || 
                       !combatActive || 
-                      abilityPoints < ability.cost || 
-                      (hasActedThisTurn && !showBonusAction) || 
-                      (usedFatesGambit && ability.id !== 'fates_gambit') ||
+                      abilityPoints < ability.cost ||
                       isStormActive;
                     
                     const endsTurn = ability.id === 'rewrite_destiny' || ability.id === 'glimpse_future';
@@ -682,7 +678,7 @@ export function ScielCharacterSheet({
                 <h4 className="text-sm font-bold text-yellow-300 mb-2">Ultimate Ability</h4>
                 <button
                   onClick={handleActivateUltimate}
-                  disabled={!isMyTurn || !combatActive || abilityPoints < 3 || isStormActive || (hasActedThisTurn && !showBonusAction)}
+                  disabled={!isMyTurn || !combatActive || abilityPoints < 3 || isStormActive}
                   className={`w-full p-3 rounded-lg font-semibold text-white transition-all duration-200 text-left ${
                     isStormActive || abilityPoints < 3
                       ? 'bg-gray-600 cursor-not-allowed opacity-50'
@@ -700,7 +696,7 @@ export function ScielCharacterSheet({
                   <div className="text-sm opacity-90 mt-1">
                     {isStormActive 
                       ? '⚡ Storm Active - Radiant fury rages!'
-                      : '5-turn radiant storm of destiny'
+                      : '5-turn radiant storm of destiny. Turn ends automatically.'
                     }
                   </div>
                   <div className="text-xs text-clair-gold-200 mt-1">
@@ -720,6 +716,12 @@ export function ScielCharacterSheet({
                 <button onClick={handleCancelAction} className="text-sm bg-red-600 hover:bg-red-700 px-2 py-1 rounded text-white">
                   Cancel
                 </button>
+              </div>
+
+              <div className="p-3 bg-green-900 bg-opacity-30 rounded-lg border border-green-600">
+                <p className="text-green-200 text-sm">
+                  ⚡ Turn will end automatically after this action
+                </p>
               </div>
 
               {/* Fate's Gambit - No targeting needed */}
@@ -810,21 +812,13 @@ export function ScielCharacterSheet({
             </div>
           )}
 
-          {/* End Turn */}
-          {isMyTurn && combatActive && !selectedAction && hasActedThisTurn && !showBonusAction && !usedFatesGambit && (
-            <button
-              onClick={onEndTurn}
-              className="w-full mt-4 p-3 rounded-lg font-bold transition-colors bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900"
-            >
-              <Eye className="w-5 h-5 inline mr-2" />
-              End Turn
-            </button>
-          )}
+          {/* REMOVED: End Turn button */}
 
           {/* Tips */}
           <div className="mt-4 p-3 bg-green-900 bg-opacity-20 rounded-lg border border-green-600">
             <h4 className="font-serif font-bold text-green-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-green-300 space-y-1">
+              <li>⚡ Your turn ends automatically after any action</li>
               <li>• <strong>Card Toss:</strong> Basic ranged attack (ends turn)</li>
               <li>• <strong>Rewrite Destiny:</strong> Enemy disadvantage (ends turn)</li>
               <li>• <strong>Glimpse Future:</strong> Ally advantage (ends turn)</li>

@@ -186,6 +186,49 @@ export function BattleMap({
     return targetingMode.validTargets.includes(tokenId);
   };
 
+    /**
+   * Validates and filters tokens to ensure they have required properties
+   */
+  const validateTokens = (tokens: BattleToken[]): BattleToken[] => {
+    return tokens.filter((token, index) => {
+      // Check if token exists
+      if (!token) {
+        console.warn(`Token at index ${index} is null/undefined`);
+        return false;
+      }
+
+      // Check if token has required properties
+      if (!token.id) {
+        console.warn(`Token at index ${index} missing id:`, token);
+        return false;
+      }
+
+      if (!token.name) {
+        console.warn(`Token ${token.id} missing name:`, token);
+        return false;
+      }
+
+      // Check if position exists and is valid
+      if (!token.position) {
+        console.warn(`Token ${token.id} missing position:`, token);
+        return false;
+      }
+
+      if (typeof token.position.x !== 'number' || typeof token.position.y !== 'number') {
+        console.warn(`Token ${token.id} has invalid position:`, token.position);
+        return false;
+      }
+
+      // Check if position is within reasonable bounds
+      if (token.position.x < 0 || token.position.y < 0) {
+        console.warn(`Token ${token.id} has negative position:`, token.position);
+        return false;
+      }
+
+      return true;
+    });
+  };
+
   // --- Handlers --------------------------------------------------------------
   const handleTokenClick = useCallback((token: BattleToken) => {
     if (targetingMode?.active && isValidTarget(token.id) && targetingMode && onTokenSelect) {
@@ -455,12 +498,10 @@ export function BattleMap({
 
           {renderFireTerrainOverlays()}
 
-          {/* Tokens */}
-          {tokens.map((token) => {
+          {validateTokens(tokens).map((token) => {
             // Check if this token is the current storm target
             const isStormTarget = session?.pendingStormRoll?.isActive && 
                                   session?.pendingStormRoll?.targetId === token.id;
-            
             return (
               <Token
                 key={token.id}
