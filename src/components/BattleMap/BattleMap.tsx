@@ -65,7 +65,9 @@ interface BattleMapProps {
   combatActive?: boolean;
   session?: BattleSession;
   selectedEnemyId?: string | null;
-
+  activeEnemyId?: string; // Currently acting enemy
+  enemyActionPath?: { from: Position; to: Position }; // Movement path
+  attackIndicator?: { from: Position; to: Position; type: 'melee' | 'ranged' | 'ability' }; // Attack line
   onTokenMove?: (tokenId: string, newPosition: Position) => Promise<boolean>;
   onTokenSelect?: (token: BattleToken | null) => void;
   onGridClick?: (position: Position) => void;
@@ -93,6 +95,9 @@ export function BattleMap({
   selectedEnemyId,
   onGridClick,
   targetingMode,
+  activeEnemyId,        // Add these three
+  enemyActionPath,      // Add these three
+  attackIndicator,
   maxMovementRange = 30,
   mode = 'player',
 }: BattleMapProps) {
@@ -160,6 +165,164 @@ export function BattleMap({
     const letter = String.fromCharCode(65 + pos.x);
     const number = pos.y + 1;
     return `${letter}${number}`;
+  };
+
+  const renderEnemyActionIndicators = () => {
+    const indicators: JSX.Element[] = [];
+    
+    // Active enemy highlight
+    if (activeEnemyId) {
+      const enemy = tokens.find(t => t.id === activeEnemyId);
+      if (enemy) {
+        const pixelX = enemy.position.x * gridSize + coordinatePadding;
+        const pixelY = enemy.position.y * gridSize + coordinatePadding;
+        
+        indicators.push(
+          <div
+            key={`active-enemy-${activeEnemyId}`}
+            className="absolute pointer-events-none animate-pulse"
+            style={{
+              left: pixelX - 4,
+              top: pixelY - 4,
+              width: gridSize + 8,
+              height: gridSize + 8,
+              zIndex: 15,
+            }}
+          >
+            <div className="w-full h-full border-3 border-red-500 rounded-lg shadow-glow-red" />
+            <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">
+              ACTING
+            </div>
+          </div>
+        );
+      }
+    }
+       // Movement path indicator
+    if (enemyActionPath) {
+      const { from, to } = enemyActionPath;
+      const fromX = from.x * gridSize + coordinatePadding + gridSize / 2;
+      const fromY = from.y * gridSize + coordinatePadding + gridSize / 2;
+      const toX = to.x * gridSize + coordinatePadding + gridSize / 2;
+      const toY = to.y * gridSize + coordinatePadding + gridSize / 2;
+      
+      // Calculate angle and distance for the arrow
+      const angle = Math.atan2(toY - fromY, toX - fromX) * (180 / Math.PI);
+      const distance = Math.sqrt(Math.pow(toX - fromX, 2) + Math.pow(toY - fromY, 2));
+      
+      indicators.push(
+        <svg
+          key="movement-path"
+          className="absolute pointer-events-none"
+          style={{ 
+            left: 0, 
+            top: 0, 
+            width: '100%', 
+            height: '100%',
+            zIndex: 14 
+          }}
+        >
+          <defs>
+            <marker
+              id="arrowhead-move"
+              markerWidth="10"
+              markerHeight="10"
+              refX="8"
+              refY="3"
+              orient="auto"
+            >
+              <polygon
+                points="0 0, 10 3, 0 6"
+                fill="#3b82f6"
+              />
+            </marker>
+          </defs>
+          <line
+            x1={fromX}
+            y1={fromY}
+            x2={toX}
+            y2={toY}
+            stroke="#3b82f6"
+            strokeWidth="3"
+            strokeDasharray="5,5"
+            markerEnd="url(#arrowhead-move)"
+            className="animate-pulse"
+          />
+          <circle cx={toX} cy={toY} r="8" fill="#3b82f6" className="animate-ping" />
+        </svg>
+      );
+    }
+    
+    // Attack indicator
+    if (attackIndicator) {
+      const { from, to, type } = attackIndicator;
+      const fromX = from.x * gridSize + coordinatePadding + gridSize / 2;
+      const fromY = from.y * gridSize + coordinatePadding + gridSize / 2;
+      const toX = to.x * gridSize + coordinatePadding + gridSize / 2;
+      const toY = to.y * gridSize + coordinatePadding + gridSize / 2;
+      
+      const color = type === 'melee' ? '#ef4444' : type === 'ranged' ? '#f59e0b' : '#a855f7';
+      
+      indicators.push(
+        <svg
+          key="attack-indicator"
+          className="absolute pointer-events-none"
+          style={{ 
+            left: 0, 
+            top: 0, 
+            width: '100%', 
+            height: '100%',
+            zIndex: 14 
+          }}
+        >
+          <defs>
+            <marker
+              id={`arrowhead-attack-${type}`}
+              markerWidth="10"
+              markerHeight="10"
+              refX="8"
+              refY="3"
+              orient="auto"
+            >
+              <polygon
+                points="0 0, 10 3, 0 6"
+                fill={color}
+              />
+            </marker>
+          </defs>
+          <line
+            x1={fromX}
+            y1={fromY}
+            x2={toX}
+            y2={toY}
+            stroke={color}
+            strokeWidth="4"
+            markerEnd={`url(#arrowhead-attack-${type})`}
+            opacity="0.8"
+          />
+          {/* Impact effect at target */}
+          <g className="animate-pulse">
+            <circle cx={toX} cy={toY} r="15" fill={color} opacity="0.3" />
+            <circle cx={toX} cy={toY} r="10" fill={color} opacity="0.5" />
+            <circle cx={toX} cy={toY} r="5" fill={color} opacity="0.8" />
+          </g>
+          {/* Attack type label */}
+          <text
+            x={(fromX + toX) / 2}
+            y={(fromY + toY) / 2 - 10}
+            fill="white"
+            fontSize="12"
+            fontWeight="bold"
+            textAnchor="middle"
+            className="uppercase"
+            style={{ filter: 'drop-shadow(0 0 3px rgba(0,0,0,0.8))' }}
+          >
+            {type}
+          </text>
+        </svg>
+      );
+    }
+    
+    return <>{indicators}</>;
   };
 
   const calculateDistance = (a: Position, b: Position): number => {
