@@ -1278,6 +1278,7 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
   }
 
 // Replace the existing advanceTurnWithBuffs function with this corrected version:
+  
 
 static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
   const session = await this.getBattleSession(sessionId);
