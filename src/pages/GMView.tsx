@@ -34,7 +34,6 @@ import { useAudio } from '../hooks/useAudio';
 import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
 import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
 import { InventoryService } from '../services/inventoryService'; // Add this import
-import { useEnemyAI } from '../hooks/useEnemyAI';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -89,16 +88,6 @@ const [aiDifficulty, setAiDifficulty] = useState<'easy' | 'normal' | 'hard'>('no
     isLoading: audioLoading 
   } = useAudio();
 
-  const {
-    autoAddEnemyInitiative,
-    handleEnemyTurn,
-    processedEnemies 
-  } = useEnemyAI({
-    session,
-    sessionId: sessionId || '',
-    isGM: true,
-    aiEnabled
-  });
 
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
@@ -444,6 +433,7 @@ const handleResetSession = async () => {
     setSelectedEnemyType(null);
     setIsPlacingEnemy(false);
   };
+
 
 
   const handleGridClick = async (position: Position) => {
@@ -996,48 +986,6 @@ const handleResetSession = async () => {
             )}
           </div>
         </div>
-
-        <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-display text-lg font-bold text-clair-gold-400 flex items-center">
-              <Bot className="w-5 h-5 mr-2" />
-              Enemy AI Controls
-            </h3>
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                checked={aiEnabled}
-                onChange={(e) => setAiEnabled(e.target.checked)}
-                className="mr-2"
-              />
-              <span className="text-clair-gold-200">AI Enabled</span>
-            </label>
-          </div>
-          
-          <div className="space-y-2">
-            <div>
-              <label className="text-sm text-clair-gold-300">AI Difficulty</label>
-              <select
-                value={aiDifficulty}
-                onChange={(e) => setAiDifficulty(e.target.value as any)}
-                className="w-full px-3 py-2 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded"
-              >
-                <option value="easy">Easy</option>
-                <option value="normal">Normal</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
-            
-            {processedEnemies.length > 0 && (
-              <div className="mt-2 p-2 bg-clair-shadow-800 rounded">
-                <p className="text-xs text-clair-gold-300">
-                  AI Managing: {processedEnemies.join(', ')}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
 
         {/* Quick Access */}
         <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4 shadow-shadow mt-4">
