@@ -94,7 +94,7 @@ export function GMView() {
     enabled: true,
     message: '⚠️ Warning: You are the Game Master. Leaving will pause the game for all players. Are you sure?'
   });
-  
+
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
   const tokens = Object.entries(session?.tokens || {})
@@ -1033,6 +1033,23 @@ const handleResetSession = async () => {
                     ))}
                   </div>
                 )}
+
+{/*                {combatState.currentTurn && 
+                 combatState.initiativeOrder?.find(e => e.id === combatState.currentTurn && e.type === 'enemy') && (
+                  <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-40 
+                    bg-gradient-to-r from-red-600 to-orange-600 text-white px-6 py-3 
+                    rounded-lg shadow-2xl border-2 border-white/20 animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <Sword className="w-5 h-5" />
+                      <div>
+                        <p className="text-sm font-semibold opacity-90">Enemy Turn</p>
+                        <p className="text-xl font-bold">
+                          {characterNames[combatState.currentTurn] || combatState.currentTurn}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}*/}
 
                 {combatState.currentTurn === 'gustave' && activeTurrets.length > 0 && (
                   <div className="mt-2 p-2 bg-yellow-900/30 rounded border border-yellow-500">

@@ -416,6 +416,34 @@ export function BattleMap({
 
   const currentTurnToken = tokens.find(t => t.characterId === currentTurn);
 
+  // In BattleMap.tsx, replace the isEnemyGroupTurn function (around line 395):
+  const isEnemyGroupTurn = (token: BattleToken, currentTurn: string): boolean => {
+    if (!currentTurn || token.type !== 'enemy') return false;
+    
+    // Check if currentTurn contains "group" (indicating it's an enemy group turn)
+    if (!currentTurn.includes('-group-')) return false;
+    
+    // Extract the enemy type from the group ID (e.g., "benisseur" from "benisseur-group-123456")
+    const turnEnemyType = currentTurn.split('-group-')[0];
+    
+    // Normalize both names to handle accents and special characters
+    const normalizeString = (str: string): string => {
+      return str
+        .toLowerCase()
+        .normalize('NFD') // Decompose accented characters
+        .replace(/[\u0300-\u036f]/g, '') // Remove accent marks
+        .replace(/[^a-z0-9]/g, ''); // Remove non-alphanumeric
+    };
+    
+    const normalizedTokenName = normalizeString(token.name);
+    const normalizedTurnType = normalizeString(turnEnemyType);
+    
+    // Check if they match
+    return normalizedTokenName === normalizedTurnType || 
+           normalizedTokenName.includes(normalizedTurnType) || 
+           normalizedTurnType.includes(normalizedTokenName);
+  };
+
   // --- Render ----------------------------------------------------------------
   return (
     <div
@@ -505,6 +533,11 @@ export function BattleMap({
             // Check if this token is the current storm target
             const isStormTarget = session?.pendingStormRoll?.isActive && 
                                   session?.pendingStormRoll?.targetId === token.id;
+
+            const isEnemyGroupActive = isEnemyGroupTurn(token, currentTurn || '');
+             // if (token.type === 'enemy') {
+             //    console.log(`Enemy: ${token.name}, CurrentTurn: ${currentTurn}, IsActive: ${isEnemyGroupActive}`);
+             //  }
             return (
               <Token
                 key={token.id}
@@ -516,6 +549,7 @@ export function BattleMap({
                 isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
                 isHighlighted={selectedEnemyId === token.id}
                 isStormTarget={isStormTarget} // ADD THIS
+                isEnemyGroupActive={isEnemyGroupActive}  // ADD THIS PROP
                 onClick={handleTokenClick}
                 onDragStart={handleTokenDragStart}
                 onDragEnd={handleTokenDragEnd}

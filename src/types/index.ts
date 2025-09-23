@@ -122,6 +122,14 @@ export interface EnemyData {
     description?: string;
     recharge?: string;
   }>;
+  deathBurst?: {
+    name: string;
+    radius: number;
+    damage: string;
+    save: 'Str' | 'Dex' | 'Con' | 'Int' | 'Wis' | 'Cha';
+    saveDC: number;
+    description: string;
+  };
   size?: number;
   color?: string;
 }

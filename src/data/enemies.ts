@@ -1,7 +1,88 @@
+// src/data/enemies.ts
 
 import type { EnemyData } from '../types';
 
 export const enemies: { [key: string]: EnemyData } = {
+  // Demineur — Spore Construct (Basic Enemy)
+  'demineur': {
+    id: 'demineur',
+    name: 'Demineur',
+    ac: 12,
+    hp: 15,
+    maxHp: 15,
+    speed: 25,
+    saves: { con: 2 },
+    resistances: ['fire', 'poison'],
+    vulnerabilities: ['radiant'],
+    conditionImmunities: ['poisoned'],
+    traits: [
+      'Born of Smoke: Explodes when slain (2d6 poison, 10ft radius)'
+    ],
+    attacks: [
+      {
+        name: 'Claw Swipe',
+        toHit: 4,
+        reach: 5,
+        damage: '1d6+2 slashing',
+        description: 'Melee weapon attack'
+      }
+    ],
+    deathBurst: {
+      name: 'Smoke Burst',
+      radius: 10,
+      damage: '2d6 poison',
+      save: 'Con',
+      saveDC: 12,
+      description: 'On death, explodes in 10ft radius. Con save DC 12 or take 2d6 poison damage (half on save)'
+    },
+    size: 1,
+    color: '#7B68EE' // Purple-ish for spore/fungal creature
+  },
+
+  // Sentinel Luster — Crystal Guardian (Mini-Boss)
+  'sentinel_luster': {
+    id: 'sentinel_luster',
+    name: 'Sentinel Luster',
+    ac: 15,
+    hp: 65,
+    maxHp: 65,
+    speed: 20,
+    saves: { con: 4, str: 3 },
+    resistances: ['nonmagical bludgeoning', 'nonmagical piercing', 'nonmagical slashing', 'earth'],
+    vulnerabilities: ['thunder'],
+    conditionImmunities: ['prone'],
+    traits: [
+      'Stationary Sentinel: Disadvantage on Dex saves, advantage on Con saves'
+    ],
+    attacks: [
+      {
+        name: 'Crystal Bolt',
+        toHit: 6,
+        range: '60 ft',
+        damage: '2d8 bludgeoning',
+        description: 'Ranged attack, crystalline projectile'
+      },
+      {
+        name: 'Rock Spike',
+        toHit: 0,
+        range: '20ft line',
+        damage: '3d8 piercing',
+        description: 'Dex save DC 14 or take damage; half on save',
+        recharge: '5-6'
+      },
+      {
+        name: 'Entangling Coral',
+        toHit: 0,
+        range: '15ft radius',
+        damage: 'Restrained',
+        description: 'Creates difficult terrain, Str save DC 14 or restrained',
+        recharge: '6'
+      }
+    ],
+    size: 1,
+    color: '#4169E1' // Royal blue for crystal/luster theme
+  },
+
   // Bénisseur — Burly Glaivebearer
   'benisseur': {
     id: 'benisseur',
@@ -114,81 +195,33 @@ export const enemies: { [key: string]: EnemyData } = {
     color: '#708090'
   },
 
-  // Noir Harbinger — Cataclysmic Shade (BOSS)
-  'noir_harbinger': {
-    id: 'noir_harbinger',
-    name: 'Noir Harbinger',
-    ac: 16,
-    hp: 90,
-    maxHp: 90,
-    speed: 30,
-    saves: { dex: 5, con: 4 },
-    resistances: ['nonmagical bludgeoning', 'nonmagical piercing', 'nonmagical slashing', 'fire', 'cold', 'lightning', 'nature'],
-    vulnerabilities: ['radiant'],
-    conditionImmunities: ['charmed', 'frightened'],
-    traits: [
-      'Massive Hand: reach 15 ft',
-      'Void Shroud: ranged attacks beyond 30 ft have disadvantage',
-      'Hover: can fly and hover'
-    ],
-    attacks: [
-      {
-        name: 'Grasp of the Void',
-        toHit: 7,
-        reach: 15,
-        damage: '3d8 necrotic + restrained',
-        description: 'Melee spell attack, Con 14 save or be restrained'
-      },
-      {
-        name: 'Oblivion Wave',
-        toHit: 0,
-        range: '20ft radius',
-        damage: '4d6 force + pushed 10 ft',
-        description: 'Dex 14 save or take damage and be pushed; half damage on save',
-        recharge: '6'
-      },
-      {
-        name: 'Dreadful Presence',
-        toHit: 0,
-        range: '20ft aura',
-        damage: 'disadvantage on attacks',
-        description: 'Creatures starting turn within 20 ft: Wis 13 save or disadvantage on next attack'
-      }
-    ],
-    size: 2, // Large creature
-    color: '#2E0854'
-  },
-
-  // Portier — Shield Bulwark
+  // Portier — Shield Bearer
   'portier': {
     id: 'portier',
     name: 'Portier',
-    ac: 17,
+    ac: 16,
     hp: 45,
     maxHp: 45,
-    speed: 20,
-    saves: { con: 3 },
-    resistances: [],
+    speed: 25,
+    saves: { con: 4 },
+    resistances: ['nature'],
     vulnerabilities: ['cold', 'ice'],
-    conditionImmunities: ['prone'],
-    traits: [
-      'Shield Wall: +2 AC to adjacent allies',
-      'Core Weakpoint: Perception 14 to spot; hit deals +1d8'
-    ],
+    conditionImmunities: [],
+    traits: ['Shield Raise: can grant cover to adjacent allies'],
     attacks: [
       {
         name: 'Shield Bash',
         toHit: 5,
         reach: 5,
-        damage: '1d8+3 bludgeoning + pushed 5 ft',
-        description: 'Con 13 save or be pushed 5 ft'
+        damage: '1d8+3 bludgeoning + push',
+        description: 'Melee weapon attack, can push 5 ft'
       },
       {
-        name: 'Quake Slam',
+        name: 'Rally',
         toHit: 0,
-        range: '10ft radius',
-        damage: '2d6+3 thunder + prone',
-        description: 'Dex 13 save or take damage and be knocked prone; half damage on save',
+        range: '30ft',
+        damage: 'Remove debuff',
+        description: 'Remove one debuff from ally',
         recharge: '5-6'
       }
     ],
@@ -230,13 +263,60 @@ export const enemies: { [key: string]: EnemyData } = {
     ],
     size: 1,
     color: '#9370DB'
+  },
+
+  // Noir Harbinger — Cataclysmic Shade (BOSS)
+  'noir_harbinger': {
+    id: 'noir_harbinger',
+    name: 'Noir Harbinger',
+    ac: 16,
+    hp: 90,
+    maxHp: 90,
+    speed: 30,
+    saves: { dex: 5, con: 4 },
+    resistances: ['nonmagical bludgeoning', 'nonmagical piercing', 'nonmagical slashing', 'fire', 'cold', 'lightning', 'nature'],
+    vulnerabilities: ['radiant'],
+    conditionImmunities: ['charmed', 'frightened'],
+    traits: [
+      'Mythical Resistance: 3 legendary resistances per encounter',
+      'Shadow Step: bonus action teleport 30 ft'
+    ],
+    attacks: [
+      {
+        name: 'Shadow Blade',
+        toHit: 8,
+        reach: 10,
+        damage: '2d8+4 necrotic',
+        description: 'Melee weapon attack that drains life'
+      },
+      {
+        name: 'Umbral Wave',
+        toHit: 0,
+        range: '30ft cone',
+        damage: '3d6 necrotic + blind',
+        description: 'Con 15 save or take damage and be blinded for 1 turn',
+        recharge: '5-6'
+      },
+      {
+        name: 'Dark Calling',
+        toHit: 0,
+        range: 'battlefield',
+        damage: 'summon shadows',
+        description: 'Summons 2 shadow minions',
+        recharge: '1/encounter'
+      }
+    ],
+    size: 1,
+    color: '#2F003F'
   }
 };
+
 export const ENEMY_TEMPLATES = enemies;
 
 // Enemy categories for organization
 export const ENEMY_CATEGORIES = {
-  'Basic Enemies': ['benisseur', 'bruler', 'lancelier'],
+  'Basic Enemies': ['demineur', 'benisseur', 'bruler', 'lancelier'],
+  'Mini-Boss': ['sentinel_luster'],
   'Support/Tank': ['portier'],
   'Flying/Scout': ['volester'],
   'Boss/Elite': ['noir_harbinger']
@@ -250,4 +330,26 @@ export function getEnemyTemplate(enemyId: string): EnemyData | null {
 // Helper function to get all enemy IDs in a category
 export function getEnemiesInCategory(category: string): string[] {
   return ENEMY_CATEGORIES[category as keyof typeof ENEMY_CATEGORIES] || [];
+}
+
+// Helper function to create enemy token from template
+export function createEnemyToken(enemyId: string, position: { x: number; y: number }): any {
+  const template = getEnemyTemplate(enemyId);
+  if (!template) return null;
+
+  const tokenId = `enemy-${enemyId}-${Date.now()}`;
+  
+  return {
+    id: tokenId,
+    name: template.name,
+    position,
+    type: 'enemy',
+    hp: template.hp,
+    maxHp: template.maxHp,
+    ac: template.ac,
+    size: template.size || 1,
+    speed: template.speed,
+    color: template.color || '#DC143C',
+    statusEffects: {}
+  };
 }

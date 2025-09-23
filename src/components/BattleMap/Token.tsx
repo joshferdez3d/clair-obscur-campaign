@@ -16,6 +16,7 @@ interface TokenProps {
   coordinateOffset?: Position;
   isHighlighted?: boolean;
   isStormTarget?: boolean;
+  isEnemyGroupActive?: boolean;  // ADD THIS
 }
 
 export function Token({ 
@@ -30,6 +31,7 @@ export function Token({
   onDragEnd,
   isHighlighted = false,
   isStormTarget,
+  isEnemyGroupActive = false,  // ADD THIS with default value
   coordinateOffset = { x: 0, y: 0 }
 }: TokenProps) {
   // DEFENSIVE PROGRAMMING: Ensure token has valid position
@@ -167,7 +169,8 @@ export function Token({
         isValidTarget ? 'ring-4 ring-purple-400 ring-opacity-80' : ''
       } ${isCurrentTurn ? 'ring-2 ring-yellow-400 ring-opacity-90' : ''} 
         ${isHighlighted ? 'ring-4 ring-red-500 ring-opacity-100 animate-pulse' : ''}
-        ${isStormTarget ? 'storm-target' : ''}`} 
+        ${isStormTarget ? 'storm-target' : ''}
+        ${isEnemyGroupActive ? 'animate-pulse ring-2 ring-orange-500 shadow-lg shadow-orange-500/50' : ''}`} 
       style={{
         left: `${left}px`,
         top: `${top}px`,
