@@ -311,6 +311,7 @@ export function PlayerView() {
         onEndTurn={handleEndTurn}
         onCancelTargeting={handleCancelTargeting}
         sessionId={sessionId || 'test-session'}
+        session={session}                    // ✅ Now should be defined!
         // onActionComplete={() => {
         //   persistentCombatState.setHasActedThisTurn(true);
         // }}
@@ -399,6 +400,7 @@ export function PlayerView() {
         onCancelTargeting={handleCancelTargeting}
         sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
+        session={session}                    // ✅ Now should be defined!
         // onActionComplete={() => {
         //   persistentCombatState.setHasActedThisTurn(true);
         // }}

@@ -162,8 +162,23 @@ export function LuneCharacterSheet({
   };  
 
   const playerToken = session?.tokens 
-    ? Object.values(session.tokens).find((t: any) => t.characterId === character.id) as BattleToken
+    ? Object.entries(session.tokens).find(([key, t]: [string, any]) => {
+        console.log(`Checking token ${key}:`, {
+          tokenCharacterId: t.characterId,
+          tokenId: t.id,
+          tokenName: t.name,
+          tokenType: t.type,
+        });
+        
+        // Try multiple matching strategies
+        return t.characterId === character.id || 
+               t.id === character.id ||
+               key === character.id ||
+               t.name?.toLowerCase() === character.name?.toLowerCase();
+      })?.[1] as BattleToken
     : null;
+
+  console.log('Player token result:', playerToken);
 
   const handleMovement = async (newPosition: Position): Promise<boolean> => {
     if (!sessionId || !playerToken) return false;
