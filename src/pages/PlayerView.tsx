@@ -13,6 +13,7 @@ import type { BattleToken } from '../types';
 import { useMaelleAfterimage } from '../services/maelleAfterimageService';
 import { useFirestoreListener } from '../hooks/useFirestoreListener';
 import { FirestoreService } from '../services/firestoreService';
+import { useBrowserWarning } from '../hooks/useBrowserWarning';
 
 // Add proper interface for session tokens
 interface SessionToken extends BattleToken {
@@ -27,6 +28,11 @@ interface SessionToken extends BattleToken {
 export function PlayerView() {
   const { characterId } = useParams<{ characterId: string }>();
   const sessionId = 'test-session';
+
+  useBrowserWarning({
+    enabled: true,
+    message: `⚠️ Warning: You are in an active game session. Leaving now will disconnect you from the battle. Are you sure?`
+  });
   
   // NEW: Use persistent combat state hook
   const persistentCombatState = usePersistentCombatState(characterId || '', sessionId);

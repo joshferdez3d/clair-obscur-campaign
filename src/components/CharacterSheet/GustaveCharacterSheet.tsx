@@ -12,7 +12,8 @@ import { InventoryModal } from './InventoryModal';
 import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
-
+import { MovementInput } from '../Combat/MovementInput';
+import { MovementService } from '../../services/movementService'
 interface GustaveCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -108,6 +109,17 @@ export function GustaveCharacterSheet({
     };
     return portraitMap[name.toLowerCase()] || null;
   };
+
+  const playerToken = session?.tokens 
+    ? Object.values(session.tokens).find((t: any) => t.characterId === character.id) as BattleToken
+    : null;
+
+  const handleMovement = async (newPosition: Position): Promise<boolean> => {
+    if (!sessionId || !playerToken) return false;
+    
+    return await MovementService.moveToken(sessionId, playerToken.id, newPosition);
+  };
+
 
   const portraitUrl = getCharacterPortrait(character.name);
   const getCharacterGradient = () => 'bg-gradient-to-br from-red-600 to-red-800';
@@ -592,6 +604,22 @@ export function GustaveCharacterSheet({
             )}
           </button>
         </div>
+        
+        {/* Grid Movement Input */}
+        {isMyTurn && playerToken && (
+          <div className="mb-4">
+            <MovementInput
+              token={playerToken}
+              currentPosition={playerToken.position}
+              maxRange={MovementService.getMovementRange(character.name)}
+              gridSize={{ width: 30, height: 20 }} // Or get from current map if available
+              onMove={handleMovement}
+              isMyTurn={isMyTurn}
+              characterName={character.name}
+            />
+          </div>
+        )}
+
 
         {/* Ability Points */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-gold-600">

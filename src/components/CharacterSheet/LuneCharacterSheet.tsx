@@ -15,7 +15,8 @@ import { InventoryModal } from './InventoryModal';
 import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
-
+import { MovementInput } from '../Combat/MovementInput';
+import { MovementService } from '../../services/movementService'
 interface LuneCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -159,6 +160,16 @@ export function LuneCharacterSheet({
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
   };  
+
+  const playerToken = session?.tokens 
+    ? Object.values(session.tokens).find((t: any) => t.characterId === character.id) as BattleToken
+    : null;
+
+  const handleMovement = async (newPosition: Position): Promise<boolean> => {
+    if (!sessionId || !playerToken) return false;
+    
+    return await MovementService.moveToken(sessionId, playerToken.id, newPosition);
+  };
 
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
@@ -756,6 +767,21 @@ export function LuneCharacterSheet({
             )}
           </button>
         </div>
+
+        {/* Grid Movement Input */}
+        {isMyTurn && playerToken && (
+          <div className="mb-4">
+            <MovementInput
+              token={playerToken}
+              currentPosition={playerToken.position}
+              maxRange={MovementService.getMovementRange(character.name)}
+              gridSize={{ width: 30, height: 20 }} // Or get from current map if available
+              onMove={handleMovement}
+              isMyTurn={isMyTurn}
+              characterName={character.name}
+            />
+          </div>
+        )}
 
         {/* Elemental Stains */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-mystical-600">

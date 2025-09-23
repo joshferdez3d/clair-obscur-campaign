@@ -15,7 +15,8 @@ import { InventoryModal } from './InventoryModal';
 import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
-
+import { MovementInput } from '../Combat/MovementInput';
+import { MovementService } from '../../services/movementService'
 interface ScielCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -39,7 +40,8 @@ interface ScielCharacterSheetProps {
   sessionId?: string;
   allTokens?: BattleToken[];
   // REMOVED: onActionComplete - no longer needed
-  
+  session?: any;
+
   // Persistent state props
   chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
   setChargedFateCard: (card: 'explosive' | 'switch' | 'vanish' | null) => Promise<void>;
@@ -64,6 +66,7 @@ export function ScielCharacterSheet({
   // REMOVED: hasActedThisTurn = false,
   sessionId = 'test-session',
   allTokens = [],
+  session,
   // REMOVED: onActionComplete,
   // Persistent state props
   chargedFateCard,
@@ -90,6 +93,16 @@ export function ScielCharacterSheet({
 
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
+  };
+
+  const playerToken = session?.tokens 
+  ? Object.values(session.tokens).find((t: any) => t.characterId === character.id) as BattleToken
+  : null;
+
+  const handleMovement = async (newPosition: Position): Promise<boolean> => {
+    if (!sessionId || !playerToken) return false;
+    
+    return await MovementService.moveToken(sessionId, playerToken.id, newPosition);
   };
 
   // Storm system integration
@@ -531,6 +544,21 @@ export function ScielCharacterSheet({
             )}
           </button>
         </div>
+
+        {/* Grid Movement Input */}
+        {isMyTurn && playerToken && (
+          <div className="mb-4">
+            <MovementInput
+              token={playerToken}
+              currentPosition={playerToken.position}
+              maxRange={MovementService.getMovementRange(character.name)}
+              gridSize={{ width: 30, height: 20 }} // Or get from current map if available
+              onMove={handleMovement}
+              isMyTurn={isMyTurn}
+              characterName={character.name}
+            />
+          </div>
+        )}
 
         {/* Ability Points */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-gold-600">

@@ -11,8 +11,9 @@ export interface MapConfig {
   gridVisible: boolean;
 }
 
-// Available maps for Session 0
+// Available maps for Session 0 AND Session 1
 export const AVAILABLE_MAPS: MapConfig[] = [
+  // Existing Session 0 Maps
   {
     id: 'docks',
     name: 'The Landing',
@@ -33,9 +34,25 @@ export const AVAILABLE_MAPS: MapConfig[] = [
     backgroundImage: '/maps/ShipDeckMap.jpg',
     gridSize: { width: 18, height: 10 },
     gridVisible: true
+  },
+  // NEW Session 1 Maps
+  {
+    id: 'flying-waters',
+    name: 'Flying Waters',
+    backgroundImage: '/maps/FlyingWaters.jpg',
+    gridSize: { width: 17, height: 22 },
+    gridVisible: true
+  },
+  {
+    id: 'gestral-colosseum',
+    name: 'Gestral Colosseum',
+    backgroundImage: '/maps/GestralColosseum.jpg',
+    gridSize: { width: 22, height: 14 },
+    gridVisible: true
   }
 ];
 
+// Rest of the component stays the same...
 interface MapSelectorProps {
   currentMapId: string;
   onMapChange: (map: MapConfig) => void;
@@ -69,11 +86,27 @@ export function MapSelector({ currentMapId, onMapChange, disabled = false }: Map
             ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-clair-gold-500 cursor-pointer'}
           `}
         >
-          {AVAILABLE_MAPS.map((map) => (
-            <option key={map.id} value={map.id} className="bg-clair-shadow-700 text-clair-gold-50">
-              {map.name}
+          {/* Group maps by session for better organization */}
+          <optgroup label="Session 0 - Starting Maps">
+            <option value="docks" className="bg-clair-shadow-700 text-clair-gold-50">
+              The Landing
             </option>
-          ))}
+            <option value="festival" className="bg-clair-shadow-700 text-clair-gold-50">
+              The Festival of the Expedition
+            </option>
+            <option value="ship" className="bg-clair-shadow-700 text-clair-gold-50">
+              The Ship
+            </option>
+          </optgroup>
+          
+          <optgroup label="Session 1 - New Areas">
+            <option value="flying-waters" className="bg-clair-shadow-700 text-clair-gold-50">
+              Flying Waters
+            </option>
+            <option value="gestral-colosseum" className="bg-clair-shadow-700 text-clair-gold-50">
+              Gestral Colosseum
+            </option>
+          </optgroup>
         </select>
         
         {/* Custom dropdown arrow */}
@@ -82,11 +115,15 @@ export function MapSelector({ currentMapId, onMapChange, disabled = false }: Map
         </div>
       </div>
       
-      {/* Map info display */}
+      {/* Map info display with special indicator for large maps */}
       <div className="mt-2 text-xs text-clair-gold-400 flex items-center space-x-4">
         <div className="flex items-center">
           <Map className="w-3 h-3 mr-1" />
           <span>{currentMap.gridSize.width}×{currentMap.gridSize.height} grid</span>
+          {/* Add warning for large maps */}
+          {(currentMap.gridSize.width > 30 || currentMap.gridSize.height > 25) && (
+            <span className="ml-2 text-yellow-400">(Large Map)</span>
+          )}
         </div>
         <div className="flex items-center">
           <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>

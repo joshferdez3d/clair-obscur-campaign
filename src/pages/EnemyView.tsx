@@ -7,6 +7,7 @@ import { BattleToken, GMCombatAction } from '../types';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { enemies } from '../data/enemies'; // FIXED: Use 'enemies' not 'enemiesData'
 import type { EnemyData } from '../types';
+import { useBrowserWarning } from '../hooks/useBrowserWarning';
 
 interface EnemyAttack {
   name: string;
@@ -31,6 +32,11 @@ const EnemyView: React.FC = () => {
   const currentTurnEntry = session?.combatState?.initiativeOrder.find(
     e => e.id === session?.combatState?.currentTurn
   );
+
+  useBrowserWarning({
+    enabled: true,
+    message: '⚠️ Warning: You are controlling enemies in combat. Leaving will disrupt the battle. Are you sure?'
+  });
   
   // Get the current enemy token and data
   const getCurrentEnemy = () => {

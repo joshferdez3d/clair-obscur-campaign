@@ -4,7 +4,7 @@ import { User, Sword, Eye, Target, Zap, Move, Shield, Sparkles, Circle, Heart } 
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
-import type { Character } from '../../types/character';
+import type { Character, BattleToken, Position } from '../../types';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { FirestoreService } from '../../services/firestoreService';
 import { Package } from 'lucide-react';
@@ -12,7 +12,8 @@ import { InventoryModal } from './InventoryModal';
 import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
-
+import { MovementInput } from '../Combat/MovementInput';
+import { MovementService } from '../../services/movementService'
 interface MaelleCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -34,7 +35,8 @@ interface MaelleCharacterSheetProps {
   // REMOVED: hasActedThisTurn - no longer needed
   sessionId?: string;
   // REMOVED: onActionComplete - no longer needed
-  
+  session?: any;
+  allTokens?: BattleToken[];
   // Persistent state props
   afterimageStacks: number;
   setAfterimageStacks: (stacks: number) => Promise<void>;
@@ -59,6 +61,8 @@ export function MaelleCharacterSheet({
   sessionId,
   // REMOVED: onActionComplete,
   // Persistent state props
+  session,
+  allTokens = [],
   afterimageStacks,
   setAfterimageStacks,
   phantomStrikeAvailable,
@@ -86,6 +90,21 @@ export function MaelleCharacterSheet({
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
   };
+
+  const playerToken = session?.tokens 
+    ? Object.values(session.tokens).find((t: any) => 
+        t.characterId === character.id || 
+        t.id === `token-${character.id}` ||
+        t.name === character.name
+      ) as BattleToken
+    : null;
+
+  const handleMovement = async (newPosition: Position): Promise<boolean> => {
+    if (!sessionId || !playerToken) return false;
+    
+    return await MovementService.moveToken(sessionId, playerToken.id, newPosition);
+  };
+
   
   const getCharacterPortrait = (name: string) => {
     const portraitMap: { [key: string]: string } = {
@@ -387,6 +406,21 @@ export function MaelleCharacterSheet({
             )}
           </button>
         </div>
+
+        {/* Grid Movement Input */}
+        {isMyTurn && playerToken && (
+          <div className="mb-4">
+            <MovementInput
+              token={playerToken}
+              currentPosition={playerToken.position}
+              maxRange={MovementService.getMovementRange(character.name)}
+              gridSize={{ width: 30, height: 20 }} // Or get from current map if available
+              onMove={handleMovement}
+              isMyTurn={isMyTurn}
+              characterName={character.name}
+            />
+          </div>
+        )}
 
         {/* AFTERIMAGE STACKS DISPLAY */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-royal-500 mb-4">

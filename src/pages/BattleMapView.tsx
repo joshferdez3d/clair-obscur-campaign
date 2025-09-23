@@ -12,6 +12,7 @@ import { AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
 import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
 import { useUltimateVideo } from '../hooks/useUltimateVideo';
 import { FirestoreService } from '../services/firestoreService';
+import { useBrowserWarning } from '../hooks/useBrowserWarning';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -61,6 +62,11 @@ export function BattleMapView() {
   const handleVideoClose = useCallback(() => {
     clearUltimate();
   }, [clearUltimate]);
+
+  useBrowserWarning({
+    enabled: true,
+    message: '⚠️ Warning: The battle map is currently displayed. Closing this will disrupt the visual experience. Are you sure?'
+  });
 
   useEffect(() => {
     if (sessionId) {

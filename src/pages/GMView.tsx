@@ -39,6 +39,7 @@ import {
   getEnemyGroups, 
   updateEnemyGroupsInInitiative 
 } from '../utils/enemyHelperUtil';
+import { useBrowserWarning } from '../hooks/useBrowserWarning';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -89,7 +90,11 @@ export function GMView() {
     isLoading: audioLoading 
   } = useAudio();
 
-
+  useBrowserWarning({
+    enabled: true,
+    message: '⚠️ Warning: You are the Game Master. Leaving will pause the game for all players. Are you sure?'
+  });
+  
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
   const tokens = Object.entries(session?.tokens || {})
