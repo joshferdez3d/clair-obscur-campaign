@@ -124,6 +124,8 @@ export function Token({
         'Noir Harbinger': 'Noir_Harbinger_Image.png',
         'Portier': 'Portier_Image.png',
         'Volester': 'Volester_Image.png',
+        'Demineur': 'Demineur_Image.png',
+        'Luster': 'Luster_Image.png'
       };
       
       const filename = enemyImageMap[token.name];
@@ -137,6 +139,8 @@ export function Token({
     // For NPC tokens - Manual mapping
     if (token.type === 'npc' && token.name) {
       const npcImageMap: { [key: string]: string } = {
+        'The Child': 'childofgommage.png', // Changed from 'The Child of the Gommage'
+        'The Farmhand': 'farmhand-fighter.png', // Changed from 'The Farmhand Turned Fighter'
         'The Child of the Gommage': 'childofgommage.png',
         'The Farmhand Turned Fighter': 'farmhand-fighter.png',
         'The Gambler': 'gambler.png',
