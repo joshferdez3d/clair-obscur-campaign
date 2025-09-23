@@ -13,7 +13,9 @@ import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 import { MovementInput } from '../Combat/MovementInput';
-import { MovementService } from '../../services/movementService'
+import { MovementService } from '../../services/movementService';
+import { NPCTabSystem } from './NPCTabSystem';
+
 interface MaelleCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -28,6 +30,8 @@ interface MaelleCharacterSheetProps {
     maxHp: number;
     ac: number;
   }>;
+    isGM?: boolean; // ADD THIS LINE
+
   playerPosition?: { x: number; y: number };
   onTargetSelect?: (targetId: string, acRoll: number, type?: string, abilityId?: string) => void;
   onEndTurn?: () => void;
@@ -57,6 +61,7 @@ export function MaelleCharacterSheet({
   onTargetSelect,
   onEndTurn,
   onCancelTargeting,
+  isGM,
   // REMOVED: hasActedThisTurn = false,
   sessionId,
   // REMOVED: onActionComplete,
@@ -328,6 +333,18 @@ export function MaelleCharacterSheet({
   };
 
   return (
+    <NPCTabSystem
+      characterId="maelle"
+      characterName="Maelle"
+      sessionId={sessionId || "test-session"}
+      isGM={isGM}
+      availableEnemies={availableEnemies} // Add this
+      availableAllies={allTokens?.filter(t => t.type === 'player')} // Add this
+      session={session} // Add this
+      isMyTurn={isMyTurn} // Add this
+      combatActive={combatActive} // Add this
+      playerPosition={playerPosition} // Add this
+    >
     <div className="min-h-screen bg-clair-shadow-900">
     {/* CHARACTER HEADER */}
     <div className="relative px-4 pt-6 pb-4 text-white bg-gradient-to-br from-clair-royal-600 to-clair-royal-800 shadow-shadow border-b border-clair-gold-600">
@@ -689,5 +706,6 @@ export function MaelleCharacterSheet({
         onClose={() => setShowInventoryModal(false)}
       />
     </div>
+    </NPCTabSystem>
   );
 }

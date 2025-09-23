@@ -14,6 +14,8 @@ import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 import { MovementInput } from '../Combat/MovementInput';
 import { MovementService } from '../../services/movementService'
+import { NPCTabSystem } from './NPCTabSystem';
+
 interface GustaveCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -28,6 +30,7 @@ interface GustaveCharacterSheetProps {
   turretsDeployedThisBattle: number;
   setTurretsDeployedThisBattle: (count: number) => Promise<void>;
   // REMOVED: setHasActedThisTurn - no longer needed
+  isGM?: boolean; // ADD THIS LINE
 
   onAbilityUse: (ability: Ability) => void;
   isLoading?: boolean;
@@ -74,6 +77,7 @@ export function GustaveCharacterSheet({
   onTurretDeploy,
   onEndTurn,
   onCancelTargeting,
+  isGM,
   // REMOVED: hasActedThisTurn and setHasActedThisTurn
   sessionId = 'test-session',
   allTokens = [],
@@ -544,6 +548,12 @@ export function GustaveCharacterSheet({
   };
 
   return (
+    <NPCTabSystem
+      characterId="gustave"
+      characterName="Gustave"
+      sessionId={sessionId}
+      isGM={isGM}
+    >
     <div className="min-h-screen bg-clair-shadow-900">
       {/* CHARACTER HEADER */}
       <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
@@ -963,5 +973,6 @@ export function GustaveCharacterSheet({
         onClose={() => setShowInventoryModal(false)}
       />
     </div>
+    </NPCTabSystem>
   );
 }

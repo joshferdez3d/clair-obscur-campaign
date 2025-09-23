@@ -80,6 +80,11 @@ export interface BattleToken {
       appliedOnRound: number;
     };
   };
+
+  controlledBy?: 'maelle' | 'sciel' | 'gm';
+  npcLevel?: number;
+  hasActed?: boolean;
+  hasMoved?: boolean;
 }
 
 export interface BattleMapPreset {

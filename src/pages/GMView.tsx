@@ -703,28 +703,71 @@ const handleResetSession = async () => {
     }
 
     // Handle NPC placement
-    if (isPlacingNPC && selectedNPCType) {
-      console.log('🎭 Placing NPC at:', position);
-      
-      const npcToken: BattleToken = {
-        ...selectedNPCType,
-        id: `npc-${Date.now()}-${Math.random().toString(36).substring(7)}`,
-        position: position,
-        type: 'npc'
-      };
+// Handle NPC placement (around line 680 in GMView.tsx)
+  if (isPlacingNPC && selectedNPCType) {
+    console.log('🎭 Placing NPC at:', position);
 
-      try {
-        await FirestoreService.addToken(sessionId || 'test-session', npcToken);
-        console.log('✅ NPC placed successfully:', npcToken.name);
-        
-        // Clear placement mode
+      if (!session || !sessionId) {
+        console.error('Session not available');
+        alert('Session not available. Please refresh and try again.');
         setSelectedNPCType(null);
         setIsPlacingNPC(false);
-      } catch (error) {
-        console.error('❌ Failed to place NPC:', error);
-        alert('Failed to place NPC. Please try again.');
+        return;
       }
+        
+    const npcToken: BattleToken = {
+      ...selectedNPCType,
+      id: `npc-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      position: position,
+      type: 'npc',
+      controlledBy: selectedNPCType.controlledBy,
+    };
+
+    try {
+      // Add NPC to tokens
+      const updatedTokens = { ...session.tokens, [npcToken.id]: npcToken };
+      
+      // Get current initiative order or create new one
+      let currentInitiativeOrder = session.combatState?.initiativeOrder || [];
+      
+      // Roll initiative for the NPC
+      const initiativeRoll = Math.floor(Math.random() * 20) + 1;
+      console.log(`🎲 Rolling initiative for ${npcToken.name}: ${initiativeRoll}`);
+      
+      // Create initiative entry for the NPC
+      const newInitiativeEntry: InitiativeEntry = {
+        id: npcToken.id, // Use the token's ID directly
+        name: npcToken.name,
+        initiative: initiativeRoll,
+        type: 'player',
+        hasActed: false,
+        characterId: npcToken.controlledBy || npcToken.id,
+      };
+      
+      // Add to initiative order and sort by initiative
+      currentInitiativeOrder = [...currentInitiativeOrder, newInitiativeEntry]
+        .sort((a, b) => b.initiative - a.initiative);
+      
+      console.log(`➕ Adding ${npcToken.name} to initiative with roll: ${initiativeRoll}`);
+      
+      // Update the session with new token and initiative
+      await FirestoreService.updateBattleSession(sessionId || 'test-session', {
+        tokens: updatedTokens,
+        'combatState.initiativeOrder': currentInitiativeOrder,
+        'combatState.turnOrder': currentInitiativeOrder.map(e => e.id),
+        updatedAt: new Date()
+      });
+      
+      console.log('✅ NPC placed successfully with initiative:', npcToken.name);
+      
+      // Clear placement mode
+      setSelectedNPCType(null);
+      setIsPlacingNPC(false);
+    } catch (error) {
+      console.error('❌ Failed to place NPC:', error);
+      alert('Failed to place NPC. Please try again.');
     }
+  }
   };
 
 

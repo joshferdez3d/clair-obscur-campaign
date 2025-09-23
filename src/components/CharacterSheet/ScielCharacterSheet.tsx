@@ -16,7 +16,9 @@ import { InventoryService } from '../../services/inventoryService';
 import type { InventoryItem } from '../../types';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 import { MovementInput } from '../Combat/MovementInput';
-import { MovementService } from '../../services/movementService'
+import { MovementService } from '../../services/movementService';
+import { NPCTabSystem } from './NPCTabSystem';
+
 interface ScielCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -32,6 +34,8 @@ interface ScielCharacterSheetProps {
     maxHp: number;
     ac: number;
   }>;
+    isGM?: boolean; // ADD THIS LINE
+
   playerPosition?: { x: number; y: number };
   onTargetSelect?: (targetId: string, acRoll: number, attackType: string, abilityId?: string) => void;
   onEndTurn?: () => void;
@@ -62,6 +66,7 @@ export function ScielCharacterSheet({
   playerPosition = { x: 0, y: 0 },
   onTargetSelect,
   onEndTurn,
+  isGM,
   onCancelTargeting,
   // REMOVED: hasActedThisTurn = false,
   sessionId = 'test-session',
@@ -464,7 +469,20 @@ export function ScielCharacterSheet({
     },
   ];
 
+
   return (
+    <NPCTabSystem
+      characterId="sciel"
+      characterName="Sciel"
+      sessionId={sessionId}
+      isGM={isGM}
+      availableEnemies={availableEnemies} // Add this
+      availableAllies={allTokens?.filter(t => t.type === 'player')} // Add this
+      session={session} // Add this
+      isMyTurn={isMyTurn} // Add this
+      combatActive={combatActive} // Add this
+      playerPosition={playerPosition} // Add this
+    >
     <div className="min-h-screen bg-clair-shadow-900">
       {/* CHARACTER HEADER */}
       <div className={`relative px-4 pt-6 pb-4 text-white ${getCharacterGradient()} shadow-shadow border-b border-clair-gold-600`}>
@@ -899,6 +917,8 @@ export function ScielCharacterSheet({
         isLoading={inventoryLoading}
         onClose={() => setShowInventoryModal(false)}
       />
+
     </div>
+    </NPCTabSystem> 
   );
 }

@@ -18,23 +18,42 @@ interface ExpeditionNPC {
   hook: string;
   combatStyle: string;
   traits: string[];
+  controlledBy?: 'maelle' | 'sciel' | 'gm'; // Who controls this NPC
 }
 
+// UPDATED: Removed dead NPCs and renamed New Recruit to The Child
 const EXPEDITION_NPCS: { [key: string]: ExpeditionNPC } = {
-  'new-recruit': {
-    id: 'new-recruit',
-    name: 'The New Recruit',
+  'the-child': {
+    id: 'the-child',
+    name: 'The Child',
     age: 18,
     ac: 12,
-    hp: 18,
-    maxHp: 18,
+    hp: 14,
+    maxHp: 14,
     size: 1,
     color: '#22c55e',
     category: 'Young Hopefuls',
-    bio: 'Fresh out of training, wide-eyed and eager, they joined the expedition to prove themselves. Never left Lumière\'s walls before.',
-    hook: 'Bonds quickly with younger PCs like Maelle; their enthusiasm makes their fate all the more tragic.',
-    combatStyle: 'Eager but inexperienced - high damage potential but low survivability',
-    traits: ['Optimistic', 'Brave', 'Inexperienced', 'Quick to Bond']
+    bio: 'The younger brother of a fallen recruit. After witnessing his sibling\'s death in the landing massacre, he insists on continuing the mission to honor their memory.',
+    hook: 'Forms a protective bond with Maelle, seeing her as an older sister figure. His determination despite his fear makes him endearing.',
+    combatStyle: 'Eager but inexperienced - moderate damage, learning combat mechanics',
+    traits: ['Determined', 'Grieving', 'Brave', 'Loyal'],
+    controlledBy: 'maelle'
+  },
+  'farmhand': {
+    id: 'farmhand',
+    name: 'The Farmhand',
+    age: 24,
+    ac: 13,
+    hp: 18,
+    maxHp: 18,
+    size: 1,
+    color: '#84cc16',
+    category: 'Common Folk',
+    bio: 'Originally conscripted for labor, volunteered when no one else would from their district. Carries a pitchfork, relies on raw strength.',
+    hook: 'Offers camaraderie to Sciel, highlighting her protective instincts.',
+    combatStyle: 'Brutal strength - high HP and damage, lower defenses',
+    traits: ['Strong', 'Determined', 'Crude Fighting', 'Loyal'],
+    controlledBy: 'sciel'
   },
   'veteran': {
     id: 'veteran',
@@ -47,39 +66,10 @@ const EXPEDITION_NPCS: { [key: string]: ExpeditionNPC } = {
     color: '#64748b',
     category: 'Battle-Hardened',
     bio: 'Volunteered for multiple expeditions but was turned down until desperation made the council accept them. Scarred in body and spirit.',
-    hook: 'Offers advice to PCs; their grim fatalism contrasts with the recruit\'s hope.',
+    hook: 'Offers advice to PCs; their grim fatalism contrasts with the hope of younger members.',
     combatStyle: 'Defensive fighter - high AC and HP, tactical knowledge',
-    traits: ['Battle-Scarred', 'Fatalistic', 'Experienced', 'Protective']
-  },
-  'zealot': {
-    id: 'zealot',
-    name: 'The Zealot',
-    age: 27,
-    ac: 14,
-    hp: 28,
-    maxHp: 28,
-    size: 1,
-    color: '#8b5cf6',
-    category: 'Faithful',
-    bio: 'A devout believer that the Paintress is divine punishment. Sees the expedition as a holy mission to either redeem humanity or embrace its deserved end.',
-    hook: 'Challenges PCs\' motives; could spark moral debate during the ship journey.',
-    combatStyle: 'Divine warrior - moderate stats with potential divine protection',
-    traits: ['Devout', 'Preachy', 'Unshakeable Faith', 'Morally Rigid']
-  },
-  'scholars-apprentice': {
-    id: 'scholars-apprentice',
-    name: 'The Scholar\'s Apprentice',
-    age: 22,
-    ac: 11,
-    hp: 16,
-    maxHp: 16,
-    size: 1,
-    color: '#3b82f6',
-    category: 'Intellectuals',
-    bio: 'A junior researcher inspired by Lune\'s family. Obsessively documents everything, constantly asking questions.',
-    hook: 'Shadow to Lune, providing a foil — naive study versus experienced scholarship.',
-    combatStyle: 'Support role - low combat stats but high utility and knowledge',
-    traits: ['Curious', 'Documenter', 'Nervous', 'Studious']
+    traits: ['Battle-Scarred', 'Fatalistic', 'Experienced', 'Protective'],
+    controlledBy: 'gm'
   },
   'lost-lover': {
     id: 'lost-lover',
@@ -94,37 +84,8 @@ const EXPEDITION_NPCS: { [key: string]: ExpeditionNPC } = {
     bio: 'Joined after losing their partner in the last Gommage. Speaks little, carries a keepsake they touch constantly.',
     hook: 'Mirrors Gustave\'s pain about Sophie, deepening his arc through dialogue.',
     combatStyle: 'Quiet determination - moderate stats, fights with suppressed rage',
-    traits: ['Grieving', 'Stoic', 'Determined', 'Haunted']
-  },
-  'farmhand-fighter': {
-    id: 'farmhand-fighter',
-    name: 'The Farmhand Turned Fighter',
-    age: 24,
-    ac: 12,
-    hp: 32,
-    maxHp: 32,
-    size: 1,
-    color: '#84cc16',
-    category: 'Common Folk',
-    bio: 'Originally conscripted for labor, volunteered when no one else would from their district. Carries a scythe, relies on raw strength.',
-    hook: 'Offers camaraderie to Sciel, highlighting her protective instincts.',
-    combatStyle: 'Brutal strength - high HP and damage, lower defenses',
-    traits: ['Strong', 'Determined', 'Crude Fighting', 'Loyal']
-  },
-  'gambler': {
-    id: 'gambler',
-    name: 'The Gambler',
-    age: 28,
-    ac: 13,
-    hp: 24,
-    maxHp: 24,
-    size: 1,
-    color: '#f59e0b',
-    category: 'Risk-Takers',
-    bio: 'A trickster and jokester, always with dice or cards in hand. Lightens the mood, insists fate is just another game of chance.',
-    hook: 'Can host the dice game, drawing PCs into roleplay. Their sudden silencing in the massacre underscores the loss of levity.',
-    combatStyle: 'Unpredictable - moderate stats with luck-based combat maneuvers',
-    traits: ['Lucky', 'Charismatic', 'Reckless', 'Optimistic']
+    traits: ['Grieving', 'Stoic', 'Determined', 'Haunted'],
+    controlledBy: 'gm'
   },
   'child-of-gommage': {
     id: 'child-of-gommage',
@@ -139,18 +100,18 @@ const EXPEDITION_NPCS: { [key: string]: ExpeditionNPC } = {
     bio: 'Their parents vanished in front of them only a year ago. Volunteered not out of duty but vengeance. Impulsive, fierce, and naive to strategy.',
     hook: 'Can connect emotionally with Maelle, both orphans of the Gommage.',
     combatStyle: 'Reckless aggression - high damage potential, poor defense and tactics',
-    traits: ['Vengeful', 'Impulsive', 'Fierce', 'Traumatized']
+    traits: ['Vengeful', 'Impulsive', 'Fierce', 'Traumatized'],
+    controlledBy: 'gm'
   }
 };
 
+// UPDATED: Removed references to dead NPCs
 const EXPEDITION_CATEGORIES = {
-  'Young Hopefuls': ['new-recruit', 'child-of-gommage'],
+  'Young Hopefuls': ['the-child', 'child-of-gommage'],
   'Battle-Hardened': ['veteran'],
-  'Faithful': ['zealot'],
-  'Intellectuals': ['scholars-apprentice'],
   'Grief-Stricken': ['lost-lover'],
-  'Common Folk': ['farmhand-fighter'],
-  'Risk-Takers': ['gambler']
+  'Common Folk': ['farmhand'],
+  'Vengeful': ['child-of-gommage']
 };
 
 interface ExpeditionNPCModalProps {
@@ -176,7 +137,7 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
     if (selectedNPC) {
       // Create a battle token from the expedition NPC
       const npcToken: BattleToken = {
-        id: generateId('exp'),
+        id: generateId('npc'),
         name: selectedNPC.name,
         position: { x: 5, y: 5 }, // Default position - GM will place on map
         type: 'npc',
@@ -184,7 +145,9 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
         maxHp: selectedNPC.maxHp,
         size: selectedNPC.size,
         color: selectedNPC.color,
-        ac: selectedNPC.ac
+        ac: selectedNPC.ac,
+        // Add controller information for turn management
+        controlledBy: selectedNPC.controlledBy,
       };
 
       onSelectNPC(npcToken);
@@ -197,11 +160,9 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
     switch (category) {
       case 'Young Hopefuls': return Star;
       case 'Battle-Hardened': return Shield;
-      case 'Faithful': return Zap;
-      case 'Intellectuals': return Book;
       case 'Grief-Stricken': return Heart;
       case 'Common Folk': return Users;
-      case 'Risk-Takers': return Sword;
+      case 'Vengeful': return Sword;
       default: return Users;
     }
   };
@@ -218,12 +179,30 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
     return 'text-orange-300';
   };
 
+  const getControllerBadge = (controller?: string) => {
+    switch (controller) {
+      case 'maelle':
+        return <span className="ml-2 text-xs bg-clair-royal-600 px-2 py-1 rounded">Maelle Controls</span>;
+      case 'sciel':
+        return <span className="ml-2 text-xs bg-green-600 px-2 py-1 rounded">Sciel Controls</span>;
+      default:
+        return <span className="ml-2 text-xs bg-gray-600 px-2 py-1 rounded">GM Controls</span>;
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-clair-shadow-800 border border-clair-gold-600 rounded-lg p-6 max-w-6xl w-full mx-4 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h2 className="font-display text-2xl font-bold text-clair-gold-400">Expedition 33 - Add Expeditioner</h2>
+          <div>
+            <h2 className="font-display text-2xl font-bold text-clair-gold-400">
+              Expedition 33 - Living Members
+            </h2>
+            <p className="text-sm text-gray-400 mt-1">
+              Session 1: After the Landing Massacre
+            </p>
+          </div>
           <button
             onClick={onClose}
             className="text-clair-gold-300 hover:text-white transition-colors"
@@ -240,6 +219,10 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
               {Object.keys(EXPEDITION_CATEGORIES).map((category) => {
                 const Icon = getCategoryIcon(category);
                 const isSelected = selectedCategory === category;
+                const hasNPCs = EXPEDITION_CATEGORIES[category as keyof typeof EXPEDITION_CATEGORIES].length > 0;
+                
+                if (!hasNPCs) return null; // Don't show empty categories
+                
                 return (
                   <button
                     key={category}
@@ -289,6 +272,19 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
                       <span>AC {npc.ac}</span>
                       <span className={getAgeColor(npc.age)}>Age {npc.age}</span>
                     </div>
+                    {npc.controlledBy && (
+                      <div className="mt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded ${
+                          npc.controlledBy === 'maelle' ? 'bg-clair-royal-600' :
+                          npc.controlledBy === 'sciel' ? 'bg-green-600' :
+                          'bg-gray-600'
+                        }`}>
+                          {npc.controlledBy === 'maelle' ? '👑 Maelle' :
+                           npc.controlledBy === 'sciel' ? '🌿 Sciel' :
+                           '🎮 GM'}
+                        </span>
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -303,8 +299,11 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
                   <h3 className="font-display text-xl font-bold text-clair-gold-400">
                     {selectedNPC.name}
                   </h3>
-                  <div className="text-sm text-clair-gold-300">
-                    Age {selectedNPC.age} • {selectedNPC.category}
+                  <div className="flex items-center">
+                    <span className="text-sm text-clair-gold-300 mr-2">
+                      Age {selectedNPC.age} • {selectedNPC.category}
+                    </span>
+                    {getControllerBadge(selectedNPC.controlledBy)}
                   </div>
                 </div>
 
@@ -323,6 +322,21 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
                     <span>Expeditioner</span>
                   </div>
                 </div>
+
+                {/* Controller Info */}
+                {selectedNPC.controlledBy && (
+                  <div className="bg-clair-shadow-600 p-3 rounded">
+                    <div className="text-sm font-bold text-clair-gold-400 mb-1">Control Info:</div>
+                    <div className="text-sm text-clair-gold-300">
+                      {selectedNPC.controlledBy === 'maelle' && 
+                        "This NPC will be controlled by Maelle's player through the character sheet tabs."}
+                      {selectedNPC.controlledBy === 'sciel' && 
+                        "This NPC will be controlled by Sciel's player through the character sheet tabs."}
+                      {selectedNPC.controlledBy === 'gm' && 
+                        "This NPC is controlled by the GM."}
+                    </div>
+                  </div>
+                )}
 
                 {/* Bio */}
                 <div>
@@ -369,14 +383,21 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
                   className="w-full bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 py-3 px-4 rounded-lg font-bold transition-colors flex items-center justify-center"
                 >
                   <Users className="w-5 h-5 mr-2" />
-                  Add {selectedNPC.name} to Expedition
+                  Deploy {selectedNPC.name} to Battle
                 </button>
               </div>
             ) : (
               <div className="bg-clair-shadow-700 rounded-lg p-8 text-center text-clair-gold-300">
                 <Users className="w-16 h-16 mx-auto mb-4 opacity-50" />
                 <p className="text-lg font-bold mb-2">Select an Expeditioner</p>
-                <p className="text-sm opacity-75">Choose from the archetypes to see their details and add them to your battle map</p>
+                <p className="text-sm opacity-75">
+                  These are the surviving members of Expedition 33 after the landing massacre.
+                </p>
+                <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-600 rounded">
+                  <p className="text-xs text-red-300">
+                    <strong>Fallen in Session 0:</strong> The Recruit, The Gambler, The Zealot, The Scholar's Apprentice
+                  </p>
+                </div>
               </div>
             )}
           </div>
@@ -386,10 +407,11 @@ export function ExpeditionNPCModal({ isOpen, onClose, onSelectNPC }: ExpeditionN
         <div className="mt-6 p-4 bg-clair-mystical-900 bg-opacity-30 rounded-lg border border-clair-mystical-600">
           <div className="text-center">
             <p className="text-sm text-clair-gold-300 mb-2">
-              <strong className="text-clair-gold-400">Expedition 33 Crew Management</strong>
+              <strong className="text-clair-gold-400">Living Members of Expedition 33</strong>
             </p>
             <p className="text-xs text-clair-gold-400 opacity-75">
-              These are the brave souls who joined your expedition. Each has their own story, motivations, and role to play in the journey ahead. Select an expeditioner and place them on the map to begin their part in the tale.
+              After the devastating landing, only a handful of expeditioners survived. The Child (formerly known as the New Recruit's younger brother) 
+              has taken up his sibling's mantle. These brave souls continue the mission despite their losses.
             </p>
           </div>
         </div>
