@@ -34,8 +34,6 @@ import { useAudio } from '../hooks/useAudio';
 import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
 import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
 import { InventoryService } from '../services/inventoryService'; // Add this import
-import { EnemyAIService, type EnemyTurnPlan, type EnemyAction } from '../services/enemyAIService';
-import { EnemyTurnApprovalModal } from '../components/Combat/EnemyTurnApprovalModal';
 import { handleEnemyGroupTurn } from '../utils/enemyHelperUtil';
 import { 
   getEnemyGroups, 
@@ -58,18 +56,7 @@ export function GMView() {
   const [isPlacingNPC, setIsPlacingNPC] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
-// Inside the GMPage component, after other hooks:
-const [aiEnabled, setAiEnabled] = useState(true);
-const [aiDifficulty, setAiDifficulty] = useState<'easy' | 'normal' | 'hard'>('normal');
-const [enemyTurnPlan, setEnemyTurnPlan] = useState<EnemyTurnPlan | null>(null);
-const [showEnemyTurnModal, setShowEnemyTurnModal] = useState(false);
-const [executingEnemyTurn, setExecutingEnemyTurn] = useState(false);
-const [currentEnemyActionIndex, setCurrentEnemyActionIndex] = useState(0);
-const [combatLog, setCombatLog] = useState<string[]>([]);
-// Add these state variables in GMView component
-const [activeEnemyId, setActiveEnemyId] = useState<string | undefined>(undefined);
-const [enemyActionPath, setEnemyActionPath] = useState<{ from: Position; to: Position } | undefined>(undefined);
-const [attackIndicator, setAttackIndicator] = useState<{ from: Position; to: Position; type: 'melee' | 'ranged' | 'ability' } | undefined>(undefined);
+
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
     type: 'fire_terrain' | 'ice_wall' | null;
@@ -105,8 +92,12 @@ const [attackIndicator, setAttackIndicator] = useState<{ from: Position; to: Pos
 
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
-  const tokens = Object.values(session?.tokens || {});
-  const players = tokens.filter((t) => t.type === 'player')
+  const tokens = Object.entries(session?.tokens || {})
+    .filter(([key, value]) => value && value.id)
+    .map(([key, value]) => ({
+      ...value,
+      id: value.id || key // Use key as fallback if id is missing
+    }));  const players = tokens.filter((t) => t.type === 'player')
 
   // Move this hook to the top level
   const gmHPControl = useGMHPControl({ sessionId: sessionId || 'test-session' });
@@ -171,53 +162,7 @@ const [attackIndicator, setAttackIndicator] = useState<{ from: Position; to: Pos
   }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
 
 
-  useEffect(() => {
-    const checkForEnemyTurn = async () => {
-      if (!session?.combatState?.isActive || !session?.combatState?.currentTurn) return;
-      
-      const currentEntry = session.combatState?.initiativeOrder.find(
-        e => e.id === session.combatState?.currentTurn
-      );
-      
-      // Check if it's an enemy group's turn
-      if (currentEntry?.type === 'enemy' && !currentEntry.characterId && !executingEnemyTurn) {
-        console.log(`🎮 Enemy group turn detected: ${currentEntry.name}`);
-        
-        // Get all enemies in this group
-        const groupName = currentEntry.name.replace(/ \(x\d+\)/, '');
-        const enemiesInGroup = Object.values(session.tokens).filter(
-          token => token.type === 'enemy' && 
-                   token.name === groupName && 
-                   (token.hp || 0) > 0
-        );
-        
-        if (enemiesInGroup.length > 0) {
-          // Generate AI turn plan
-          const plan = EnemyAIService.planEnemyGroupTurn(
-            groupName,
-            enemiesInGroup,
-            Object.values(session.tokens),
-            session.enemyData || {},
-            session.combatState.round
-          );
-          
-          console.log(`📋 AI Turn Plan generated for ${groupName}:`, plan);
-          
-          // Show approval modal
-          setEnemyTurnPlan(plan);
-          setShowEnemyTurnModal(true);
-          setCurrentEnemyActionIndex(0);
-        } else {
-          // No enemies left in group, auto-advance turn
-          console.log(`⚠️ No active enemies in ${groupName} group, advancing turn`);
-          await nextTurn();
-        }
-      }
-    };
-    
-    checkForEnemyTurn();
-  }, [session?.combatState?.currentTurn, session?.combatState?.isActive, executingEnemyTurn]);
-
+  
 
 
    useEffect(() => {
@@ -298,151 +243,6 @@ const [attackIndicator, setAttackIndicator] = useState<{ from: Position; to: Pos
       console.error('Error applying damage:', e);
     }
   };
-
-  const executeEnemyActions = async (plan: EnemyTurnPlan, autoAdvance: boolean = false) => {
-  setExecutingEnemyTurn(true);
-  setShowEnemyTurnModal(false);
-  
-  console.log(`🎬 Executing ${plan.enemies.length} enemy actions...`);
-  
-  // Add to combat log
-  setCombatLog(prev => [...prev, `--- ${plan.groupName} Turn ---`]);
-  
-  for (let i = 0; i < plan.enemies.length; i++) {
-    const { enemy, action } = plan.enemies[i];
-    setCurrentEnemyActionIndex(i);
-    
-    // Visual highlight on the current enemy
-    await highlightEnemy(enemy.id);
-    
-    // Add action to combat log
-    setCombatLog(prev => [...prev, action.description]);
-    
-    // Execute the action
-    await executeEnemyAction(action);
-    
-    // Delay between actions for visibility
-    if (autoAdvance && i < plan.enemies.length - 1) {
-      await delay(2000); // 2 second delay between actions
-    } else if (!autoAdvance) {
-      // Wait for manual confirmation if not auto-advancing
-      // This would need a separate UI element
-    }
-  }
-  
-  console.log(`✅ All enemy actions complete, advancing turn`);
-  setExecutingEnemyTurn(false);
-  
-  // Advance to next turn
-  await nextTurn();
-};
-
-// Function to execute a single enemy action
-const executeEnemyAction = async (action: EnemyAction) => {
-  console.log(`⚔️ Executing action:`, action);
-  
-  if (!session || !sessionId) return;
-  
-  try {
-    // Handle movement
-    if (action.movement && action.movement.distance > 0) {
-      setEnemyActionPath({ from: action.movement.from, to: action.movement.to });
-
-      await FirestoreService.updateTokenPosition(
-        sessionId,
-        action.enemyId,
-        action.movement.to
-      );
-      
-      // Visual feedback for movement
-      console.log(`📍 ${action.enemyName} moved to (${action.movement.to.x}, ${action.movement.to.y})`);
-      setTimeout(() => setEnemyActionPath(undefined), 1000);
-
-    }
-    
-    // Handle attack
-    if (action.attack) {
-
-        const enemyToken = session.tokens[action.enemyId];
-        const targetToken = Object.values(session.tokens).find(t => t.id === action.attack?.targetId);
-        
-        if (enemyToken && targetToken) {
-          setAttackIndicator({
-            from: action.movement?.to || enemyToken.position,
-            to: targetToken.position,
-            type: action.attack.type as 'melee' | 'ranged' | 'ability'
-          });
-          // Clear attack indicator after a delay
-          setTimeout(() => setAttackIndicator(undefined), 1500);
-        }
-      // Create attack action for GM resolution
-      const attackAction: GMCombatAction = {
-        id: `enemy-attack-${Date.now()}`,
-        type: action.type === 'ability' ? 'ability' : 'attack',
-        playerId: action.enemyId,
-        playerName: action.enemyName,
-        targetId: action.attack.targetId,
-        targetName: action.attack.targetName,
-        sourcePosition: action.movement?.to || session.tokens[action.enemyId].position,
-        range: action.attack.range,
-        timestamp: new Date(),
-        resolved: false,
-        abilityName: action.attack.attackName,
-        needsDamageInput: true,
-        damageApplied: false
-      };
-      
-      // Add to pending actions for GM damage resolution
-      await FirestoreService.addCombatAction(sessionId, attackAction);
-      
-      console.log(`🎯 ${action.enemyName} attacks ${action.attack.targetName} with ${action.attack.attackName}`);
-      setTimeout(() => setActiveEnemyId(undefined), 2000);
-
-    }
-  } catch (error) {
-    console.error('Failed to execute enemy action:', error);
-  }
-};
-
-// Helper function to highlight an enemy
-const highlightEnemy = async (enemyId: string) => {
-  // This would trigger a visual effect on the battle map
-  // You could add a state variable for highlighted enemy
-  console.log(`✨ Highlighting enemy: ${enemyId}`);
-  // Implementation would depend on your battle map component
-};
-
-// Helper function for delays
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Handler functions for the approval modal
-const handleApproveEnemyTurn = (plan: EnemyTurnPlan) => {
-  executeEnemyActions(plan, true);
-};
-
-const handleModifyEnemyAction = (enemyId: string, newAction: EnemyAction) => {
-  if (!enemyTurnPlan) return;
-  
-  const updatedPlan = {
-    ...enemyTurnPlan,
-    enemies: enemyTurnPlan.enemies.map(e => 
-      e.enemy.id === enemyId ? { ...e, action: newAction } : e
-    )
-  };
-  
-  setEnemyTurnPlan(updatedPlan);
-};
-
-const handleSkipEnemyAction = (enemyId: string) => {
-  if (!enemyTurnPlan) return;
-  
-  const updatedPlan = {
-    ...enemyTurnPlan,
-    enemies: enemyTurnPlan.enemies.filter(e => e.enemy.id !== enemyId)
-  };
-  
-  setEnemyTurnPlan(updatedPlan);
-};
 
   const handlePresetLoad = (preset: BattleMapPreset) => {
     console.log(`Loading preset: ${preset.name}`);
@@ -1079,29 +879,6 @@ const handleResetSession = async () => {
         />
       )}
 
-      {/* Combat Log Display (optional but helpful) */}
-      {combatLog.length > 0 && (
-        <div className="fixed bottom-4 right-4 w-96 max-h-48 overflow-y-auto bg-clair-shadow-800 border border-clair-gold-600 rounded-lg p-4">
-          <h4 className="font-bold text-clair-gold-400 mb-2 text-sm">Combat Log</h4>
-          <div className="space-y-1">
-            {combatLog.slice(-10).map((log, index) => (
-              <div key={index} className="text-xs text-clair-gold-300">
-                {log}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {/* Enemy Turn Indicator */}
-      {executingEnemyTurn && (
-        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg z-40 animate-pulse">
-          <div className="flex items-center gap-2">
-            <Target className="w-5 h-5" />
-            <span className="font-bold">Enemy Turn in Progress...</span>
-          </div>
-        </div>
-      )}
 
       {/* Regular GM Combat Popup - Lower priority than storm */}
       {gmActions.length > 0 && !pendingRoll && (
@@ -1148,6 +925,7 @@ const handleResetSession = async () => {
           onNextTurn={handleNextTurn}
           onUpdateInitiative={handleUpdateInitiative}
           characterNames={characterNames}
+          sessionId={sessionId} // ADD THIS LINE
         />
 
         <div className="mt-4">
@@ -1579,9 +1357,6 @@ const handleResetSession = async () => {
               onGridClick={handleGridClick}
               session={session} // Make sure to pass this
               isGM
-              activeEnemyId={activeEnemyId}        // Add these
-              enemyActionPath={enemyActionPath}    // Add these
-              attackIndicator={attackIndicator}
             />
           </div>
         </div>
@@ -1611,16 +1386,6 @@ const handleResetSession = async () => {
         isOpen={showInventoryModal}
         characters={charactersWithInventory}
         onClose={() => setShowInventoryModal(false)}
-      />
-
-      <EnemyTurnApprovalModal
-        isOpen={showEnemyTurnModal}
-        turnPlan={enemyTurnPlan}
-        onApprove={handleApproveEnemyTurn}
-        onModify={handleModifyEnemyAction}
-        onSkip={handleSkipEnemyAction}
-        onClose={() => setShowEnemyTurnModal(false)}
-        currentEnemyIndex={currentEnemyActionIndex}
       />
     </div>
   );

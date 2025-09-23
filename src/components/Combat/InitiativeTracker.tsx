@@ -10,6 +10,8 @@ interface InitiativeTrackerProps {
   onNextTurn: () => void;
   onUpdateInitiative: (initiativeOrder: InitiativeEntry[]) => void;
   characterNames: { [id: string]: string };
+  sessionId?: string; // ADD THIS LINE
+
   // NEW: Add available player characters
   availableCharacters?: Array<{
     id: string;
@@ -25,6 +27,7 @@ export function InitiativeTracker({
   onNextTurn,
   onUpdateInitiative,
   characterNames,
+  sessionId, 
   availableCharacters = []
 }: InitiativeTrackerProps) {
   const [editingInitiative, setEditingInitiative] = useState(false);
@@ -216,6 +219,20 @@ export function InitiativeTracker({
                     </span>
                   )}
                 </div>
+
+                 {/* ADD THIS SECTION - Enemy Controller Link */}
+                  {isCurrentTurn(entry.id) && combatState.isActive && entry.type === 'enemy' && (
+                    <div className="mt-2 pt-2 border-t border-black border-opacity-20">
+                      <a 
+                        href={`/enemy/${sessionId}`} 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center text-sm text-blue-900 hover:text-blue-800 font-bold"
+                      >
+                        Open Enemy Controller →
+                      </a>
+                    </div>
+                  )}
               </div>
             ))}
             
