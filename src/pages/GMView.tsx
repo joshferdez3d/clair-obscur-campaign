@@ -40,6 +40,7 @@ import {
   updateEnemyGroupsInInitiative 
 } from '../utils/enemyHelperUtil';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
+import NPCLevelManager from '../components/NPCLevelManager';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -57,6 +58,7 @@ export function GMView() {
   const [isPlacingNPC, setIsPlacingNPC] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
+  const [npcLevels, setNpcLevels] = useState({ newRecruit: 1, farmhand: 1 });
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -181,6 +183,12 @@ export function GMView() {
 
     loadCharactersWithInventory();
   }, [players]);
+
+  useEffect(() => {
+    if (session?.npcLevels) {
+      setNpcLevels(session.npcLevels);
+    } 
+  }, [session]);
 
   // NEW: Add this useEffect to detect pending ultimate actions
   useEffect(() => {
@@ -1141,6 +1149,10 @@ const handleResetSession = async () => {
             )}
           </div>
         </div>
+          <NPCLevelManager 
+            sessionId={sessionId || 'test-session'} 
+            currentLevels={npcLevels}
+          />
       </div>
 
       {/* Middle Panel - Character Health Management - SIMPLIFIED */}
@@ -1452,6 +1464,8 @@ const handleResetSession = async () => {
         characters={charactersWithInventory}
         onClose={() => setShowInventoryModal(false)}
       />
+
+
     </div>
   );
 }

@@ -423,6 +423,19 @@ static async applySwitchPositions(sessionId: string, actionId: string): Promise<
   console.log('✅ Firestore update completed');
 }
 
+static async updateNPCLevels(sessionId: string, levels: { newRecruit: number; farmhand: number }) {
+  const ref = doc(db, 'battleSessions', sessionId);
+  await updateDoc(ref, {
+    npcLevels: levels,
+    updatedAt: serverTimestamp()
+  });
+}
+
+static async getNPCLevels(sessionId: string): Promise<{ newRecruit: number; farmhand: number }> {
+  const session = await this.getBattleSession(sessionId);
+  return session?.npcLevels || { newRecruit: 1, farmhand: 1 };
+}
+
 // NEW: Apply vanish effect after damage is applied
 static async applyVanishEffect(sessionId: string, actionId: string): Promise<void> {
   const session = await this.getBattleSession(sessionId);

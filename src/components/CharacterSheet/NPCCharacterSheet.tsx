@@ -1,8 +1,8 @@
 // src/components/CharacterSheet/NPCCharacterSheet.tsx
-// Enhanced NPC Character Sheet with range validation and GM popup integration
+// Enhanced NPC Character Sheet with level integration and portraits
 
 import React, { useState } from 'react';
-import { Heart, Shield, Sword, ChevronRight, Target, X } from 'lucide-react';
+import { Heart, Shield, Sword, ChevronRight, Target, X, User } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import type { GMCombatAction } from '../../types';
 
@@ -18,30 +18,22 @@ interface NPCCharacterSheetProps {
   npcToken?: any;
 }
 
-// Enhanced NPC data with proper attack ranges
+// Enhanced NPC data with proper attack ranges and level progression
 const NPC_ABILITIES: { [key: string]: any } = {
   'the-child': {
-    level0: [
+    level1: [
       {
-        name: 'Wild Swing',
+        name: 'Basic Attack',
         description: '+3 to hit, 1d6 slashing damage',
         damage: '1d6',
         toHit: 3,
-        range: 5, // Melee range
+        range: 5,
         type: 'melee'
       },
       {
-        name: 'Desperate Dodge',
-        description: 'Once per short rest, advantage on one Dex save',
-        cost: '1/short rest',
-        type: 'defensive'
-      }
-    ],
-    level1: [
-      {
         name: 'Focused Strike',
-        description: '+4 to hit, 1d8 slashing damage',
-        damage: '1d8',
+        description: '+4 to hit, 1d6+2 slashing damage',
+        damage: '1d6+2',
         toHit: 4,
         range: 5,
         type: 'melee'
@@ -50,7 +42,7 @@ const NPC_ABILITIES: { [key: string]: any } = {
     level2: [
       {
         name: 'Disciplined Slash',
-        description: '+5 to hit, 1d8 slashing damage',
+        description: '+5 to hit, 1d8 slashing damage, can cleave',
         damage: '1d8',
         toHit: 5,
         range: 5,
@@ -60,8 +52,8 @@ const NPC_ABILITIES: { [key: string]: any } = {
     level3: [
       {
         name: 'For My Brother!',
-        description: '+6 to hit, 2d8 slashing damage',
-        damage: '2d8',
+        description: '+6 to hit, 2d10 slashing damage, advantage for 3 rounds',
+        damage: '2d10',
         toHit: 6,
         range: 5,
         type: 'ultimate'
@@ -69,33 +61,32 @@ const NPC_ABILITIES: { [key: string]: any } = {
     ]
   },
   'farmhand': {
-    level0: [
+    level1: [
       {
         name: 'Pitchfork Jab',
         description: '+4 to hit, 1d8 piercing damage',
         damage: '1d8',
         toHit: 4,
-        range: 10, // Reach weapon
+        range: 10,
         type: 'melee'
       },
       {
-        name: 'Patch Up',
-        description: 'Heal 1d4 HP',
-        damage: '1d4',
-        type: 'healing',
-        needsAllyTarget: true
-      }
-    ],
-    level1: [
-      {
         name: 'Rallying Cry',
-        description: 'Grant advantage to an ally',
+        description: 'Allies gain +1 AC for 1 round',
         type: 'buff',
         range: 30,
         needsAllyTarget: true
       }
     ],
     level2: [
+      {
+        name: 'Enhanced Pitchfork',
+        description: '+5 to hit, 1d10 piercing damage',
+        damage: '1d10',
+        toHit: 5,
+        range: 10,
+        type: 'melee'
+      },
       {
         name: 'Interpose',
         description: 'Redirect attack to self',
@@ -106,8 +97,8 @@ const NPC_ABILITIES: { [key: string]: any } = {
     level3: [
       {
         name: 'Hearthlight',
-        description: 'Heal 2d6 HP to an ally',
-        damage: '2d6',
+        description: 'Heal 2d4 HP to an ally',
+        damage: '2d4',
         type: 'healing',
         range: 30,
         needsAllyTarget: true
@@ -136,19 +127,30 @@ export function NPCCharacterSheet({
   const hpPercentage = npc?.currentHP && npc?.maxHP ? (npc.currentHP / npc.maxHP) * 100 : 100;
   const hpColor = hpPercentage > 60 ? 'bg-green-500' : hpPercentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
 
+  // Get NPC portrait
+  const getNPCPortrait = (npcId: string) => {
+    const portraitMap: { [key: string]: string } = {
+      'the-child': '/tokens/npc/childofgommage.png',
+      'farmhand': '/tokens/npc/farmhand-fighter.png'
+    };
+    return portraitMap[npcId] || null;
+  };
+
+  const portraitUrl = getNPCPortrait(npc?.id || '');
+
   // Calculate distance between two positions
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
     const dx = Math.abs(pos1.x - pos2.x);
     const dy = Math.abs(pos1.y - pos2.y);
-    return Math.max(dx, dy) * 5; // Convert to feet
+    return Math.max(dx, dy) * 5;
   };
 
   // Get available abilities based on NPC type and level
   const getAvailableAbilities = () => {
     const npcType = npc?.id === 'the-child' ? 'the-child' : 'farmhand';
-    const abilities: any[] = [...(NPC_ABILITIES[npcType]?.level0 || [])];
+    const abilities: any[] = [];
     
-    // Add abilities from higher levels if unlocked
+    // Add abilities based on level (levels are now 1-3, not 0-3)
     if (npc?.level >= 1) {
       abilities.push(...(NPC_ABILITIES[npcType]?.level1 || []));
     }
@@ -168,7 +170,7 @@ export function NPCCharacterSheet({
     
     if (ability.needsAllyTarget) {
       return availableAllies.filter(ally => {
-        if (ally.id === npcToken.id) return false; // Can't target self
+        if (ally.id === npcToken.id) return false;
         const distance = calculateDistance(npcToken.position, ally.position);
         return distance <= (ability.range || 30);
       });
@@ -205,7 +207,6 @@ export function NPCCharacterSheet({
     
     // Check if this is a non-combat ability
     if (ability.type === 'defensive' || ability.type === 'buff') {
-      // Handle non-attack abilities
       setSelectedAction(ability);
       return;
     }
@@ -293,29 +294,52 @@ export function NPCCharacterSheet({
   return (
     <>
       <div className="px-4 py-6 space-y-4">
-        {/* NPC Header */}
+        {/* NPC Header with Portrait */}
         <div className="bg-gradient-to-br from-clair-mystical-600 to-clair-mystical-800 rounded-lg p-4 shadow-lg">
           <div className="flex items-center justify-between mb-3">
-            <div>
-              <h2 className="text-2xl font-bold text-white">{npc?.name || 'NPC'}</h2>
-              <div className="flex items-center gap-4 text-sm text-clair-gold-200 mt-1">
-                <span>Level {npc?.level || 0}</span>
-                <span>AC {npc?.ac || 12}</span>
+            <div className="flex items-center space-x-3">
+              {/* Portrait Circle */}
+              <div className="w-16 h-16 bg-white bg-opacity-20 rounded-full flex items-center justify-center border-2 border-clair-gold-400 overflow-hidden shadow-lg">
+                {portraitUrl ? (
+                  <img 
+                    src={portraitUrl} 
+                    alt={npc?.name || 'NPC'}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.error(`Failed to load image for ${npc?.name}`);
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <User className="w-8 h-8 text-clair-gold-200" />
+                )}
+              </div>
+              
+              {/* Name and Stats */}
+              <div>
+                <h2 className="text-2xl font-bold text-white">{npc?.name || 'NPC'}</h2>
+                <div className="flex items-center gap-4 text-sm text-clair-gold-200 mt-1">
+                  <span>Level {npc?.level || 1}</span>
+                  <span>AC {npc?.ac || 12}</span>
+                  <span>HP: {npc?.currentHP || 0}/{npc?.maxHP || 14}</span>
+                </div>
               </div>
             </div>
+            
+            {/* Level Selector (if GM) */}
             {onLevelChange && (
               <div className="flex items-center gap-2">
                 <label className="text-sm text-white">Level:</label>
                 <select
-                  value={npc?.level || 0}
+                  value={npc?.level || 1}
                   onChange={(e) => onLevelChange(parseInt(e.target.value))}
                   disabled={isLoading}
                   className="bg-clair-shadow-700 text-white px-3 py-1 rounded border border-clair-gold-500"
                 >
-                  <option value={0}>0 (Base)</option>
                   <option value={1}>1</option>
                   <option value={2}>2</option>
-                  <option value={3}>3</option>
+                  <option value={3}>3 (Max)</option>
                 </select>
               </div>
             )}
@@ -341,11 +365,28 @@ export function NPCCharacterSheet({
           </div>
         </div>
 
+        {/* Full Portrait Display */}
+        {portraitUrl && (
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-clair-gold-600">
+            <h3 className="font-display text-lg font-bold text-clair-gold-400 mb-3">Character Portrait</h3>
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-clair-gold-400 shadow-xl">
+                <img 
+                  src={portraitUrl} 
+                  alt={`${npc?.name} portrait`}
+                  className="w-full h-full object-cover"
+                  style={{ imageRendering: 'crisp-edges' }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Turn Indicator */}
         {isNPCTurn && (
           <div className="bg-green-900 bg-opacity-30 border border-green-600 rounded-lg p-3 animate-pulse">
             <p className="text-green-200 font-bold text-center">
-              🎯 {npc?.name || 'NPC'}'s Turn - Take an action!
+              {npc?.name || 'NPC'}'s Turn - Take an action!
             </p>
           </div>
         )}
@@ -357,35 +398,44 @@ export function NPCCharacterSheet({
             
             {!selectedAction ? (
               <div className="space-y-2">
-                {abilities.map((ability: any, index: number) => {
-                  const validTargets = getValidTargets(ability);
-                  const hasTargets = ability.type === 'defensive' || validTargets.length > 0;
-                  
-                  return (
-                    <button
-                      key={index}
-                      onClick={() => handleActionSelect(ability)}
-                      disabled={!hasTargets || isExecuting}
-                      className={`w-full p-3 rounded-lg text-white border transition-all text-left ${
-                        hasTargets 
-                          ? 'bg-clair-shadow-600 hover:bg-clair-shadow-500 border-clair-gold-500'
-                          : 'bg-gray-700 border-gray-600 opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Sword className="w-4 h-4 text-clair-gold-400" />
-                        <span className="font-bold">{ability.name}</span>
-                        {!hasTargets && (
-                          <span className="text-xs text-red-400">(No targets in range)</span>
+                {abilities.length === 0 ? (
+                  <p className="text-center text-clair-gold-400 py-4">
+                    No abilities available at level {npc?.level || 1}
+                  </p>
+                ) : (
+                  abilities.map((ability: any, index: number) => {
+                    const validTargets = getValidTargets(ability);
+                    const hasTargets = ability.type === 'defensive' || validTargets.length > 0;
+                    
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => handleActionSelect(ability)}
+                        disabled={!hasTargets || isExecuting}
+                        className={`w-full p-3 rounded-lg text-white border transition-all text-left ${
+                          hasTargets 
+                            ? 'bg-clair-shadow-600 hover:bg-clair-shadow-500 border-clair-gold-500'
+                            : 'bg-gray-700 border-gray-600 opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Sword className="w-4 h-4 text-clair-gold-400" />
+                          <span className="font-bold">{ability.name}</span>
+                          {ability.type === 'ultimate' && (
+                            <span className="text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
+                          )}
+                          {!hasTargets && (
+                            <span className="text-xs text-red-400">(No targets in range)</span>
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-300">{ability.description}</p>
+                        {ability.range && (
+                          <p className="text-xs text-clair-gold-200 mt-1">Range: {ability.range}ft</p>
                         )}
-                      </div>
-                      <p className="text-sm text-gray-300">{ability.description}</p>
-                      {ability.range && (
-                        <p className="text-xs text-clair-gold-200 mt-1">Range: {ability.range}ft</p>
-                      )}
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })
+                )}
               </div>
             ) : (
               // Action execution interface (for non-targeted abilities)
@@ -419,6 +469,24 @@ export function NPCCharacterSheet({
             )}
           </div>
         )}
+
+        {/* Level Abilities Display */}
+        <div className="bg-clair-shadow-700 rounded-lg p-4">
+          <h3 className="text-lg font-bold text-clair-gold-400 mb-3">
+            Level {npc?.level || 1} Abilities
+          </h3>
+          <div className="space-y-2 text-sm text-clair-gold-200">
+            {abilities.map((ability: any, index: number) => (
+              <div key={index} className="flex items-start gap-2">
+                <span className="text-clair-gold-400">•</span>
+                <div>
+                  <span className="font-semibold">{ability.name}:</span>
+                  <span className="ml-2 text-gray-300">{ability.description}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Enhanced Targeting Modal */}
@@ -445,7 +513,7 @@ export function NPCCharacterSheet({
   );
 }
 
-// New targeting modal component for NPCs
+// Targeting modal component for NPCs
 interface NPCTargetingModalProps {
   isOpen: boolean;
   onClose: () => void;

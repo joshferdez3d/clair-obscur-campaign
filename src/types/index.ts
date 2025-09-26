@@ -430,6 +430,11 @@ export interface BattleSession {
   iceWalls?: IceWall[];
   lightBlindEffects?: LightBlindEffect[];
 
+  npcLevels?: {
+    newRecruit: number;
+    farmhand: number;
+  };
+
     // NEW: Active protection effects tracking
   activeProtectionEffects?: Array<{
     id: string;
@@ -448,6 +453,16 @@ export interface MapConfig {
   backgroundImage: string;
   gridSize: { width: number; height: number };
   gridVisible: boolean;
+}
+
+export interface NPCLevelProgression {
+  level: number;
+  abilities: string[];
+  stats: {
+    hp?: number;
+    damage?: string;
+    additionalFeatures?: string[];
+  };
 }
 
 export interface UIState {

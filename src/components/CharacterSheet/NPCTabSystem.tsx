@@ -6,6 +6,7 @@ import { db } from '../../services/firebase';
 import { useNPCTurn } from '../../hooks/useNPCTurn';
 import { NPCCharacterSheet } from './NPCCharacterSheet';
 import type { BattleToken } from '../../types';
+import { FirestoreService } from '../../services/firestoreService';
 
 // Define the NPC data type
 interface NPCData {
@@ -50,20 +51,23 @@ export function NPCTabSystem({
   const [autoSwitchEnabled, setAutoSwitchEnabled] = useState(true);
 
   // Determine NPC type and ID
-  const getNPCInfo = (): { type: string; id: string } | null => {
-    if (characterId === 'maelle') {
-      return { type: 'the-child', id: 'the-child' };
+  const getNPCInfo = (): { type: string; id: string; levelKey: 'newRecruit' | 'farmhand' } | null => {
+    if (characterId === 'maelle' || characterId === 'gustave') {
+      return { type: 'the-child', id: 'the-child', levelKey: 'newRecruit' };
     }
     if (characterId === 'sciel') {
-      return { type: 'farmhand', id: 'farmhand' };
-    }
-    if (characterId === 'gustave' && isGM) {
-      return { type: 'the-child', id: 'the-child' };
+      return { type: 'farmhand', id: 'farmhand', levelKey: 'farmhand' };
     }
     return null;
   };
-
   const npcInfo = getNPCInfo();
+
+   // Get the level from session's npcLevels
+  const npcLevel = useMemo(() => {
+    if (!session?.npcLevels || !npcInfo) return 1;
+    return session.npcLevels[npcInfo.levelKey] || 1;
+  }, [session?.npcLevels, npcInfo?.levelKey]);
+
   
   // Hook for NPC turn management
   const { isNPCTurn, currentTurnName } = useNPCTurn({
@@ -103,28 +107,43 @@ export function NPCTabSystem({
     }
   }, [isNPCTurn, autoSwitchEnabled, currentTurnName]); // Remove activeTab from dependencies
 
-  // Initialize NPC data
+    // Initialize NPC data with correct level and HP based on level
   useEffect(() => {
     if (!npcInfo) return;
     
-    // Only update if we have a token or need to show the tab
+    // Calculate HP based on level
+    const getHPForLevel = (baseHP: number, level: number): number => {
+      if (npcInfo.id === 'the-child') {
+        // New Recruit HP progression: 25, 35, 45
+        const hpByLevel = [14, 25, 35, 45]; // index 0 is base level
+        return hpByLevel[level] || baseHP;
+      } else {
+        // Farmhand HP progression: 30, 40, 50
+        const hpByLevel = [20, 30, 40, 50]; // index 0 is base level
+        return hpByLevel[level] || baseHP;
+      }
+    };
+    
+    const maxHPForLevel = getHPForLevel(npcToken?.maxHp ?? 14, npcLevel);
+    
     setNpcData((prevData: NPCData | null) => {
       const newData = {
         id: npcInfo.id,
         name: npcInfo.id === 'the-child' ? 'The Child' : 'The Farmhand',
-        currentHP: npcToken?.hp ?? 14,
-        maxHP: npcToken?.maxHp ?? 14,
-        level: 0,
+        currentHP: npcToken?.hp ?? maxHPForLevel,
+        maxHP: maxHPForLevel,
+        level: npcLevel, // Use the level from session
       };
       
-      // Prevent unnecessary updates
       if (prevData && JSON.stringify(prevData) === JSON.stringify(newData)) {
         return prevData;
       }
       
       return newData;
     });
-  }, [npcInfo?.id, npcToken?.hp, npcToken?.maxHp]);
+  }, [npcInfo?.id, npcToken?.hp, npcToken?.maxHp, npcLevel])
+
+  
 
   // Handle HP changes
   const handleHPChange = async (newHP: number) => {
@@ -152,22 +171,24 @@ export function NPCTabSystem({
     }
   };
 
-  // Handle level changes (GM only)
+  // Handle level changes (GM only) - update the correct key
   const handleLevelChange = async (newLevel: number) => {
     if (!npcData || !isGM || !sessionId || !npcInfo) return;
 
     setIsLoading(true);
     try {
-      // Update NPC level
+      // Update the level using FirestoreService
+      const levels = {
+        newRecruit: npcInfo.levelKey === 'newRecruit' ? newLevel : session?.npcLevels?.newRecruit || 1,
+        farmhand: npcInfo.levelKey === 'farmhand' ? newLevel : session?.npcLevels?.farmhand || 1,
+      };
+      
+      await FirestoreService.updateNPCLevels(sessionId, levels);
+      
+      // Update local state
       setNpcData({
         ...npcData,
         level: newLevel
-      });
-
-      // Update in Firebase
-      const sessionRef = doc(db, 'battleSessions', sessionId);
-      await updateDoc(sessionRef, {
-        [`npcLevels.${npcInfo.type}`]: newLevel,
       });
     } catch (error) {
       console.error('Error updating NPC level:', error);
