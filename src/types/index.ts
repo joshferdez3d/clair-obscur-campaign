@@ -453,6 +453,8 @@ export interface BattleSession {
     expiresOnRound?: number;
   }>;
 
+  theChildUltimateUsed?: boolean;
+
     // NEW: Active protection effects tracking
   activeProtectionEffects?: Array<{
     id: string;

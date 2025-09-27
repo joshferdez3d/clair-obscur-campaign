@@ -1,7 +1,7 @@
 // src/components/CharacterSheet/NPCCharacterSheet.tsx
 // Enhanced NPC Character Sheet with level integration and portraits
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Heart, Shield, Sword, ChevronRight, Target, X, User } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import type { GMCombatAction } from '../../types';
@@ -74,12 +74,12 @@ const NPC_ABILITIES: { [key: string]: any } = {
       },
       {
         name: "For My Brother!",
-        description: 'Summon spectral sword (AC 14, HP 20) for 3 rounds',
+        description: 'Summon spectral sword (AC 14, HP 20) for 5 rounds',
         type: 'ultimate',
         needsTarget: false,
         summonEntity: {
           name: "Brother's Sword",
-          ac: 14,
+          ac: 17,
           hp: 20,
           maxHp: 20,
           movement: 20,
@@ -194,6 +194,17 @@ export function NPCCharacterSheet({
   };
 
   const portraitUrl = getNPCPortrait(npc?.id || '');
+
+  // Add a useEffect to check session for ultimate usage
+  useEffect(() => {
+    // Check if ultimate was already used this battle
+    const checkUltimateUsage = async () => {
+      const session = await FirestoreService.getBattleSession(sessionId);
+      setUltimateUsed(session?.theChildUltimateUsed || false);
+    };
+    checkUltimateUsage();
+  }, [sessionId]);
+
 
   // Calculate distance between two positions
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -327,59 +338,62 @@ export function NPCCharacterSheet({
   }
 };
 
-const handleSummonSword = async (ability: any) => {
-  if (!npcToken || !sessionId) return;
-  
-  setIsExecuting(true);
-  try {
-
-    const ownerId = npcToken.characterId ?? npcToken.id;
-
-    // Create a placement action for the sword
-    const action: GMCombatAction = {
-      id: `sword-placement-${Date.now()}`,
-      type: 'turret_placement' as 'turret_placement', // Ensure proper typing
-      playerId: ownerId,
-      sourcePosition: npcToken.position,
-      acRoll: 0,
-      range: 5,
-      timestamp: new Date(),
-      resolved: false,
-      hit: true,
-      needsDamageInput: false,
-      damageApplied: false,
-      playerName: npc.name || "The Child",
-      abilityName: "Summon Brother's Sword",
-      targetIds: [],
-      targetNames: [],
-      turretData: {
-        name: "Brother's Sword",
-        hp: 20,
-        maxHp: 20,
-        type: 'npc',
-        color: '#9333ea',
-        size: 1
-      }
-    };
-
-    console.log('🗡️ Creating sword placement action:', action);
-
-    // Use FirestoreService to add the action properly
-    await FirestoreService.addCombatAction(sessionId, action);
+  const handleSummonSword = async (ability: any) => {
+    if (!npcToken || !sessionId) return;
     
-    setUltimateUsed(true);
-    
-    alert("GM will click on the map to place Brother's Sword within 5ft of The Child");
-    
-    // End turn after summoning
-    await FirestoreService.nextTurn(sessionId);
-    
-  } catch (error) {
-    console.error('Failed to summon sword:', error);
-  } finally {
-    setIsExecuting(false);
-  }
-};
+    setIsExecuting(true);
+    try {
+      const ownerId = npcToken.characterId ?? npcToken.id;
+      
+      // Get current round from Firebase instead of using session
+      const currentSession = await FirestoreService.getBattleSession(sessionId);
+      const currentRound = currentSession?.combatState?.round || 1;
+      
+      // Create action for GM to place the sword
+      const action: GMCombatAction = {
+        id: `ultimate-${Date.now()}`,
+        type: 'turret_placement',
+        playerId: ownerId,
+        targetId: '',
+        sourcePosition: npcToken.position,
+        acRoll: 0,
+        range: 5,
+        timestamp: new Date(),
+        resolved: false,
+        hit: true,
+        playerName: npcToken.name || 'The Child',
+        targetName: '',
+        abilityName: ability.name,
+        turretData: {
+          name: "Brother's Sword",
+          hp: 20,
+          maxHp: 20,
+          type: 'npc' as const,  // Explicitly type this
+          color: '#9333ea',
+          size: 1
+          // Remove ac, damage, range, duration as they're not part of the type
+        }
+      };
+      
+      await FirestoreService.addCombatAction(sessionId, action);
+      
+      setUltimateUsed(true);
+      alert(`${ability.name} activated! GM will place Brother's Sword on the map.`);
+
+      await FirestoreService.nextTurn(sessionId);
+      await FirestoreService.updateBattleSession(sessionId, {
+        theChildUltimateUsed: true,
+        updatedAt: new Date()
+      });
+
+    } catch (error) {
+      console.error('Failed to summon sword:', error);
+      alert('Failed to activate ultimate ability');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
 
 const handleExecuteAction = async () => {
   if (!selectedAction || !selectedTarget || !acRoll || !npcToken) return;

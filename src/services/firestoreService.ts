@@ -468,7 +468,52 @@ static async addSummonedEntity(sessionId: string, entityData: any): Promise<void
     console.error('❌ Failed to add summoned entity:', error);
     throw error;
   }
+
 }
+
+
+  static async applyFixedDamageToEnemy(sessionId: string, actionId: string, damage: number) {
+    const session = await this.getBattleSession(sessionId);
+    if (!session || !session.pendingActions) return;
+
+    const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
+    if (!action || !action.targetId) return;
+
+    const targetToken = session.tokens[action.targetId];
+    if (!targetToken) return;
+
+    const currentHP = Number(targetToken.hp) || 0;
+    const newHP = Math.max(0, currentHP - damage);
+    
+    console.log(`Brother's Sword: Applying ${damage} damage to ${targetToken.name}: ${currentHP} -> ${newHP}`);
+
+    const updatedActions = session.pendingActions.map(a =>
+      a.id === actionId ? { ...a, resolved: true, damage: damage, damageApplied: true } : a
+    );
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    
+    if (newHP <= 0) {
+      // Enemy is dead - remove the token
+      const updatedTokens = { ...session.tokens };
+      delete updatedTokens[action.targetId];
+      
+      await updateDoc(ref, { 
+        tokens: updatedTokens,
+        pendingActions: updatedActions, 
+        updatedAt: serverTimestamp() 
+      });
+      
+      console.log(`${targetToken.name} was defeated by Brother's Sword!`);
+    } else {
+      // Enemy survives - update HP
+      await updateDoc(ref, {
+        [`tokens.${action.targetId}.hp`]: newHP,
+        pendingActions: updatedActions,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
 
 // Method to apply status effects (pin/slow/restrain)
 static async applyStatusEffect(
