@@ -1139,9 +1139,9 @@ const handleResetSession = async () => {
   const handleStartCombat = async (order: InitiativeEntry[]) => {
       try {
 
-        // Reset The Child's ultimate when combat starts
+       // Reset The Child's ultimate when combat starts
         await FirestoreService.updateBattleSession(sessionId || 'test-session', {
-          theChildUltimateUsed: false,
+          theChildUltimateUsed: false,  // This resets the ultimate
           updatedAt: new Date()
         });
         console.log('✅ The Child ultimate reset for new battle');

@@ -150,6 +150,7 @@ export function Token({
         'The Scholar\'s Apprentice': 'apprentice.png',
         'The Lost Lover': 'lover.png',
         "Gustave's Turret": 'turret.png',
+        "Brother's Sword": 'sword.png',
       };
       
       const filename = npcImageMap[token.name];

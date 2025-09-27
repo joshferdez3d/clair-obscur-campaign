@@ -5,8 +5,10 @@ import React, { useState, useEffect } from 'react';
 import { Heart, Shield, Sword, ChevronRight, Target, X, User } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import type { GMCombatAction } from '../../types';
-import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { doc, updateDoc, arrayUnion, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
+import { useUltimateVideo } from '../../hooks/useUltimateVideo';
+
 interface NPCCharacterSheetProps {
   npc: any;
   sessionId: string;
@@ -180,6 +182,7 @@ export function NPCCharacterSheet({
   const [enchantmentType, setEnchantmentType] = useState<'pin-slow' | 'pin-restrain' | null>(null);
   const [ultimateUsed, setUltimateUsed] = useState(false);
   const [summonedSword, setSummonedSword] = useState<any>(null);
+  const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
 
   const hpPercentage = npc?.currentHP && npc?.maxHP ? (npc.currentHP / npc.maxHP) * 100 : 100;
   const hpColor = hpPercentage > 60 ? 'bg-green-500' : hpPercentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
@@ -195,16 +198,28 @@ export function NPCCharacterSheet({
 
   const portraitUrl = getNPCPortrait(npc?.id || '');
 
-  // Add a useEffect to check session for ultimate usage
   useEffect(() => {
-    // Check if ultimate was already used this battle
     const checkUltimateUsage = async () => {
       const session = await FirestoreService.getBattleSession(sessionId);
       setUltimateUsed(session?.theChildUltimateUsed || false);
+      
+      // Also check if combat is active
+      const combatActive = session?.combatState?.isActive || false;
+      
+      // If combat is not active, the ultimate should be considered "used" 
+      // (disabled between battles)
+      if (!combatActive) {
+        setUltimateUsed(true);
+      }
     };
+    
     checkUltimateUsage();
+    
+    // Set up interval to check periodically for changes
+    const interval = setInterval(checkUltimateUsage, 1000);
+    
+    return () => clearInterval(interval);
   }, [sessionId]);
-
 
   // Calculate distance between two positions
   const calculateDistance = (pos1: { x: number; y: number }, pos2: { x: number; y: number }): number => {
@@ -348,6 +363,13 @@ export function NPCCharacterSheet({
       // Get current round from Firebase instead of using session
       const currentSession = await FirestoreService.getBattleSession(sessionId);
       const currentRound = currentSession?.combatState?.round || 1;
+
+      try {
+        await triggerUltimate('the-child', 'For My Brother');
+      } catch (error) {
+        console.error('Failed to trigger ultimate video:', error);
+      }
+
       
       // Create action for GM to place the sword
       const action: GMCombatAction = {
