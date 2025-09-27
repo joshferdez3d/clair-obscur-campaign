@@ -99,12 +99,12 @@ export function MaelleCharacterSheet({
 
   const playerToken = session?.tokens 
     ? Object.entries(session.tokens).find(([key, t]: [string, any]) => {
-        console.log(`Checking token ${key}:`, {
-          tokenCharacterId: t.characterId,
-          tokenId: t.id,
-          tokenName: t.name,
-          tokenType: t.type,
-        });
+        // console.log(`Checking token ${key}:`, {
+        //   tokenCharacterId: t.characterId,
+        //   tokenId: t.id,
+        //   tokenName: t.name,
+        //   tokenType: t.type,
+        // });
         
         // Try multiple matching strategies
         return t.characterId === character.id || 
@@ -114,7 +114,7 @@ export function MaelleCharacterSheet({
       })?.[1] as BattleToken
     : null;
 
-  console.log('Player token result:', playerToken);
+  // console.log('Player token result:', playerToken);
 
   const handleMovement = async (newPosition: Position): Promise<boolean> => {
     if (!sessionId || !playerToken) return false;

@@ -62,7 +62,7 @@ export function NPCTabSystem({
   };
   const npcInfo = getNPCInfo();
 
-   // Get the level from session's npcLevels
+  // Get the level from session's npcLevels
   const npcLevel = useMemo(() => {
     if (!session?.npcLevels || !npcInfo) return 1;
     return session.npcLevels[npcInfo.levelKey] || 1;
@@ -107,20 +107,18 @@ export function NPCTabSystem({
     }
   }, [isNPCTurn, autoSwitchEnabled, currentTurnName]); // Remove activeTab from dependencies
 
-    // Initialize NPC data with correct level and HP based on level
+  // Initialize NPC data with correct level and HP based on level
   useEffect(() => {
     if (!npcInfo) return;
     
     // Calculate HP based on level
     const getHPForLevel = (baseHP: number, level: number): number => {
       if (npcInfo.id === 'the-child') {
-        // New Recruit HP progression: 25, 35, 45
-        const hpByLevel = [14, 25, 35, 45]; // index 0 is base level
-        return hpByLevel[level] || baseHP;
+        const hpByLevel = [14, 25, 35];
+        return hpByLevel[level - 1] || baseHP;
       } else {
-        // Farmhand HP progression: 30, 40, 50
-        const hpByLevel = [20, 30, 40, 50]; // index 0 is base level
-        return hpByLevel[level] || baseHP;
+        const hpByLevel = [30, 40, 50];
+        return hpByLevel[level - 1] || baseHP;
       }
     };
     
@@ -132,7 +130,7 @@ export function NPCTabSystem({
         name: npcInfo.id === 'the-child' ? 'The Child' : 'The Farmhand',
         currentHP: npcToken?.hp ?? maxHPForLevel,
         maxHP: maxHPForLevel,
-        level: npcLevel, // Use the level from session
+        level: npcLevel,
       };
       
       if (prevData && JSON.stringify(prevData) === JSON.stringify(newData)) {
@@ -142,8 +140,6 @@ export function NPCTabSystem({
       return newData;
     });
   }, [npcInfo?.id, npcToken?.hp, npcToken?.maxHp, npcLevel])
-
-  
 
   // Handle HP changes
   const handleHPChange = async (newHP: number) => {
@@ -171,13 +167,26 @@ export function NPCTabSystem({
     }
   };
 
-  // Handle level changes (GM only) - update the correct key
   const handleLevelChange = async (newLevel: number) => {
     if (!npcData || !isGM || !sessionId || !npcInfo) return;
 
     setIsLoading(true);
     try {
-      // Update the level using FirestoreService
+      // Calculate new HP based on level - DON'T use current token's maxHP as base
+      const getHPForLevel = (level: number): number => {
+        if (npcInfo.id === 'the-child') {
+          const hpByLevel = [14, 25, 35];
+          return hpByLevel[level - 1] || 14;
+        } else {
+          const hpByLevel = [30, 40, 50];
+          return hpByLevel[level - 1] || 30;
+        }
+      };
+      
+      // Get the new max HP for this level directly
+      const newMaxHP = getHPForLevel(newLevel);
+      
+      // Update the level in Firestore
       const levels = {
         newRecruit: npcInfo.levelKey === 'newRecruit' ? newLevel : session?.npcLevels?.newRecruit || 1,
         farmhand: npcInfo.levelKey === 'farmhand' ? newLevel : session?.npcLevels?.farmhand || 1,
@@ -185,11 +194,45 @@ export function NPCTabSystem({
       
       await FirestoreService.updateNPCLevels(sessionId, levels);
       
-      // Update local state
-      setNpcData({
-        ...npcData,
-        level: newLevel
-      });
+      // Also update the token's HP if it exists
+      if (npcToken?.id) {
+        const sessionRef = doc(db, 'battleSessions', sessionId);
+        
+        // Calculate proportional HP (maintain HP ratio) or heal to full on level up
+        // Option 1: Maintain HP ratio
+        // const hpRatio = npcData.currentHP / npcData.maxHP;
+        // const newCurrentHP = Math.floor(newMaxHP * hpRatio);
+        
+        // Option 2: Heal to full on level up (recommended for level increases)
+        const newCurrentHP = newLevel > npcData.level 
+          ? newMaxHP  // Full heal on level up
+          : Math.min(npcData.currentHP, newMaxHP);  // Keep current HP if leveling down
+        
+        await updateDoc(sessionRef, {
+          [`tokens.${npcToken.id}.maxHp`]: newMaxHP,
+          [`tokens.${npcToken.id}.hp`]: newCurrentHP,
+        });
+        
+        console.log(`✅ Updated ${npcData.name} to Level ${newLevel}: ${newCurrentHP}/${newMaxHP} HP`);
+        
+        // Update local state
+        setNpcData({
+          ...npcData,
+          level: newLevel,
+          maxHP: newMaxHP,
+          currentHP: newCurrentHP
+        });
+      } else {
+        // Just update local state if no token yet
+        setNpcData({
+          ...npcData,
+          level: newLevel,
+          maxHP: newMaxHP,
+          currentHP: newMaxHP  // Start at full HP when no token exists
+        });
+        
+        console.log(`✅ Updated ${npcData.name} to Level ${newLevel} (no token yet)`);
+      }
     } catch (error) {
       console.error('Error updating NPC level:', error);
     } finally {

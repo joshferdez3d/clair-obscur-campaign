@@ -283,184 +283,174 @@ export function NPCCharacterSheet({
     return Math.max(1, total);
   };
 
-  // Updated handleActionSelect to handle enchantments and ultimate:
   const handleActionSelect = (ability: any) => {
-    if (!isNPCTurn || isExecuting) return;
+  if (!isNPCTurn || isExecuting) return;
+  
+  // Check if this is the ultimate and if it's already used
+  if (ability.type === 'ultimate' && ultimateUsed) {
+    alert('Ultimate ability already used this battle!');
+    return;
+  }
+  
+  // Handle Pinning Throw enchantment - DON'T END TURN
+  if (ability.type === 'enchantment') {
+    setHasPinningEnchantment(true);
+    setEnchantmentType(ability.appliesEffect as 'pin-slow' | 'pin-restrain');
     
-    // Check if this is the ultimate and if it's already used
-    if (ability.type === 'ultimate' && ultimateUsed) {
-      alert('Ultimate ability already used this battle!');
+    // Show confirmation but DON'T end turn
+    alert(`Dagger enchanted! Next attack will ${ability.appliesEffect === 'pin-slow' ? 'slow' : 'restrain'} the target. You can now throw your dagger!`);
+    
+    // DON'T call FirestoreService.nextTurn here - let the player continue their turn
+    return;
+  }
+  
+  // Handle Ultimate summon
+  if (ability.type === 'ultimate') {
+    handleSummonSword(ability);
+    return;
+  }
+  
+  // Check valid targets for attack abilities
+  if (ability.type === 'ranged' || ability.type === 'melee') {
+    const validTargets = getValidTargets(ability);
+    
+    if (validTargets.length === 0) {
+      alert(`No valid targets in range (${ability.range || 5}ft)`);
       return;
     }
     
-    // Handle Pinning Throw enchantment
-    if (ability.type === 'enchantment') {
-      setHasPinningEnchantment(true);
-      setEnchantmentType(ability.appliesEffect as 'pin-slow' | 'pin-restrain');
-      
-      // Show confirmation and end turn
-      alert(`Dagger enchanted! Next attack will ${ability.appliesEffect === 'pin-slow' ? 'slow' : 'restrain'} the target.`);
-      FirestoreService.nextTurn(sessionId);
-      return;
-    }
-    
-    // Handle Ultimate summon
-    if (ability.type === 'ultimate') {
-      handleSummonSword(ability);
-      return;
-    }
-    
-    // Check valid targets for attack abilities
-    if (ability.type === 'ranged' || ability.type === 'melee') {
-      const validTargets = getValidTargets(ability);
-      
-      if (validTargets.length === 0) {
-        alert(`No valid targets in range (${ability.range || 5}ft)`);
-        return;
+    setSelectedAction(ability);
+    setShowTargetingModal(true);
+  } else {
+    // Non-combat abilities
+    setSelectedAction(ability);
+  }
+};
+
+const handleSummonSword = async (ability: any) => {
+  if (!npcToken || !sessionId) return;
+  
+  setIsExecuting(true);
+  try {
+
+    const ownerId = npcToken.characterId ?? npcToken.id;
+
+    // Create a placement action for the sword
+    const action: GMCombatAction = {
+      id: `sword-placement-${Date.now()}`,
+      type: 'turret_placement' as 'turret_placement', // Ensure proper typing
+      playerId: ownerId,
+      sourcePosition: npcToken.position,
+      acRoll: 0,
+      range: 5,
+      timestamp: new Date(),
+      resolved: false,
+      hit: true,
+      needsDamageInput: false,
+      damageApplied: false,
+      playerName: npc.name || "The Child",
+      abilityName: "Summon Brother's Sword",
+      targetIds: [],
+      targetNames: [],
+      turretData: {
+        name: "Brother's Sword",
+        hp: 20,
+        maxHp: 20,
+        type: 'npc',
+        color: '#9333ea',
+        size: 1
       }
-      
-      setSelectedAction(ability);
-      setShowTargetingModal(true);
-    } else {
-      // Non-combat abilities
-      setSelectedAction(ability);
-    }
-  };
+    };
 
-  const handleSummonSword = async (ability: any) => {
-    if (!npcToken || !sessionId) return;
+    console.log('🗡️ Creating sword placement action:', action);
+
+    // Use FirestoreService to add the action properly
+    await FirestoreService.addCombatAction(sessionId, action);
     
-    setIsExecuting(true);
-    try {
-      // Create a placement action similar to turret placement
-      const action: GMCombatAction = {
-        id: `sword-placement-${Date.now()}`,
-        type: 'turret_placement', // Reuse turret placement type for simplicity
-        playerId: npcToken.id,
-        sourcePosition: npcToken.position,
-        acRoll: 0,
-        range: 5, // Place within 5ft of The Child
-        timestamp: new Date(),
-        resolved: false,
-        hit: true,
-        needsDamageInput: false,
-        damageApplied: false,
-        playerName: npc.name,
-        abilityName: "Summon Brother's Sword",
-        targetIds: [],
-        targetNames: [],
-        // Custom data for sword placement
-        turretData: {
-          name: "Brother's Sword",
-          hp: 20,
-          maxHp: 20,
-          type: 'npc', // Special type to distinguish from normal turrets
-          color: '#9333ea', // Purple for spectral
-          size: 1
-        },
-        // Add summon-specific data
-        summonData: {
-          entityName: "Brother's Sword",
-          entityId: `sword-${Date.now()}`,
-          hp: 20,
-          maxHp: 20,
-          ac: 14,
-          duration: 3
-        }
-      };
-
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, {
-        pendingActions: arrayUnion(action),
-        updatedAt: serverTimestamp()
-      });
-
-      setUltimateUsed(true);
-      
-      alert("GM will click on the map to place Brother's Sword within 5ft of The Child");
-      
-      // End turn after summoning
-      await FirestoreService.nextTurn(sessionId);
-      
-    } catch (error) {
-      console.error('Failed to summon sword:', error);
-    } finally {
-      setIsExecuting(false);
-    }
-  };
-
- // Updated handleExecuteAction to apply enchantment effects:
-  const handleExecuteAction = async () => {
-    if (!selectedAction || !selectedTarget || !acRoll || !npcToken) return;
+    setUltimateUsed(true);
     
-    setIsExecuting(true);
+    alert("GM will click on the map to place Brother's Sword within 5ft of The Child");
     
-    try {
-      const target = availableEnemies.find(e => e.id === selectedTarget);
-      if (!target) return;
-      
-      const totalRoll = parseInt(acRoll) + (selectedAction.toHit || 0);
-      const hit = totalRoll >= (target.ac || 10);
-      
-      // Check if we need to apply pinning effect
-      let statusEffect = null;
-      if (hit && hasPinningEnchantment) {
-        statusEffect = enchantmentType;
-        setHasPinningEnchantment(false);
-        setEnchantmentType(null);
-      }
-      
-      // Create combat action
-      const action: GMCombatAction = {
-        id: `npc-action-${Date.now()}`,
-        type: 'attack',
-        playerId: npcToken.id,
-        playerName: npc.name,
-        targetId: selectedTarget,
-        targetName: target.name,
-        sourcePosition: npcToken.position,
-        range: selectedAction.range || 5,
-        timestamp: new Date(),
-        resolved: false,
-        hit,
-        acRoll: totalRoll,
-        abilityName: selectedAction.name,
-        needsDamageInput: hit,
-        damageApplied: false,
-        statusEffect // Include status effect if applicable
-      };
-      
-      await FirestoreService.addCombatAction(sessionId, action);
-      
-      // Apply visual effect if pinning
-      if (hit && statusEffect) {
-        await FirestoreService.applyStatusEffect(sessionId, selectedTarget, statusEffect);
-      }
-      
-      // Handle Reposition after attack
-      if (npc?.id === 'the-child') {
-        const nearestAlly = findNearestAlly();
-        if (nearestAlly) {
-          await repositionBehindAlly(nearestAlly);
-        }
-      }
-      
-      // End turn
-      await FirestoreService.nextTurn(sessionId);
-      
-      // Reset state
-      setSelectedAction(null);
-      setSelectedTarget('');
-      setACRoll('');
-      setShowTargetingModal(false);
-      
-    } catch (error) {
-      console.error('Failed to execute NPC action:', error);
-    } finally {
-      setIsExecuting(false);
-    }
-  };
+    // End turn after summoning
+    await FirestoreService.nextTurn(sessionId);
+    
+  } catch (error) {
+    console.error('Failed to summon sword:', error);
+  } finally {
+    setIsExecuting(false);
+  }
+};
 
+const handleExecuteAction = async () => {
+  if (!selectedAction || !selectedTarget || !acRoll || !npcToken) return;
+  
+  setIsExecuting(true);
+  
+  try {
+    const target = availableEnemies.find(e => e.id === selectedTarget);
+    if (!target) return;
+    
+    const totalRoll = parseInt(acRoll) + (selectedAction.toHit || 0);
+    const hit = totalRoll >= (target.ac || 10);
+    
+    // Check if we need to apply pinning effect
+    let statusEffect = null;
+    if (hit && hasPinningEnchantment) {
+      statusEffect = enchantmentType;
+      setHasPinningEnchantment(false);
+      setEnchantmentType(null);
+    }
+    
+    // Create REGULAR combat action (NOT sword placement!)
+    const action: GMCombatAction = {
+      id: `npc-action-${Date.now()}`,
+      type: 'attack',  // REGULAR ATTACK, not turret_placement
+      playerId: npcToken.id,
+      playerName: npc.name,
+      targetId: selectedTarget,
+      targetName: target.name,
+      sourcePosition: npcToken.position,
+      range: selectedAction.range || 5,
+      timestamp: new Date(),
+      resolved: false,
+      hit,
+      acRoll: totalRoll,
+      abilityName: selectedAction.name,
+      needsDamageInput: hit,
+      damageApplied: false,
+      statusEffect // Include status effect if applicable
+    };
+    
+    await FirestoreService.addCombatAction(sessionId, action);
+    
+    // Apply visual effect if pinning
+    if (hit && statusEffect) {
+      await FirestoreService.applyStatusEffect(sessionId, selectedTarget, statusEffect);
+    }
+    
+    // Handle Reposition after attack
+    if (npc?.id === 'the-child') {
+      const nearestAlly = findNearestAlly();
+      if (nearestAlly) {
+        await repositionBehindAlly(nearestAlly);
+      }
+    }
+    
+    // End turn
+    await FirestoreService.nextTurn(sessionId);
+    
+    // Reset state
+    setSelectedAction(null);
+    setSelectedTarget('');
+    setACRoll('');
+    setShowTargetingModal(false);
+    
+  } catch (error) {
+    console.error('Failed to execute NPC action:', error);
+  } finally {
+    setIsExecuting(false);
+  }
+};
   // Helper function to find nearest ally:
   const findNearestAlly = () => {
     if (!npcToken?.position || !availableAllies.length) return null;
@@ -636,7 +626,9 @@ export function NPCCharacterSheet({
                       if (ability.type === 'ultimate' && ultimateUsed) {
                         hasTargets = false; // Ultimate already used
                       }
-                      
+
+                      const isEnchantedAttack = ability.type === 'ranged' && hasPinningEnchantment;
+
                       return (
                         <button
                           key={index}
@@ -651,6 +643,11 @@ export function NPCCharacterSheet({
                           <div className="flex items-center gap-2 mb-1">
                             <Sword className="w-4 h-4 text-clair-gold-400" />
                             <span className="font-bold">{ability.name}</span>
+                            {isEnchantedAttack && (
+                              <span className="text-xs bg-purple-500 px-2 py-1 rounded animate-pulse">
+                                ENCHANTED - {enchantmentType === 'pin-slow' ? 'SLOW' : 'RESTRAIN'}
+                              </span>
+                            )}
                             {ability.type === 'ultimate' && (
                               <span className="text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
                             )}

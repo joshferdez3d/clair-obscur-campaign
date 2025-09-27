@@ -41,6 +41,7 @@ import {
 } from '../utils/enemyHelperUtil';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
 import NPCLevelManager from '../components/NPCLevelManager';
+import { mapFirebaseToLocal } from '../utils/npcLevelMapper';
 
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -58,7 +59,7 @@ export function GMView() {
   const [isPlacingNPC, setIsPlacingNPC] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
-  const [npcLevels, setNpcLevels] = useState({ newRecruit: 1, farmhand: 1 });
+  const [npcLevels, setNpcLevels] = useState({ theChild: 1, farmhand: 1 });
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -271,7 +272,8 @@ export function GMView() {
 
   useEffect(() => {
     if (session?.npcLevels) {
-      setNpcLevels(session.npcLevels);
+      // Use the mapper utility to convert Firebase format to local format
+      setNpcLevels(mapFirebaseToLocal(session.npcLevels));
     } 
   }, [session]);
 
@@ -660,14 +662,25 @@ const handleResetSession = async () => {
       
       if (turretPlacementAction) {
         // Check if placement is within 5ft of player
-        const playerToken = Object.values(session.tokens).find(
-          t => t.characterId === turretPlacementAction.playerId
-        );
-        
-        if (playerToken) {
+        const ownerToken = Object.values(session.tokens).find((t: any) => {
+          const byId = t.id === turretPlacementAction.playerId;
+          const byCharacterId = t.characterId === turretPlacementAction.playerId;
+          const isSword = turretPlacementAction.turretData?.name === "Brother's Sword";
+          const byNPCName = isSword && (t.type === 'npc') && (t.name === 'The Child');
+          return byId || byCharacterId || byNPCName;
+        });
+
+        if (!ownerToken) {
+          console.error('Could not find owner token for placement action:', turretPlacementAction);
+          alert('Could not find the summoner on the battlefield!');
+          return;
+        }
+
+
+        if (ownerToken) {
           const distance = Math.max(
-            Math.abs(position.x - playerToken.position.x),
-            Math.abs(position.y - playerToken.position.y)
+            Math.abs(position.x - ownerToken.position.x),
+            Math.abs(position.y - ownerToken.position.y)
           ) * 5;
           
           if (distance > 5) {
@@ -715,88 +728,129 @@ const handleResetSession = async () => {
       }
     }
 
-    // Handle Brother's Sword placement
-    if (session?.pendingActions) {
-      const swordPlacementAction = session.pendingActions.find(
-        (action: GMCombatAction) => 
-          action.type === 'turret_placement' && 
-          action.turretData?.name === "Brother's Sword" &&
-          !action.resolved
+    
+// Handle Brother's Sword placement
+if (session?.pendingActions) {
+  console.log('🔍 Checking for sword placement in pending actions:', session.pendingActions.length, 'actions');
+  
+  // Log all pending actions for debugging
+  session.pendingActions.forEach((action: any, index: number) => {
+    console.log(`  Action ${index}:`, {
+      id: action.id,
+      type: action.type,
+      resolved: action.resolved,
+      abilityName: action.abilityName,
+      turretData: action.turretData
+    });
+  });
+  
+  const swordPlacementAction = session.pendingActions.find(
+    (action: GMCombatAction) => {
+      // Check multiple conditions to catch the sword placement
+      const isTurretPlacement = action.type === 'turret_placement';
+      const isSwordByName = action.turretData?.name === "Brother's Sword";
+      const isSwordByAbility = action.abilityName?.includes("Sword");
+      const notResolved = !action.resolved;
+      
+      console.log(`  Checking action ${action.id}:`, {
+        isTurretPlacement,
+        isSwordByName,
+        isSwordByAbility,
+        notResolved
+      });
+      
+      return isTurretPlacement && (isSwordByName || isSwordByAbility) && notResolved;
+    }
+  );
+  
+  if (swordPlacementAction) {
+    console.log('⚔️ Found sword placement action:', swordPlacementAction);
+    
+    // Find The Child token - check multiple ways
+    const theChildToken = Object.values(session.tokens).find(
+      (t: any) => t.name === "The Child" || 
+                   t.id === swordPlacementAction.playerId ||
+                   t.id?.includes('npc') && t.name === "The Child"
+    );
+    
+    if (!theChildToken) {
+      console.error('❌ Could not find The Child token');
+      alert("Could not find The Child on the battlefield!");
+      return;
+    }
+    
+    console.log('👶 Found The Child at:', theChildToken.position);
+    
+    const distance = Math.max(
+      Math.abs(position.x - theChildToken.position.x),
+      Math.abs(position.y - theChildToken.position.y)
+    ) * 5;
+    
+    console.log(`📏 Distance from The Child: ${distance}ft`);
+    
+    if (distance > 5) {
+      alert("Brother's Sword must be placed within 5ft of The Child!");
+      return;
+    }
+    
+    // Create sword token
+    const swordId = `sword-${Date.now()}`;
+    const swordToken: BattleToken = {
+      id: swordId,
+      name: "Brother's Sword",
+      position,
+      type: 'npc',
+      hp: 20,
+      maxHp: 20,
+      ac: 14,
+      size: 1,
+      color: '#9333ea' // Purple for spectral
+    };
+    
+    try {
+      // Add sword to session
+      const updatedTokens = { ...session.tokens, [swordId]: swordToken };
+      
+      // Track the summon with round information
+      const currentRound = session.combatState?.round || 1;
+      const activeSummons = [
+        ...(session.activeSummons || []),
+        {
+          id: swordId,
+          name: "Brother's Sword",
+          summoner: 'the-child',
+          roundsRemaining: 3,
+          createdAt: Date.now(),
+          expiresOnRound: currentRound + 3
+        }
+      ];
+      
+      // Mark placement action as resolved
+      const updatedActions = session.pendingActions.map((a: GMCombatAction) =>
+        a.id === swordPlacementAction.id ? { ...a, resolved: true } : a
       );
       
-      if (swordPlacementAction) {
-        // Check if placement is within 5ft of The Child
-        const theChildToken = Object.values(session.tokens).find(
-          t => t.id === swordPlacementAction.playerId || t.name === "The Child"
-        );
-        
-        if (theChildToken) {
-          const distance = Math.max(
-            Math.abs(position.x - theChildToken.position.x),
-            Math.abs(position.y - theChildToken.position.y)
-          ) * 5;
-          
-          if (distance > 5) {
-            alert("Brother's Sword must be placed within 5ft of The Child!");
-            return;
-          }
-          
-          // Create sword token
-          const swordId = `sword-${Date.now()}`;
-          const swordToken: BattleToken = {
-            id: swordId,
-            name: "Brother's Sword",
-            position,
-            type: 'npc',
-            hp: 20,
-            maxHp: 20,
-            ac: 14,
-            size: 1,
-            color: '#9333ea', // Purple for spectral
-            controlledBy: 'the-child' as any // Mark as controlled by The Child
-          };
-          
-          try {
-            // Add sword to session
-            const updatedTokens = { ...session.tokens, [swordId]: swordToken };
-            
-            // Track the summon with round information
-            const currentRound = session.combatState?.round || 1;
-            const activeSummons = [
-              ...(session.activeSummons || []),
-              {
-                id: swordId,
-                name: "Brother's Sword",
-                summoner: 'the-child',
-                roundsRemaining: 3,
-                createdAt: Date.now(),
-                expiresOnRound: currentRound + 3
-              }
-            ];
-            
-            // Mark placement action as resolved
-            const updatedActions = session.pendingActions.map((a: GMCombatAction) =>
-              a.id === swordPlacementAction.id ? { ...a, resolved: true } : a
-            );
-            
-            await FirestoreService.updateBattleSession(sessionId!, {
-              tokens: updatedTokens,
-              pendingActions: updatedActions,
-              activeSummons: activeSummons,
-              updatedAt: new Date()
-            });
-            
-            console.log(`Brother's Sword placed at (${position.x}, ${position.y})`);
-            
-          } catch (error) {
-            console.error("Failed to place Brother's Sword:", error);
-            alert("Failed to place Brother's Sword. Please try again.");
-          }
-        }
-        
-        return; // Don't continue to enemy placement
-      }
+      await FirestoreService.updateBattleSession(sessionId!, {
+        tokens: updatedTokens,
+        pendingActions: updatedActions,
+        activeSummons: activeSummons,
+        updatedAt: new Date()
+      });
+      
+      console.log(`✅ Brother's Sword placed at (${position.x}, ${position.y})`);
+      alert("Brother's Sword has been summoned!");
+      
+    } catch (error) {
+      console.error("Failed to place Brother's Sword:", error);
+      alert("Failed to place Brother's Sword. Please try again.");
     }
+    
+    return; // Don't continue to other placement checks
+  } else {
+    console.log('🔍 No sword placement action found in pending actions');
+  }
+}
+
 
       if (pendingExpeditioner) {
         await handleMapClickForExpeditioner(position);
@@ -1334,7 +1388,7 @@ const handleResetSession = async () => {
         </div>
           <NPCLevelManager 
             sessionId={sessionId || 'test-session'} 
-            currentLevels={npcLevels}
+            currentLevels={npcLevels}  // Now correctly typed as { theChild, farmhand }
           />
       </div>
 
