@@ -5,7 +5,8 @@ import React, { useState } from 'react';
 import { Heart, Shield, Sword, ChevronRight, Target, X, User } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import type { GMCombatAction } from '../../types';
-
+import { doc, updateDoc, arrayUnion, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../services/firebase';
 interface NPCCharacterSheetProps {
   npc: any;
   sessionId: string;
@@ -18,49 +19,85 @@ interface NPCCharacterSheetProps {
   npcToken?: any;
 }
 
-// Enhanced NPC data with proper attack ranges and level progression
 const NPC_ABILITIES: { [key: string]: any } = {
   'the-child': {
     level1: [
       {
-        name: 'Basic Attack',
-        description: '+3 to hit, 1d6 slashing damage',
-        damage: '1d6',
+        name: 'Dagger Throw',
+        description: '+3 to hit, 4 slashing damage',
+        damage: '4', // Fixed damage at level 1
         toHit: 3,
-        range: 5,
-        type: 'melee'
+        range: 10,
+        type: 'ranged'
       },
       {
-        name: 'Focused Strike',
-        description: '+4 to hit, 1d6+2 slashing damage',
-        damage: '1d6+2',
-        toHit: 4,
-        range: 5,
-        type: 'melee'
+        name: 'Reposition',
+        description: 'After attacking, move behind nearest ally',
+        type: 'movement',
+        needsTarget: false,
+        automatic: true // Triggers after attack
       }
     ],
     level2: [
       {
-        name: 'Disciplined Slash',
-        description: '+5 to hit, 1d8 slashing damage, can cleave',
-        damage: '1d8',
-        toHit: 5,
-        range: 5,
-        type: 'melee'
+        name: 'Dagger Throw',
+        description: '+3 to hit, 1d6 slashing damage', 
+        damage: '1d6',
+        toHit: 3,
+        range: 15,
+        type: 'ranged'
+      },
+      {
+        name: 'Pinning Throw',
+        description: 'Next attack pins target, reducing speed by 10ft',
+        type: 'enchantment',
+        needsTarget: false,
+        appliesEffect: 'pin-slow'
       }
     ],
     level3: [
       {
-        name: 'For My Brother!',
-        description: '+6 to hit, 2d10 slashing damage, advantage for 3 rounds',
-        damage: '2d10',
-        toHit: 6,
-        range: 5,
-        type: 'ultimate'
+        name: 'Dagger Throw (Enhanced)',
+        description: '+4 to hit, 1d8 slashing damage',
+        damage: '1d8',
+        toHit: 4,
+        range: 15,
+        type: 'ranged'
+      },
+      {
+        name: 'Pinning Throw (Upgraded)',
+        description: 'Next attack restrains target (DC 13 STR save)',
+        type: 'enchantment',
+        needsTarget: false,
+        appliesEffect: 'pin-restrain',
+        saveDC: 13
+      },
+      {
+        name: "For My Brother!",
+        description: 'Summon spectral sword (AC 14, HP 20) for 3 rounds',
+        type: 'ultimate',
+        needsTarget: false,
+        summonEntity: {
+          name: "Brother's Sword",
+          ac: 14,
+          hp: 20,
+          maxHp: 20,
+          movement: 20,
+          attack: {
+            name: 'Spectral Slash',
+            toHit: 5,
+            damage: '1d10+2',
+            range: 5,
+            description: '+5 to hit, 1d10+2 slashing damage'
+          },
+          duration: 3, // rounds
+          immunities: ['conditions']
+        }
       }
     ]
   },
   'farmhand': {
+    // Keep existing farmhand abilities unchanged
     level1: [
       {
         name: 'Pitchfork Jab',
@@ -107,6 +144,22 @@ const NPC_ABILITIES: { [key: string]: any } = {
   }
 };
 
+// Additional state tracking for The Child's special mechanics
+interface ChildNPCState {
+  hasPinningEnchantment: boolean;
+  enchantmentType?: 'pin-slow' | 'pin-restrain';
+  ultimateUsed: boolean;
+  summonedSword?: {
+    id: string;
+    hp: number;
+    maxHp: number;
+    ac: number;
+    roundsRemaining: number;
+    position?: { x: number; y: number };
+  };
+}
+
+
 export function NPCCharacterSheet({ 
   npc, 
   sessionId,
@@ -123,6 +176,10 @@ export function NPCCharacterSheet({
   const [acRoll, setACRoll] = useState<string>('');
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [hasPinningEnchantment, setHasPinningEnchantment] = useState(false);
+  const [enchantmentType, setEnchantmentType] = useState<'pin-slow' | 'pin-restrain' | null>(null);
+  const [ultimateUsed, setUltimateUsed] = useState(false);
+  const [summonedSword, setSummonedSword] = useState<any>(null);
 
   const hpPercentage = npc?.currentHP && npc?.maxHP ? (npc.currentHP / npc.maxHP) * 100 : 100;
   const hpColor = hpPercentage > 60 ? 'bg-green-500' : hpPercentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
@@ -145,41 +202,66 @@ export function NPCCharacterSheet({
     return Math.max(dx, dy) * 5;
   };
 
-  // Get available abilities based on NPC type and level
+  // Update getAvailableAbilities to handle level-based ability selection:
   const getAvailableAbilities = () => {
     const npcType = npc?.id === 'the-child' ? 'the-child' : 'farmhand';
     const abilities: any[] = [];
     
-    // Add abilities based on level (levels are now 1-3, not 0-3)
-    if (npc?.level >= 1) {
-      abilities.push(...(NPC_ABILITIES[npcType]?.level1 || []));
-    }
-    if (npc?.level >= 2) {
-      abilities.push(...(NPC_ABILITIES[npcType]?.level2 || []));
-    }
-    if (npc?.level >= 3) {
-      abilities.push(...(NPC_ABILITIES[npcType]?.level3 || []));
+    if (npc?.id === 'the-child') {
+      // For The Child, abilities change per level (not additive)
+      const level = npc?.level || 1;
+      
+      if (level === 1) {
+        abilities.push(...NPC_ABILITIES['the-child'].level1);
+      } else if (level === 2) {
+        // Level 2 gets upgraded basic attack and Pinning Throw
+        abilities.push(
+          NPC_ABILITIES['the-child'].level2[0], // Upgraded Dagger Throw
+          NPC_ABILITIES['the-child'].level2[1], // Pinning Throw
+          NPC_ABILITIES['the-child'].level1[1]  // Keep Reposition
+        );
+      } else if (level === 3) {
+        // Level 3 gets all abilities including ultimate
+        abilities.push(...NPC_ABILITIES['the-child'].level3);
+        abilities.push(NPC_ABILITIES['the-child'].level1[1]); // Keep Reposition
+      }
+    } else {
+      // Farmhand keeps the additive system
+      if (npc?.level >= 1) {
+        abilities.push(...(NPC_ABILITIES[npcType]?.level1 || []));
+      }
+      if (npc?.level >= 2) {
+        abilities.push(...(NPC_ABILITIES[npcType]?.level2 || []));
+      }
+      if (npc?.level >= 3) {
+        abilities.push(...(NPC_ABILITIES[npcType]?.level3 || []));
+      }
     }
     
     return abilities;
   };
 
-  // Get valid targets based on ability type and range
+  // Update getValidTargets to respect ability range properly:
   const getValidTargets = (ability: any) => {
     if (!npcToken?.position) return [];
     
+    // Handle different ability types
     if (ability.needsAllyTarget) {
       return availableAllies.filter(ally => {
         if (ally.id === npcToken.id) return false;
         const distance = calculateDistance(npcToken.position, ally.position);
         return distance <= (ability.range || 30);
       });
-    } else {
+    } else if (ability.type === 'ranged' || ability.type === 'melee') {
+      // For attack abilities, filter by range
       return availableEnemies.filter(enemy => {
         const distance = calculateDistance(npcToken.position, enemy.position);
         return distance <= (ability.range || 5);
       });
     }
+    
+    // Non-targeted abilities don't need targets
+    return [];
   };
 
   // Roll damage dice
@@ -201,45 +283,134 @@ export function NPCCharacterSheet({
     return Math.max(1, total);
   };
 
-  // Handle action selection
+  // Updated handleActionSelect to handle enchantments and ultimate:
   const handleActionSelect = (ability: any) => {
     if (!isNPCTurn || isExecuting) return;
     
-    // Check if this is a non-combat ability
-    if (ability.type === 'defensive' || ability.type === 'buff') {
+    // Check if this is the ultimate and if it's already used
+    if (ability.type === 'ultimate' && ultimateUsed) {
+      alert('Ultimate ability already used this battle!');
+      return;
+    }
+    
+    // Handle Pinning Throw enchantment
+    if (ability.type === 'enchantment') {
+      setHasPinningEnchantment(true);
+      setEnchantmentType(ability.appliesEffect as 'pin-slow' | 'pin-restrain');
+      
+      // Show confirmation and end turn
+      alert(`Dagger enchanted! Next attack will ${ability.appliesEffect === 'pin-slow' ? 'slow' : 'restrain'} the target.`);
+      FirestoreService.nextTurn(sessionId);
+      return;
+    }
+    
+    // Handle Ultimate summon
+    if (ability.type === 'ultimate') {
+      handleSummonSword(ability);
+      return;
+    }
+    
+    // Check valid targets for attack abilities
+    if (ability.type === 'ranged' || ability.type === 'melee') {
+      const validTargets = getValidTargets(ability);
+      
+      if (validTargets.length === 0) {
+        alert(`No valid targets in range (${ability.range || 5}ft)`);
+        return;
+      }
+      
       setSelectedAction(ability);
-      return;
+      setShowTargetingModal(true);
+    } else {
+      // Non-combat abilities
+      setSelectedAction(ability);
     }
-    
-    // For attack/healing abilities, check valid targets
-    const validTargets = getValidTargets(ability);
-    
-    if (validTargets.length === 0) {
-      alert(`No valid targets in range (${ability.range || 5}ft)`);
-      return;
-    }
-    
-    setSelectedAction(ability);
-    setShowTargetingModal(true);
   };
 
-  // Execute the action
+  const handleSummonSword = async (ability: any) => {
+    if (!npcToken || !sessionId) return;
+    
+    setIsExecuting(true);
+    try {
+      // Create a placement action similar to turret placement
+      const action: GMCombatAction = {
+        id: `sword-placement-${Date.now()}`,
+        type: 'turret_placement', // Reuse turret placement type for simplicity
+        playerId: npcToken.id,
+        sourcePosition: npcToken.position,
+        acRoll: 0,
+        range: 5, // Place within 5ft of The Child
+        timestamp: new Date(),
+        resolved: false,
+        hit: true,
+        needsDamageInput: false,
+        damageApplied: false,
+        playerName: npc.name,
+        abilityName: "Summon Brother's Sword",
+        targetIds: [],
+        targetNames: [],
+        // Custom data for sword placement
+        turretData: {
+          name: "Brother's Sword",
+          hp: 20,
+          maxHp: 20,
+          type: 'npc', // Special type to distinguish from normal turrets
+          color: '#9333ea', // Purple for spectral
+          size: 1
+        },
+        // Add summon-specific data
+        summonData: {
+          entityName: "Brother's Sword",
+          entityId: `sword-${Date.now()}`,
+          hp: 20,
+          maxHp: 20,
+          ac: 14,
+          duration: 3
+        }
+      };
+
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        pendingActions: arrayUnion(action),
+        updatedAt: serverTimestamp()
+      });
+
+      setUltimateUsed(true);
+      
+      alert("GM will click on the map to place Brother's Sword within 5ft of The Child");
+      
+      // End turn after summoning
+      await FirestoreService.nextTurn(sessionId);
+      
+    } catch (error) {
+      console.error('Failed to summon sword:', error);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+ // Updated handleExecuteAction to apply enchantment effects:
   const handleExecuteAction = async () => {
     if (!selectedAction || !selectedTarget || !acRoll || !npcToken) return;
     
     setIsExecuting(true);
     
     try {
-      const target = selectedAction.needsAllyTarget 
-        ? availableAllies.find(a => a.id === selectedTarget)
-        : availableEnemies.find(e => e.id === selectedTarget);
-        
+      const target = availableEnemies.find(e => e.id === selectedTarget);
       if (!target) return;
       
       const totalRoll = parseInt(acRoll) + (selectedAction.toHit || 0);
       const hit = totalRoll >= (target.ac || 10);
       
-      // Create combat action for GM popup
+      // Check if we need to apply pinning effect
+      let statusEffect = null;
+      if (hit && hasPinningEnchantment) {
+        statusEffect = enchantmentType;
+        setHasPinningEnchantment(false);
+        setEnchantmentType(null);
+      }
+      
+      // Create combat action
       const action: GMCombatAction = {
         id: `npc-action-${Date.now()}`,
         type: 'attack',
@@ -254,25 +425,27 @@ export function NPCCharacterSheet({
         hit,
         acRoll: totalRoll,
         abilityName: selectedAction.name,
-        needsDamageInput: hit && selectedAction.type !== 'healing',
-        damageApplied: false
+        needsDamageInput: hit,
+        damageApplied: false,
+        statusEffect // Include status effect if applicable
       };
       
-      // Add to pending actions for GM
       await FirestoreService.addCombatAction(sessionId, action);
       
-      // If it's a healing ability, apply immediately
-      if (selectedAction.type === 'healing' && hit) {
-        const healing = rollDamage(selectedAction.damage);
-        await FirestoreService.updateTokenProperty(
-          sessionId, 
-          selectedTarget, 
-          'hp', 
-          Math.min(target.maxHp || 20, (target.hp || 0) + healing)
-        );
+      // Apply visual effect if pinning
+      if (hit && statusEffect) {
+        await FirestoreService.applyStatusEffect(sessionId, selectedTarget, statusEffect);
       }
       
-      // End the NPC's turn
+      // Handle Reposition after attack
+      if (npc?.id === 'the-child') {
+        const nearestAlly = findNearestAlly();
+        if (nearestAlly) {
+          await repositionBehindAlly(nearestAlly);
+        }
+      }
+      
+      // End turn
       await FirestoreService.nextTurn(sessionId);
       
       // Reset state
@@ -283,10 +456,55 @@ export function NPCCharacterSheet({
       
     } catch (error) {
       console.error('Failed to execute NPC action:', error);
-      alert('Failed to execute action. Please try again.');
     } finally {
       setIsExecuting(false);
     }
+  };
+
+  // Helper function to find nearest ally:
+  const findNearestAlly = () => {
+    if (!npcToken?.position || !availableAllies.length) return null;
+    
+    let nearest = null;
+    let minDistance = Infinity;
+    
+    availableAllies.forEach(ally => {
+      if (ally.id === npcToken.id) return;
+      const distance = calculateDistance(npcToken.position, ally.position);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearest = ally;
+      }
+    });
+    
+    return nearest;
+  };
+
+  // Helper function to reposition behind ally:
+  const repositionBehindAlly = async (ally: any) => {
+    if (!npcToken || !sessionId) return;
+    
+    // Calculate position behind ally (opposite from nearest enemy)
+    const enemies = availableEnemies;
+    let behindPosition = { x: ally.position.x, y: ally.position.y + 1 };
+    
+    if (enemies.length > 0) {
+      // Find average enemy position
+      const avgEnemyX = enemies.reduce((sum, e) => sum + e.position.x, 0) / enemies.length;
+      const avgEnemyY = enemies.reduce((sum, e) => sum + e.position.y, 0) / enemies.length;
+      
+      // Move opposite direction from enemies
+      const dx = ally.position.x - avgEnemyX;
+      const dy = ally.position.y - avgEnemyY;
+      
+      behindPosition = {
+        x: ally.position.x + (dx > 0 ? 1 : -1),
+        y: ally.position.y + (dy > 0 ? 1 : -1)
+      };
+    }
+    
+    // Update position in Firebase
+    await FirestoreService.updateTokenPosition(sessionId, npcToken.id, behindPosition);
   };
 
   const abilities = getAvailableAbilities();
@@ -403,38 +621,53 @@ export function NPCCharacterSheet({
                     No abilities available at level {npc?.level || 1}
                   </p>
                 ) : (
-                  abilities.map((ability: any, index: number) => {
-                    const validTargets = getValidTargets(ability);
-                    const hasTargets = ability.type === 'defensive' || validTargets.length > 0;
-                    
-                    return (
-                      <button
-                        key={index}
-                        onClick={() => handleActionSelect(ability)}
-                        disabled={!hasTargets || isExecuting}
-                        className={`w-full p-3 rounded-lg text-white border transition-all text-left ${
-                          hasTargets 
-                            ? 'bg-clair-shadow-600 hover:bg-clair-shadow-500 border-clair-gold-500'
-                            : 'bg-gray-700 border-gray-600 opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <Sword className="w-4 h-4 text-clair-gold-400" />
-                          <span className="font-bold">{ability.name}</span>
-                          {ability.type === 'ultimate' && (
-                            <span className="text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
+                    abilities.map((ability: any, index: number) => {
+                      // Check if ability needs targets
+                      const needsTargets = ability.type === 'ranged' || ability.type === 'melee' || ability.needsAllyTarget;
+                      
+                      let hasTargets = true; // Default to true for abilities that don't need targets
+                      
+                      if (needsTargets) {
+                        const validTargets = getValidTargets(ability);
+                        hasTargets = validTargets.length > 0;
+                      }
+                      
+                      // Special checks
+                      if (ability.type === 'ultimate' && ultimateUsed) {
+                        hasTargets = false; // Ultimate already used
+                      }
+                      
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleActionSelect(ability)}
+                          disabled={!hasTargets || isExecuting}
+                          className={`w-full p-3 rounded-lg text-white border transition-all text-left ${
+                            hasTargets 
+                              ? 'bg-clair-shadow-600 hover:bg-clair-shadow-500 border-clair-gold-500'
+                              : 'bg-gray-700 border-gray-600 opacity-50 cursor-not-allowed'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <Sword className="w-4 h-4 text-clair-gold-400" />
+                            <span className="font-bold">{ability.name}</span>
+                            {ability.type === 'ultimate' && (
+                              <span className="text-xs bg-yellow-600 px-2 py-1 rounded">ULTIMATE</span>
+                            )}
+                            {needsTargets && !hasTargets && (
+                              <span className="text-xs text-red-400">(No targets in range)</span>
+                            )}
+                            {ability.type === 'ultimate' && ultimateUsed && (
+                              <span className="text-xs text-red-400">(Already used)</span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-300">{ability.description}</p>
+                          {ability.range && (
+                            <p className="text-xs text-clair-gold-200 mt-1">Range: {ability.range}ft</p>
                           )}
-                          {!hasTargets && (
-                            <span className="text-xs text-red-400">(No targets in range)</span>
-                          )}
-                        </div>
-                        <p className="text-sm text-gray-300">{ability.description}</p>
-                        {ability.range && (
-                          <p className="text-xs text-clair-gold-200 mt-1">Range: {ability.range}ft</p>
-                        )}
-                      </button>
-                    );
-                  })
+                        </button>
+                      );
+                    })
                 )}
               </div>
             ) : (

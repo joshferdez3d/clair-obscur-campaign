@@ -214,7 +214,16 @@ export interface CombatAction {
 export interface GMCombatAction extends CombatAction {
   // Override type to be more specific
   type: 'attack' | 'ability' | 'turret_placement';
-
+  statusEffect?: 'pin-slow' | 'pin-restrain' | null;
+  
+   summonData?: {
+    entityName: string;
+    entityId: string;
+    hp: number;
+    maxHp: number;
+    ac: number;
+    duration: number;
+  };
   // Legacy single-target
   targetId?: string;
   targetName?: string;
@@ -435,6 +444,15 @@ export interface BattleSession {
     farmhand: number;
   };
 
+  activeSummons?: Array<{
+    id: string;
+    name: string;
+    summoner: string;
+    roundsRemaining: number;
+    createdAt: number;
+    expiresOnRound?: number;
+  }>;
+
     // NEW: Active protection effects tracking
   activeProtectionEffects?: Array<{
     id: string;
@@ -504,6 +522,15 @@ export interface BattleSessionDoc {
   fireTerrainZones?: FireTerrainZone[];
   iceWalls?: IceWall[];
   lightBlindEffects?: LightBlindEffect[];
+
+  activeSummons?: Array<{
+      id: string;
+      name: string;
+      summoner: string;
+      roundsRemaining: number;
+      createdAt: number;
+      expiresOnRound?: number;
+    }>;
 }
 
 // Elemental stain type

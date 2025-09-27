@@ -436,6 +436,141 @@ static async getNPCLevels(sessionId: string): Promise<{ newRecruit: number; farm
   return session?.npcLevels || { newRecruit: 1, farmhand: 1 };
 }
 
+// Method to add a summoned entity (Brother's Sword)
+static async addSummonedEntity(sessionId: string, entityData: any): Promise<void> {
+  try {
+    const ref = doc(db, 'battleSessions', sessionId);
+    
+    // Add the summoned entity as a special token
+    await updateDoc(ref, {
+      [`tokens.${entityData.id}`]: {
+        ...entityData,
+        type: 'summon', // Special type for summoned entities
+        color: '#9333ea', // Purple for spectral entities
+        controllerId: 'the-child' // Who controls this summon
+      },
+      // Track active summons
+      activeSummons: arrayUnion({
+        id: entityData.id,
+        name: entityData.name,
+        summoner: 'the-child',
+        roundsRemaining: entityData.roundsRemaining,
+        createdAt: Date.now()
+      }),
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log(`✅ Summoned entity created: ${entityData.name}`);
+  } catch (error) {
+    console.error('❌ Failed to add summoned entity:', error);
+    throw error;
+  }
+}
+
+// Method to apply status effects (pin/slow/restrain)
+static async applyStatusEffect(
+  sessionId: string, 
+  targetId: string, 
+  effect: 'pin-slow' | 'pin-restrain' | string
+): Promise<void> {
+  try {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens[targetId]) {
+      console.warn(`Target ${targetId} not found`);
+      return;
+    }
+    
+    const ref = doc(db, 'battleSessions', sessionId);
+    const currentRound = session.combatState?.round || 1;
+    
+    // Initialize statusEffects if it doesn't exist
+    const statusEffectData = {
+      turnsRemaining: effect === 'pin-slow' ? 1 : 2, // Slow for 1 turn, restrain for 2
+      appliedBy: 'The Child',
+      appliedOnRound: currentRound,
+      description: effect === 'pin-slow' 
+        ? 'Speed reduced by 10ft' 
+        : 'Restrained (DC 13 STR to break)'
+    };
+    
+    // Update the token with the status effect
+    await updateDoc(ref, {
+      [`tokens.${targetId}.statusEffects.${effect.replace('-', '_')}`]: statusEffectData,
+      // Also reduce movement for pinned targets
+      [`tokens.${targetId}.movement`]: effect === 'pin-slow' ? 20 : 0,
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log(`✅ Applied ${effect} to ${session.tokens[targetId].name}`);
+  } catch (error) {
+    console.error(`❌ Failed to apply status effect:`, error);
+    throw error;
+  }
+}
+
+static async cleanupExpiredSummons(sessionId: string): Promise<void> {
+  const session = await this.getBattleSession(sessionId);
+  if (!session?.activeSummons) return;
+  
+  const currentRound = session.combatState?.round || 1;
+  const updatedTokens = { ...session.tokens };
+  let needsUpdate = false;
+  
+  // Filter out expired summons
+  const activeSummons = session.activeSummons.filter((summon: any) => {
+    // Check if summon has expired
+    if (summon.expiresOnRound && currentRound >= summon.expiresOnRound) {
+      // Remove the summon token
+      if (updatedTokens[summon.id]) {
+        delete updatedTokens[summon.id];
+        needsUpdate = true;
+        console.log(`⚔️ ${summon.name} vanished after 3 rounds`);
+      }
+      return false; // Remove from activeSummons
+    }
+    return true; // Keep in activeSummons
+  });
+  
+  if (needsUpdate) {
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      tokens: updatedTokens,
+      activeSummons: activeSummons,
+      updatedAt: serverTimestamp()
+    });
+  }
+}
+
+// Method to control the Brother's Sword on The Child's turn
+static async getBrothersSword(sessionId: string): Promise<any | null> {
+  const session = await this.getBattleSession(sessionId);
+  if (!session?.activeSummons) return null;
+  
+  const sword = session.activeSummons.find((s: any) => 
+    s.name === "Brother's Sword" && s.summoner === 'the-child'
+  );
+  
+  if (!sword) return null;
+  
+  // Get the actual token data
+  const swordToken = session.tokens[sword.id];
+  return swordToken || null;
+}
+
+// Method to move the Brother's Sword
+static async moveBrothersSword(
+  sessionId: string, 
+  swordId: string, 
+  newPosition: { x: number; y: number }
+): Promise<void> {
+  const ref = doc(db, 'battleSessions', sessionId);
+  await updateDoc(ref, {
+    [`tokens.${swordId}.position`]: newPosition,
+    updatedAt: serverTimestamp()
+  });
+  console.log(`⚔️ Brother's Sword moved to (${newPosition.x}, ${newPosition.y})`);
+}
+
 // NEW: Apply vanish effect after damage is applied
 static async applyVanishEffect(sessionId: string, actionId: string): Promise<void> {
   const session = await this.getBattleSession(sessionId);
@@ -2223,6 +2358,7 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     });
 
     // Process terrain effects, protection effects, buffs, and vanished enemies
+    await this.cleanupExpiredSummons(sessionId);
     await this.cleanupExpiredTerrain(sessionId);
     await this.cleanupExpiredProtectionEffects(sessionId);
     await this.processBuffsAndVanishedEnemies(sessionId); // NEW

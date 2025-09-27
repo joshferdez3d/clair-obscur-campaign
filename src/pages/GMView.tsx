@@ -169,7 +169,92 @@ export function GMView() {
   }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
 
 
+  const handleSwordAutoAttack = useCallback(async () => {
+  if (!session?.combatState?.isActive) return;
+  if (!session?.activeSummons) return;
+
+  // Find active Brother's Sword
+  const activeSword = session.activeSummons.find(
+    (summon: any) => summon.name === "Brother's Sword" && summon.roundsRemaining > 0
+  );
   
+  if (!activeSword) return;
+
+  const tokens = Object.values(session.tokens);
+  const swordToken = tokens.find(t => t.id === activeSword.id);
+  
+  if (!swordToken || (swordToken.hp || 0) <= 0) return;
+
+  // Find nearest enemy
+  const enemies = tokens.filter(t => t.type === 'enemy' && (t.hp || 0) > 0);
+  const enemyDistances = enemies.map(enemy => ({
+    enemy,
+    distance: calcDist(swordToken.position, enemy.position)
+  })).sort((a, b) => a.distance - b.distance);
+
+  const nearestEnemy = enemyDistances[0];
+  
+  if (!nearestEnemy || nearestEnemy.distance > 20) {
+    console.log("Brother's Sword: No enemies within 20ft");
+    return;
+  }
+
+  // Move sword towards nearest enemy (up to 20ft)
+  let newSwordPosition = { ...swordToken.position };
+  const dx = nearestEnemy.enemy.position.x - swordToken.position.x;
+  const dy = nearestEnemy.enemy.position.y - swordToken.position.y;
+  const moveDistance = Math.min(4, Math.abs(dx) + Math.abs(dy)); // Max 20ft (4 squares)
+  
+  if (dx !== 0 || dy !== 0) {
+    const moveX = Math.sign(dx) * Math.min(Math.abs(dx), moveDistance);
+    const moveY = Math.sign(dy) * Math.min(Math.abs(dy), moveDistance - Math.abs(moveX));
+    newSwordPosition = {
+      x: swordToken.position.x + moveX,
+      y: swordToken.position.y + moveY
+    };
+    
+    // Update sword position
+    await FirestoreService.updateTokenPosition(sessionId || 'test-session', swordToken.id, newSwordPosition);
+  }
+
+  // Attack if within melee range (5ft)
+  const finalDistance = calcDist(newSwordPosition, nearestEnemy.enemy.position);
+  if (finalDistance <= 5) {
+    const roll = Math.floor(Math.random() * 20) + 1 + 5; // +5 to hit
+    const enemyAC = nearestEnemy.enemy.ac ?? 13;
+    const hit = roll >= enemyAC;
+
+    const action: GMCombatAction = {
+      id: `sword-attack-${Date.now()}`,
+      type: 'attack',
+      playerId: 'the-child',
+      targetId: nearestEnemy.enemy.id,
+      sourcePosition: newSwordPosition,
+      acRoll: roll,
+      range: 5,
+      timestamp: new Date(),
+      resolved: false,
+      hit,
+      playerName: "Brother's Sword",
+      targetName: nearestEnemy.enemy.name,
+      abilityName: 'Spectral Slash (1d10+2)',
+      needsDamageInput: hit,
+      damageApplied: false,
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId || 'test-session');
+    await updateDoc(ref, { 
+      pendingActions: arrayUnion(action), 
+      updatedAt: serverTimestamp() 
+    });
+    
+    console.log(`Brother's Sword attacks ${nearestEnemy.enemy.name}!`);
+  } else {
+    console.log(`Brother's Sword moved but couldn't reach any enemy`);
+  }
+}, [session?.combatState?.isActive, session?.activeSummons, session?.tokens, sessionId]);
+
+
 
 
    useEffect(() => {
@@ -239,6 +324,21 @@ export function GMView() {
       setTurretAttacksTriggered(new Set());
     }
   }, [session?.combatState?.isActive]);
+
+  useEffect(() => {
+    // Check if it's The Child's turn
+    const isChildsTurn = session?.combatState?.currentTurn === 'the-child' || 
+      (session?.combatState?.initiativeOrder?.find(
+        e => e.id === session.combatState?.currentTurn
+      )?.name === 'The Child');
+    
+    if (isChildsTurn && session?.combatState?.isActive && session?.activeSummons) {
+      const timeout = setTimeout(() => {
+        handleSwordAutoAttack();
+      }, 800);
+      return () => clearTimeout(timeout);
+    }
+  }, [session?.combatState?.currentTurn, session?.combatState?.isActive, session?.activeSummons, handleSwordAutoAttack]);
 
   // Damage routing (AoE vs single)
   const handleApplyDamage = async (actionId: string, damage: number) => {
@@ -608,6 +708,89 @@ const handleResetSession = async () => {
           } catch (error) {
             console.error('Failed to place turret:', error);
             alert('Failed to place turret. Please try again.');
+          }
+        }
+        
+        return; // Don't continue to enemy placement
+      }
+    }
+
+    // Handle Brother's Sword placement
+    if (session?.pendingActions) {
+      const swordPlacementAction = session.pendingActions.find(
+        (action: GMCombatAction) => 
+          action.type === 'turret_placement' && 
+          action.turretData?.name === "Brother's Sword" &&
+          !action.resolved
+      );
+      
+      if (swordPlacementAction) {
+        // Check if placement is within 5ft of The Child
+        const theChildToken = Object.values(session.tokens).find(
+          t => t.id === swordPlacementAction.playerId || t.name === "The Child"
+        );
+        
+        if (theChildToken) {
+          const distance = Math.max(
+            Math.abs(position.x - theChildToken.position.x),
+            Math.abs(position.y - theChildToken.position.y)
+          ) * 5;
+          
+          if (distance > 5) {
+            alert("Brother's Sword must be placed within 5ft of The Child!");
+            return;
+          }
+          
+          // Create sword token
+          const swordId = `sword-${Date.now()}`;
+          const swordToken: BattleToken = {
+            id: swordId,
+            name: "Brother's Sword",
+            position,
+            type: 'npc',
+            hp: 20,
+            maxHp: 20,
+            ac: 14,
+            size: 1,
+            color: '#9333ea', // Purple for spectral
+            controlledBy: 'the-child' as any // Mark as controlled by The Child
+          };
+          
+          try {
+            // Add sword to session
+            const updatedTokens = { ...session.tokens, [swordId]: swordToken };
+            
+            // Track the summon with round information
+            const currentRound = session.combatState?.round || 1;
+            const activeSummons = [
+              ...(session.activeSummons || []),
+              {
+                id: swordId,
+                name: "Brother's Sword",
+                summoner: 'the-child',
+                roundsRemaining: 3,
+                createdAt: Date.now(),
+                expiresOnRound: currentRound + 3
+              }
+            ];
+            
+            // Mark placement action as resolved
+            const updatedActions = session.pendingActions.map((a: GMCombatAction) =>
+              a.id === swordPlacementAction.id ? { ...a, resolved: true } : a
+            );
+            
+            await FirestoreService.updateBattleSession(sessionId!, {
+              tokens: updatedTokens,
+              pendingActions: updatedActions,
+              activeSummons: activeSummons,
+              updatedAt: new Date()
+            });
+            
+            console.log(`Brother's Sword placed at (${position.x}, ${position.y})`);
+            
+          } catch (error) {
+            console.error("Failed to place Brother's Sword:", error);
+            alert("Failed to place Brother's Sword. Please try again.");
           }
         }
         
