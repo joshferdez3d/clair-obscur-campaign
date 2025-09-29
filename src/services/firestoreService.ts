@@ -533,7 +533,7 @@ static async applyStatusEffect(
     
     // Initialize statusEffects if it doesn't exist
     const statusEffectData = {
-      turnsRemaining: effect === 'pin-slow' ? 1 : 2, // Slow for 1 turn, restrain for 2
+      turnsRemaining: effect === 'pin-slow' ? 2 : 3, // Slow for 1 turn, restrain for 2
       appliedBy: 'The Child',
       appliedOnRound: currentRound,
       description: effect === 'pin-slow' 
@@ -974,6 +974,33 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     } catch (error) {
       console.error(`❌ Failed to update combat state for ${characterId}:`, error);
       throw error;
+    }
+  }
+
+  // Add this new method in firestoreService.ts
+  static async clearAllNPCCooldowns(sessionId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens) return;
+    
+    const updates: any = {};
+    let hasUpdates = false;
+    
+    // Clear cooldowns for all NPC tokens
+    Object.entries(session.tokens).forEach(([tokenId, token]) => {
+      if (token.type === 'npc' && token.repositionCooldown) {
+        updates[`tokens.${tokenId}.repositionCooldown`] = deleteField();
+        hasUpdates = true;
+        console.log(`🔄 Clearing cooldown for NPC: ${token.name}`);
+      }
+    });
+    
+    if (hasUpdates) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      console.log('✅ All NPC cooldowns cleared');
     }
   }
 
@@ -2390,6 +2417,8 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     }
     if (nextIndex === 0) {
       await StatusEffectService.updateStatusEffectDurations(sessionId);
+      await this.updatePinEffectDurations(sessionId); // ADD THIS LINE
+
     }
 
     const ref = doc(db, 'battleSessions', sessionId);
@@ -2537,8 +2566,56 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     }
   }
 
-  // Also update the existing endCombat method to include Lune reset:
+  static async updatePinEffectDurations(sessionId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens) return;
+    
+    const updates: any = {};
+    let hasUpdates = false;
+    
+    Object.entries(session.tokens).forEach(([tokenId, token]) => {
+      // Check for pin_slow
+      if (token.statusEffects?.pin_slow) {
+        const remaining = (token.statusEffects.pin_slow.turnsRemaining || 2) - 1;
+        if (remaining <= 0) {
+          updates[`tokens.${tokenId}.statusEffects.pin_slow`] = deleteField();
+          updates[`tokens.${tokenId}.movement`] = 30; // Restore normal movement
+          hasUpdates = true;
+          console.log(`📌 Pin slow expired on ${token.name}`);
+        } else {
+          updates[`tokens.${tokenId}.statusEffects.pin_slow.turnsRemaining`] = remaining;
+          hasUpdates = true;
+        }
+      }
+      
+      // Check for pin_restrain
+      if (token.statusEffects?.pin_restrain) {
+        const remaining = (token.statusEffects.pin_restrain.turnsRemaining || 3) - 1;
+        if (remaining <= 0) {
+          updates[`tokens.${tokenId}.statusEffects.pin_restrain`] = deleteField();
+          updates[`tokens.${tokenId}.movement`] = 30; // Restore normal movement
+          hasUpdates = true;
+          console.log(`📌 Pin restrain expired on ${token.name}`);
+        } else {
+          updates[`tokens.${tokenId}.statusEffects.pin_restrain.turnsRemaining`] = remaining;
+          hasUpdates = true;
+        }
+      }
+    });
+    
+    if (hasUpdates) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
   static async endCombat(sessionId: string) {
+    // Clear all NPC cooldowns when combat ends
+    await this.clearAllNPCCooldowns(sessionId);
+    
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       'combatState.isActive': false,

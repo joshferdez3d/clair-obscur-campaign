@@ -96,6 +96,21 @@ export function NPCTabSystem({
     return tokenEntry ? tokenEntry[1] as BattleToken : null;
   }, [session?.tokens, npcInfo?.id]);
 
+  const calculatedAvailableAllies = useMemo(() => {
+    if (!session?.tokens) return [];
+    
+    // Get all player tokens that are alive
+    const allies = Object.entries(session.tokens)
+      .filter(([_, token]: [string, any]) => 
+        token.type === 'player' && 
+        (token.hp === undefined || token.hp > 0)
+      )
+      .map(([_, token]) => token);
+      
+    console.log('📍 Available allies for reposition:', allies);
+    return allies;
+  }, [session?.tokens]);
+
   // Auto-switch to NPC tab when their turn starts
   useEffect(() => {
     if (isNPCTurn && autoSwitchEnabled) {
@@ -111,7 +126,13 @@ export function NPCTabSystem({
   useEffect(() => {
     if (!npcInfo) return;
     
-    // Calculate HP based on level
+    // Wait for session data to be available before setting NPC data
+    if (!session) {
+      // Don't initialize yet - wait for session
+      return;
+    }
+    
+    // Calculate HP based on level from session
     const getHPForLevel = (baseHP: number, level: number): number => {
       if (npcInfo.id === 'the-child') {
         const hpByLevel = [14, 25, 35];
@@ -122,6 +143,7 @@ export function NPCTabSystem({
       }
     };
     
+    // Use npcLevel which comes from session.npcLevels
     const maxHPForLevel = getHPForLevel(npcToken?.maxHp ?? 14, npcLevel);
     
     setNpcData((prevData: NPCData | null) => {
@@ -130,16 +152,17 @@ export function NPCTabSystem({
         name: npcInfo.id === 'the-child' ? 'The Child' : 'The Farmhand',
         currentHP: npcToken?.hp ?? maxHPForLevel,
         maxHP: maxHPForLevel,
-        level: npcLevel,
+        level: npcLevel, // This now properly uses the level from session
       };
       
+      // Only update if data actually changed
       if (prevData && JSON.stringify(prevData) === JSON.stringify(newData)) {
         return prevData;
       }
       
       return newData;
     });
-  }, [npcInfo?.id, npcToken?.hp, npcToken?.maxHp, npcLevel])
+  }, [npcInfo?.id, npcToken?.hp, npcToken?.maxHp, npcLevel, session])
 
   // Handle HP changes
   const handleHPChange = async (newHP: number) => {
@@ -350,7 +373,7 @@ export function NPCTabSystem({
           onLevelChange={isGM ? handleLevelChange : undefined}
           isLoading={isLoading}
           availableEnemies={availableEnemies}
-          availableAllies={availableAllies}
+          availableAllies={calculatedAvailableAllies}  // Use calculated value
           npcToken={npcToken}
         />
       )}

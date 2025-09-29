@@ -264,6 +264,18 @@ export function Token({
               <span className="text-xs text-white font-bold">👁️</span>
             </div>
           )}
+
+          {token.statusEffects.pin_slow && (
+            <div className="w-3 h-3 bg-yellow-600 rounded-full border border-yellow-400 flex items-center justify-center animate-pulse">
+              <span className="text-xs text-white font-bold">📌</span>
+            </div>
+          )}
+          
+          {token.statusEffects.pin_restrain && (
+            <div className="w-3 h-3 bg-red-700 rounded-full border border-red-500 flex items-center justify-center animate-pulse">
+              <span className="text-xs text-white font-bold">⛓️</span>
+            </div>
+          )}
           
           {token.statusEffects.advantage && (
             <div className="w-3 h-3 bg-green-500 rounded-full border border-green-400 flex items-center justify-center">
@@ -276,6 +288,15 @@ export function Token({
               <span className="text-xs text-white font-bold">-</span>
             </div>
           )}
+        </div>
+      )}
+
+      {token.statusEffects && (token.statusEffects.pin_slow || token.statusEffects.pin_restrain) && (
+        <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-100 transition-opacity z-40 pointer-events-none">
+          <div className="bg-black text-white text-xs rounded px-2 py-1 whitespace-nowrap">
+            {token.statusEffects.pin_slow && "Slowed: -10ft movement"}
+            {token.statusEffects.pin_restrain && "Restrained: Cannot move"}
+          </div>
         </div>
       )}
     </div>

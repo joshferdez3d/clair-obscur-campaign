@@ -79,12 +79,27 @@ export interface BattleToken {
       appliedBy: string; // Ability name (e.g., "Rewrite Destiny")
       appliedOnRound: number;
     };
+    pin_slow?: {
+      turnsRemaining: number;
+      appliedBy: string;
+      appliedOnRound: number;
+      description?: string;
+    };
+    pin_restrain?: {
+      turnsRemaining: number;
+      appliedBy: string;
+      appliedOnRound: number;
+      description?: string;
+    };
   };
 
   controlledBy?: 'maelle' | 'sciel' | 'gm';
   npcLevel?: number;
   hasActed?: boolean;
   hasMoved?: boolean;
+  repositionCooldown?: number;
+
+  
 }
 
 export interface BattleMapPreset {

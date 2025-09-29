@@ -59,7 +59,7 @@ export function GMView() {
   const [isPlacingNPC, setIsPlacingNPC] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
-  const [npcLevels, setNpcLevels] = useState({ theChild: 1, farmhand: 1 });
+  const [npcLevels, setNpcLevels] = useState<{ theChild: number; farmhand: number } | null>(null);
   const [swordActedThisRound, setSwordActedThisRound] = useState<{ round: number; acted: boolean }>({ round: 0, acted: false });
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
@@ -419,7 +419,11 @@ const handleSwordAutoAttack = useCallback(async () => {
     if (session?.npcLevels) {
       // Use the mapper utility to convert Firebase format to local format
       setNpcLevels(mapFirebaseToLocal(session.npcLevels));
-    } 
+    }  else {
+        if (session) {
+        setNpcLevels({ theChild: 1, farmhand: 1 });
+      }
+    }
   }, [session]);
 
   // NEW: Add this useEffect to detect pending ultimate actions
@@ -1514,10 +1518,12 @@ const handleResetSession = async () => {
             )}
           </div>
         </div>
-          <NPCLevelManager 
-            sessionId={sessionId || 'test-session'} 
-            currentLevels={npcLevels}  // Now correctly typed as { theChild, farmhand }
-          />
+          {npcLevels && (
+            <NPCLevelManager 
+              sessionId={sessionId || 'test-session'} 
+              currentLevels={npcLevels}
+            />
+          )}
       </div>
 
       {/* Middle Panel - Character Health Management - SIMPLIFIED */}
