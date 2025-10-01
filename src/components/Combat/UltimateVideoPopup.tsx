@@ -15,7 +15,8 @@ const VIDEO_MAPPING: Record<string, string> = {
   'lune': '/ults/Ult_ElementalGenesis.mp4', // Lune's ultimate  
   'gustave': '/ults/Ult_Overcharge.mp4',    // Gustave's ultimate
   'maelle': '/ults/Ult_PhantomStrike.mp4',   // Maelle's ultimate
-  'the-child': '/ults/Ult_ForMyBrother.mp4'
+  'the-child': '/ults/Ult_ForMyBrother.mp4',
+  'farmhand': '/ults/Ult_Hearthlight.mp4'
 };
 
 export function UltimateVideoPopup({ 

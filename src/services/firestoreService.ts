@@ -34,6 +34,8 @@ import type {
 import { CombatStateHelpers } from '../types/character'; // NEW IMPORT
 import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
+import { ProtectionService } from './ProtectionService';
+
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
 
@@ -88,6 +90,51 @@ export class FirestoreService {
       console.error('❌ Failed to create default initiative order:', error);
       throw error;
     }
+  }
+
+  static async applyDamageWithProtectionCheck(
+    sessionId: string,
+    targetId: string,
+    damage: number,
+    sourceName: string
+  ): Promise<{ actualTargetId: string; actualTargetName: string; wasRedirected: boolean }> {
+    // Check for protection
+    const redirectResult = await ProtectionService.redirectDamage(sessionId, targetId, damage);
+    
+    if (redirectResult) {
+      // Damage was redirected to protector
+      console.log(`⚔️ ${sourceName}'s attack on ${targetId} redirected to ${redirectResult.protectorName}!`);
+      
+      // Apply damage to protector instead
+      const session = await this.getBattleSession(sessionId);
+      const protectorToken = session?.tokens[redirectResult.newTargetId];
+      
+      if (protectorToken) {
+        const newHP = Math.max(0, (protectorToken.hp || 0) - damage);
+        await this.updateTokenProperty(sessionId, redirectResult.newTargetId, 'hp', newHP);
+        
+        return {
+          actualTargetId: redirectResult.newTargetId,
+          actualTargetName: redirectResult.protectorName,
+          wasRedirected: true
+        };
+      }
+    }
+    
+    // No protection, apply damage normally
+    const session = await this.getBattleSession(sessionId);
+    const targetToken = session?.tokens[targetId];
+    
+    if (targetToken) {
+      const newHP = Math.max(0, (targetToken.hp || 0) - damage);
+      await this.updateTokenProperty(sessionId, targetId, 'hp', newHP);
+    }
+    
+    return {
+      actualTargetId: targetId,
+      actualTargetName: targetToken?.name || 'Unknown',
+      wasRedirected: false
+    };
   }
 
   static async createPendingAction(sessionId: string, action: any): Promise<void> {
@@ -153,6 +200,8 @@ export class FirestoreService {
         totalTurns: 0,
         pendingRolls: [],
       },
+      hearthlightUsed: false,  // ADD THIS LINE
+      hearthlightZones: [], 
       updatedAt: serverTimestamp(),
     });
 
@@ -479,7 +528,23 @@ static async addSummonedEntity(sessionId: string, entityData: any): Promise<void
     const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
     if (!action || !action.targetId) return;
 
-    const targetToken = session.tokens[action.targetId];
+    // ⚠️ CRITICAL: Check for protection before applying damage
+    const redirectResult = await ProtectionService.redirectDamage(
+      sessionId,
+      action.targetId,
+      damage
+    );
+
+    let actualTargetId = action.targetId;
+    let actualTargetName = action.targetName;
+
+    if (redirectResult?.redirected) {
+      actualTargetId = redirectResult.newTargetId;
+      actualTargetName = redirectResult.protectorName;
+      console.log(`🛡️ Brother's Sword: ${actualTargetName} intercepts damage for ${action.targetName}!`);
+    }
+
+    const targetToken = session.tokens[actualTargetId];
     if (!targetToken) return;
 
     const currentHP = Number(targetToken.hp) || 0;
@@ -494,9 +559,8 @@ static async addSummonedEntity(sessionId: string, entityData: any): Promise<void
     const ref = doc(db, 'battleSessions', sessionId);
     
     if (newHP <= 0) {
-      // Enemy is dead - remove the token
       const updatedTokens = { ...session.tokens };
-      delete updatedTokens[action.targetId];
+      delete updatedTokens[actualTargetId];
       
       await updateDoc(ref, { 
         tokens: updatedTokens,
@@ -506,9 +570,8 @@ static async addSummonedEntity(sessionId: string, entityData: any): Promise<void
       
       console.log(`${targetToken.name} was defeated by Brother's Sword!`);
     } else {
-      // Enemy survives - update HP
       await updateDoc(ref, {
-        [`tokens.${action.targetId}.hp`]: newHP,
+        [`tokens.${actualTargetId}.hp`]: newHP,
         pendingActions: updatedActions,
         updatedAt: serverTimestamp()
       });
@@ -1276,7 +1339,7 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
 
     const targetAC = this.calculateEffectiveAC(targetToken);
     const hit = acRoll >= targetAC;
-    
+
     const action: GMCombatAction = {
       id: `action-${Date.now()}`,
       type: 'attack',
@@ -1364,10 +1427,26 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     }
 
     const updatedTokens = { ...session.tokens };
-    const deadEnemyIds: string[] = []; // Track which enemies died
+    const deadEnemyIds: string[] = [];
 
-    for (const tid of action.targetIds) {
-      const tok = updatedTokens[tid];
+    // Process each target with protection check
+    for (const targetId of action.targetIds) {
+      // Check for protection redirection
+      const redirectResult = await ProtectionService.redirectDamage(
+        sessionId,
+        targetId,
+        damage
+      );
+
+      const actualTargetId = redirectResult?.redirected 
+        ? redirectResult.newTargetId 
+        : targetId;
+
+      if (redirectResult?.redirected) {
+        console.log(`🛡️ AoE: ${redirectResult.protectorName} intercepts damage for ${updatedTokens[targetId]?.name}`);
+      }
+
+      const tok = updatedTokens[actualTargetId];
       if (!tok) continue;
       
       const currentHP = Number(tok.hp) || 0;
@@ -1377,16 +1456,14 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
       console.log(`Applying ${damageAmount} damage to ${tok.name}: ${currentHP} -> ${newHP}`);
       
       if (newHP <= 0) {
-        // Enemy is dead - mark for removal
-        deadEnemyIds.push(tid);
+        deadEnemyIds.push(actualTargetId);
         console.log(`${tok.name} died and will be removed`);
       } else {
-        // Enemy survives - update HP
-        updatedTokens[tid] = { ...tok, hp: newHP };
+        updatedTokens[actualTargetId] = { ...tok, hp: newHP };
       }
     }
 
-    // Remove dead enemies from the tokens object
+    // Remove dead enemies/tokens
     deadEnemyIds.forEach(id => {
       delete updatedTokens[id];
     });
@@ -1402,7 +1479,7 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
       updatedAt: serverTimestamp()
     });
 
-    console.log(`AoE damage applied. ${deadEnemyIds.length} enemies removed.`);
+    console.log(`AoE damage applied. ${deadEnemyIds.length} tokens removed.`);
   }
 
     // NEW: Create buff/debuff action with token status effect
@@ -1594,34 +1671,51 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
   }
 
   // Single-target damage resolution (from GM popup)
-  static async applyDamageToEnemy(sessionId: string, actionId: string, damageAmount: number) {
+  static async applyDamageToEnemy(sessionId: string, actionId: string, damage: number) {
+    console.log('💥 applyDamageToEnemy called:', { sessionId, actionId, damage });
+    
     const session = await this.getBattleSession(sessionId);
     if (!session || !session.pendingActions) return;
 
     const action = session.pendingActions.find(a => a.id === actionId) as GMCombatAction | undefined;
     if (!action || !action.targetId) return;
 
-    const targetToken = session.tokens[action.targetId];
+    // ⚠️ CRITICAL: Check for protection BEFORE applying damage
+    const redirectResult = await ProtectionService.redirectDamage(
+      sessionId,
+      action.targetId,
+      damage
+    );
+
+    let actualTargetId = action.targetId;
+    let actualTargetName = action.targetName;
+
+    if (redirectResult?.redirected) {
+      // Damage was redirected to protector
+      actualTargetId = redirectResult.newTargetId;
+      actualTargetName = redirectResult.protectorName;
+      console.log(`🛡️ PROTECTION ACTIVATED: ${actualTargetName} intercepts damage for ${action.targetName}!`);
+    }
+
+    // Now apply damage to the actual target (either original or protector)
+    const targetToken = session.tokens[actualTargetId];
     if (!targetToken) return;
 
     const currentHP = Number(targetToken.hp) || 0;
-    const newHP = Math.max(0, currentHP - damageAmount);
+    const newHP = Math.max(0, currentHP - damage);
     
-    console.log(`Applying ${damageAmount} damage to ${targetToken.name}: ${currentHP} -> ${newHP}`);
-
-      const hasSpecialEffect = action.cardType === 'switch' || action.cardType === 'vanish';
-
+    console.log(`Applying ${damage} damage to ${targetToken.name}: ${currentHP} -> ${newHP}`);
 
     const updatedActions = session.pendingActions.map(a =>
-      a.id === actionId ? { ...a, resolved: hasSpecialEffect ? false : true, damage: damageAmount, damageApplied: true } : a
+      a.id === actionId ? { ...a, resolved: true, damage: damage, damageApplied: true } : a
     );
 
     const ref = doc(db, 'battleSessions', sessionId);
     
     if (newHP <= 0) {
-      // Enemy is dead - remove the token entirely
+      // Target died - remove the token
       const updatedTokens = { ...session.tokens };
-      delete updatedTokens[action.targetId];
+      delete updatedTokens[actualTargetId];
       
       await updateDoc(ref, { 
         tokens: updatedTokens,
@@ -1629,11 +1723,11 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
         updatedAt: serverTimestamp() 
       });
       
-      console.log(`${targetToken.name} died and was removed`);
+      console.log(`${targetToken.name} was defeated!`);
     } else {
-      // Enemy survives - just update HP
+      // Target survives - update HP
       await updateDoc(ref, {
-        [`tokens.${action.targetId}.hp`]: newHP,
+        [`tokens.${actualTargetId}.hp`]: newHP,
         pendingActions: updatedActions,
         updatedAt: serverTimestamp()
       });
@@ -2035,6 +2129,21 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       }
     }
 
+    if (session.hearthlightZones) {
+      const beforeCount = session.hearthlightZones.length;
+      const activeHearthlight = session.hearthlightZones.filter((zone: any) => {
+        const roundsElapsed = currentRound - (zone.createdOnRound || 1);
+        const shouldKeep = roundsElapsed < 3;
+        console.log(`🌟 Hearthlight ${zone.id}: created round ${zone.createdOnRound}, elapsed ${roundsElapsed}, keep: ${shouldKeep}`);
+        return shouldKeep;
+      });
+      if (activeHearthlight.length !== beforeCount) {
+        updates.hearthlightZones = activeHearthlight;
+        needsUpdate = true;
+        console.log(`🌟 Removed ${beforeCount - activeHearthlight.length} expired Hearthlight zones`);
+      }
+    }
+
     if (needsUpdate) {
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
@@ -2170,6 +2279,100 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       });
     }
   }
+
+  // Create Hearthlight healing zone
+  static async createHearthlightZone(
+    sessionId: string,
+    zoneData: {
+      center: { x: number; y: number };
+      radius: number;
+      affectedSquares: Array<{ x: number; y: number }>;
+      healPerTurn: number;
+      duration: number;
+      createdBy: string;
+      createdByName: string;
+    }
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    const currentRound = session.combatState?.round || 1;
+
+    const hearthlightZone = {
+      id: `hearthlight_${Date.now()}`,
+      ...zoneData,
+      turnsRemaining: zoneData.duration,
+      createdOnRound: currentRound,
+      createdAt: Date.now()
+    };
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      hearthlightZones: arrayUnion(hearthlightZone),
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`🌟 Hearthlight zone created at (${zoneData.center.x}, ${zoneData.center.y}) for 3 rounds`);
+  }
+
+  // Apply Hearthlight healing at start of Farmhand's turn
+  static async applyHearthlightHealing(sessionId: string, farmhandId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.hearthlightZones || session.hearthlightZones.length === 0) return;
+
+    // Find active Hearthlight zones created by this Farmhand
+    const activeZones = session.hearthlightZones.filter((zone: any) => 
+      zone.createdBy === farmhandId && zone.turnsRemaining > 0
+    );
+
+    if (activeZones.length === 0) return;
+
+    const updatedTokens = { ...session.tokens };
+    let healingApplied = false;
+
+    // For each active zone, heal allies in the affected squares
+    for (const zone of activeZones) {
+      const affectedSquares = zone.affectedSquares;
+      
+      // Find all player tokens in the affected squares
+      Object.entries(updatedTokens).forEach(([tokenId, token]: [string, any]) => {
+        if (token.type === 'player') {
+          // Check if token is in any affected square
+          const isInZone = affectedSquares.some((sq: any) => 
+            sq.x === token.position.x && sq.y === token.position.y
+          );
+          
+          if (isInZone) {
+            const currentHP = token.hp || 0;
+            const maxHP = token.maxHp || currentHP;
+            const newHP = Math.min(maxHP, currentHP + zone.healPerTurn);
+            
+            if (newHP > currentHP) {
+              updatedTokens[tokenId] = { ...token, hp: newHP };
+              
+              // Also update character document if it's a player
+              if (token.characterId) {
+                this.updateCharacterHP(token.characterId, newHP);
+              }
+              
+              console.log(`🌟 Hearthlight: ${token.name} healed for ${newHP - currentHP} (${currentHP} → ${newHP})`);
+              healingApplied = true;
+            }
+          }
+        }
+      });
+    }
+
+    if (healingApplied) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        tokens: updatedTokens,
+        updatedAt: serverTimestamp()
+      });
+    }
+  }
+
+
   // Create Leader's Sacrifice protection action
   static async createLeadersSacrificePAction(
     sessionId: string,
@@ -2193,7 +2396,7 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       acRoll: 0,
       range: 0,
       timestamp: new Date(),
-      resolved: false,
+      resolved: false, // Will be resolved when GM assigns ally
       hit: true,
       needsDamageInput: false,
       damageApplied: false,
@@ -2202,30 +2405,21 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       targetIds: [],
       targetNames: [],
       protectionData: {
+        protectorId: playerToken.id,
         protectorName: payload.playerName,
-        activatedOnRound: payload.currentRound,
         duration: 2,
-        remainingRounds: 2,
-        protectedAlly: 'TBD - GM to assign manually',
-        description: 'Gustave redirects damage from protected ally to himself for 2 rounds'
+        needsGMAssignment: true, // Flag that GM needs to assign ally
+        description: 'Gustave will redirect damage from one ally for 2 rounds. GM: Click the ally to protect.'
       }
     };
 
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       pendingActions: arrayUnion(action),
-      activeProtectionEffects: arrayUnion({
-        id: action.id,
-        protectorId: payload.playerId,
-        protectorName: payload.playerName,
-        activatedOnRound: payload.currentRound,
-        remainingRounds: 2,
-        protectedAlly: 'TBD - Call out to GM',
-        type: 'leaders_sacrifice'
-      }),
       updatedAt: serverTimestamp()
     });
 
+    console.log("Leader's Sacrifice created - waiting for GM to assign protected ally");
     return action;
   }
 
@@ -2616,6 +2810,8 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     // Clear all NPC cooldowns when combat ends
     await this.clearAllNPCCooldowns(sessionId);
     
+    await ProtectionService.clearAllProtections(sessionId);
+
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       'combatState.isActive': false,
@@ -2713,6 +2909,28 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       
       console.log('✅ Rallying Cry buff expired and removed');
     }
+  }
+
+  static async updateTokenProperties(
+    sessionId: string,
+    tokenId: string,
+    updates: Record<string, any>
+  ): Promise<void> {
+    const ref = doc(db, 'battleSessions', sessionId);
+    
+    const formattedUpdates: Record<string, any> = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === null) {
+        formattedUpdates[`tokens.${tokenId}.${key}`] = deleteField();
+      } else {
+        formattedUpdates[`tokens.${tokenId}.${key}`] = value;
+      }
+    });
+
+    await updateDoc(ref, {
+      ...formattedUpdates,
+      updatedAt: serverTimestamp()
+    });
   }
 
   // Helper method to calculate effective AC including buffs

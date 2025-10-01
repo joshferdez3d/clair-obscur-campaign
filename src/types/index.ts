@@ -1,6 +1,7 @@
 // src/types/index.ts - Complete and corrected type definitions
 export * from './character';
 import type { Character } from './character'; // Add this explicit import
+import type { ProtectionEffect } from '../services/ProtectionService';
 
 // Basic interfaces
 export interface Position {
@@ -99,13 +100,28 @@ export interface BattleToken {
       expiresOnFarmhandTurn?: boolean;
       description: string;
     };
-
+    protection?: {
+      protectorId: string;
+      protectorName: string;
+      abilityName: string;
+      activatedOnRound: number;
+      description: string;
+    };
   };
 
   controlledBy?: 'maelle' | 'sciel' | 'gm';
   npcLevel?: number;
   hasActed?: boolean;
   hasMoved?: boolean;
+
+  // NEW: Centralized cooldown system
+  cooldowns?: Record<string, {
+    turnsRemaining: number;
+    appliedOnRound: number;
+    abilityName: string;
+    originalDuration: number;
+  }>;
+  
   repositionCooldown?: number;
   rallyingCryCooldown?: number;
 }
@@ -329,11 +345,13 @@ export interface GMCombatAction extends CombatAction {
 
   // Protection data (keep existing)
   protectionData?: {
+    protectorId?: string;
     protectorName: string;
-    activatedOnRound: number;
+    activatedOnRound?: number;    // MAKE OPTIONAL
     duration: number;
-    remainingRounds: number;
-    protectedAlly: string;
+    remainingRounds?: number;     // MAKE OPTIONAL  
+    protectedAlly?: string;       // MAKE OPTIONAL
+    needsGMAssignment?: boolean;
     description: string;
   };
 }
@@ -444,11 +462,10 @@ export interface BattleSession {
   currentMap?: MapConfig
   createdAt: Date;
   updatedAt: Date;
-  // Enhanced combat fields
   combatState?: CombatState;
-  pendingActions?: GMCombatAction[]; // Updated to use GMCombatAction
+  pendingActions?: GMCombatAction[];
   enemyHP?: { [enemyId: string]: { current: number, max: number } };
-  enemyData?: { [enemyId: string]: EnemyData }; // Store full enemy stat blocks
+  enemyData?: { [enemyId: string]: EnemyData };
   stormState?: StormState;
   pendingStormRoll?: PendingStormRoll;
   stormAttacks?: Record<string, StormAttack>;
@@ -456,11 +473,26 @@ export interface BattleSession {
   vanishedEnemies?: VanishedEnemy[];
 
   luneElementalGenesisUsed?: boolean;
+  activeProtections?: Record<string, ProtectionEffect>;
 
-  // NEW: Terrain effects from Elemental Genesis
   fireTerrainZones?: FireTerrainZone[];
   iceWalls?: IceWall[];
   lightBlindEffects?: LightBlindEffect[];
+  
+  hearthlightZones?: Array<{  // ADD THIS ENTIRE BLOCK
+    id: string;
+    center: { x: number; y: number };
+    radius: number;
+    affectedSquares: Array<{ x: number; y: number }>;
+    healPerTurn: number;
+    duration: number;
+    turnsRemaining: number;
+    createdBy: string;
+    createdByName: string;
+    createdAt: number;
+    createdOnRound: number;
+  }>;
+  hearthlightUsed?: boolean;  // ADD THIS LINE
 
   npcLevels?: {
     newRecruit: number;
@@ -478,7 +510,6 @@ export interface BattleSession {
 
   theChildUltimateUsed?: boolean;
 
-    // NEW: Active protection effects tracking
   activeProtectionEffects?: Array<{
     id: string;
     protectorId: string;

@@ -7,6 +7,7 @@ import { useNPCTurn } from '../../hooks/useNPCTurn';
 import { NPCCharacterSheet } from './NPCCharacterSheet';
 import type { BattleToken } from '../../types';
 import { FirestoreService } from '../../services/firestoreService';
+import { ProtectionService } from '../../services/ProtectionService';
 
 // Define the NPC data type
 interface NPCData {
@@ -127,9 +128,23 @@ export function NPCTabSystem({
   useEffect(() => {
     const handleFarmhandTurnStart = async () => {
       if (isNPCTurn && npcInfo?.id === 'farmhand' && sessionId) {
-        // Remove Rallying Cry buff from previous turn
-        await FirestoreService.removeRallyingCryBuff(sessionId);
-        console.log('🛡️ Farmhand turn started - previous Rallying Cry buff removed');
+        const currentSession = await FirestoreService.getBattleSession(sessionId);
+        const currentRound = currentSession?.combatState?.round || 1;
+        
+        // Check if there's an active Rallying Cry buff
+        const activeRallyingCry = currentSession?.activeEffects?.rallyingCry;
+        
+        if (activeRallyingCry) {
+          const buffAppliedRound = activeRallyingCry.appliedRound || 0;
+          
+          // Only remove if the buff is from a previous round
+          if (buffAppliedRound < currentRound) {
+            await FirestoreService.removeRallyingCryBuff(sessionId);
+            console.log(`🛡️ Farmhand turn (Round ${currentRound}) - Rallying Cry from Round ${buffAppliedRound} removed`);
+          } else {
+            console.log(`🛡️ Farmhand turn (Round ${currentRound}) - Rallying Cry was just applied this round, keeping it active`);
+          }
+        }
       }
     };
     
@@ -137,6 +152,33 @@ export function NPCTabSystem({
       handleFarmhandTurnStart();
     }
   }, [isNPCTurn, npcInfo?.id, sessionId]);
+
+  // Add this useEffect after the Rallying Cry cleanup
+  useEffect(() => {
+    const handleProtectionCleanup = async () => {
+      if (isNPCTurn && sessionId && npcToken) {
+        // Remove any protections this NPC is providing
+        await ProtectionService.removeProtectorEffects(sessionId, npcToken.id);
+      }
+    };
+
+    if (isNPCTurn) {
+      handleProtectionCleanup();
+    }
+  }, [isNPCTurn, sessionId, npcToken?.id]);
+
+  // Apply Hearthlight healing at start of Farmhand's turn
+  useEffect(() => {
+    const applyHealing = async () => {
+      if (isNPCTurn && npcInfo?.id === 'farmhand' && sessionId && npcToken) {
+        await FirestoreService.applyHearthlightHealing(sessionId, npcToken.id);
+      }
+    };
+    
+    if (isNPCTurn && npcInfo?.id === 'farmhand') {
+      applyHealing();
+    }
+  }, [isNPCTurn, npcInfo?.id, sessionId, npcToken?.id]);
 
 
   // Initialize NPC data with correct level and HP based on level
@@ -392,6 +434,7 @@ export function NPCTabSystem({
           availableEnemies={availableEnemies}
           availableAllies={calculatedAvailableAllies}  // Use calculated value
           npcToken={npcToken}
+          session={session}  // ADD THIS LINE if not already there
         />
       )}
     </div>

@@ -343,6 +343,44 @@ export function BattleMap({
     return <>{overlays}</>;
   }, [session?.fireTerrainZones, gridSize, coordinatePadding]);
 
+  const renderHearthlightOverlays = useCallback(() => {
+    if (!session?.hearthlightZones) return null;
+
+    const overlays: JSX.Element[] = [];
+
+    session.hearthlightZones.forEach((zone: any) => {
+      zone.affectedSquares?.forEach((square: any) => {
+        const pixelX = square.x * gridSize + coordinatePadding;
+        const pixelY = square.y * gridSize + coordinatePadding;
+
+        overlays.push(
+          <div
+            key={`hearthlight-${zone.id}-${square.x}-${square.y}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: pixelX,
+              top: pixelY,
+              width: gridSize,
+              height: gridSize,
+              zIndex: 4, // Below fire terrain (5) but above grid
+              backgroundColor: 'rgba(34, 197, 94, 0.3)', // green-500 with opacity
+              border: '2px solid rgba(34, 197, 94, 0.6)',
+              borderRadius: '4px',
+              animation: 'pulse 2s ease-in-out infinite',
+              boxShadow: '0 0 10px rgba(34, 197, 94, 0.4)'
+            }}
+          >
+            <div className="absolute inset-0 flex items-center justify-center text-2xl">
+              ❤️
+            </div>
+          </div>
+        );
+      });
+    });
+
+    return <>{overlays}</>;
+  }, [session?.hearthlightZones, gridSize, coordinatePadding]);
+
   const getGridCellClass = useCallback((pos: Position) => {
     const classes: string[] = [];
 
@@ -391,6 +429,17 @@ export function BattleMap({
       if (isInLightZone) {
         console.log(`⚡ Adding light-blind class to cell (${pos.x}, ${pos.y})`);
         classes.push('light-blind');
+      }
+    }
+
+    if (session?.hearthlightZones) {
+      const isInHearthlightZone = session.hearthlightZones.some((zone: any) => 
+        zone.affectedSquares?.some((square: any) => 
+          square.x === pos.x && square.y === pos.y
+        )
+      );
+      if (isInHearthlightZone) {
+        classes.push('hearthlight-zone');
       }
     }
 
@@ -528,6 +577,7 @@ export function BattleMap({
           />
 
           {renderFireTerrainOverlays()}
+          {renderHearthlightOverlays()}  {/* ADD THIS LINE */}
 
           {validateTokens(tokens).map((token) => {
             // Check if this token is the current storm target

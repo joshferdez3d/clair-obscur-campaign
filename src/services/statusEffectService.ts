@@ -51,33 +51,35 @@ export class StatusEffectService {
     
     Object.entries(session.tokens).forEach(([tokenId, token]: [string, any]) => {
       if (token.statusEffects) {
-        const updatedEffects: any = {};
+        // Start with existing effects to preserve special effects like rallyingCry
+        const updatedEffects: any = { ...token.statusEffects };
         
-        // Process each status effect
+        // Process ONLY Lune's elemental status effects
         ['fire', 'ice', 'blind'].forEach(effect => {
-          if (token.statusEffects[effect]) {
-            const remaining = token.statusEffects[effect].turnsRemaining - 1;
+          if (updatedEffects[effect]) {
+            const remaining = updatedEffects[effect].turnsRemaining - 1;
             
             if (remaining > 0) {
               updatedEffects[effect] = {
-                ...token.statusEffects[effect],
+                ...updatedEffects[effect],
                 turnsRemaining: remaining
               };
+            } else {
+              // Remove expired effect
+              delete updatedEffects[effect];
             }
-            // If remaining <= 0, don't include it (removes the effect)
           }
         });
         
+        // Only update if there are status effects (don't wipe out the entire object)
         if (Object.keys(updatedEffects).length > 0) {
           updates[`tokens.${tokenId}.statusEffects`] = updatedEffects;
-        } else {
-          // Remove statusEffects entirely if empty
-          updates[`tokens.${tokenId}.statusEffects`] = null;
+          hasUpdates = true;
         }
-        hasUpdates = true;
       }
     });
     
+    // THIS PART WAS MISSING - Apply the updates to Firebase
     if (hasUpdates) {
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {

@@ -8,6 +8,7 @@ import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { enemies } from '../data/enemies'; // FIXED: Use 'enemies' not 'enemiesData'
 import type { EnemyData } from '../types';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
+import { ProtectionService } from '../services/ProtectionService';
 
 interface EnemyAttack {
   name: string;
@@ -196,21 +197,47 @@ const EnemyView: React.FC = () => {
       // Add to pending actions
       await FirestoreService.addCombatAction(sessionId || '', action);
       
-      // If hit, automatically roll and apply damage
-      if (hit) {
-        const damage = rollDamage(selectedAbility.damage);
+    // If hit, automatically roll and apply damage
+    if (hit) {
+      const damage = rollDamage(selectedAbility.damage);
+      
+      // ⚠️ CRITICAL: Check for protection before applying damage
+      const session = await FirestoreService.getBattleSession(sessionId || '');
+      if (!session) return;
+      
+      const redirectResult = await ProtectionService.redirectDamage(
+        sessionId || '',
+        selectedTarget,
+        damage
+      );
+      
+      let actualTargetId = selectedTarget;
+      let actualTargetName = target.name;
+      
+      if (redirectResult?.redirected) {
+        actualTargetId = redirectResult.newTargetId;
+        actualTargetName = redirectResult.protectorName;
+        console.log(`🛡️ PROTECTION: ${actualTargetName} intercepts ${damage} damage for ${target.name}!`);
+      }
+      
+      // Apply damage to actual target (original or protector)
+      const actualTarget = session.tokens[actualTargetId];
+      if (actualTarget) {
+        const newHP = Math.max(0, (actualTarget.hp || 0) - damage);
         
-        // Apply damage directly using updateBattleSession
         await FirestoreService.updateBattleSession(sessionId || '', {
-          [`tokens.${selectedTarget}.hp`]: Math.max(0, (target.hp || 0) - damage),
+          [`tokens.${actualTargetId}.hp`]: newHP,
           updatedAt: new Date()
         });
         
-        // Add to combat log
-        console.log(`🎯 ${activeEnemy.name} hits ${target.name} with ${selectedAbility.name} for ${damage} damage!`);
-      } else {
-        console.log(`❌ ${activeEnemy.name} misses ${target.name} with ${selectedAbility.name}`);
+        // Update character HP if it's a player token
+        if (actualTarget.characterId) {
+          await FirestoreService.updateCharacterHP(actualTarget.characterId, newHP);
+        }
       }
+      
+      console.log(`💥 ${activeEnemy.name} dealt ${damage} damage to ${actualTargetName}`);
+    }
       
       // Reset selections
       setSelectedAbility(null);

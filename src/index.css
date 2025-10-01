@@ -147,6 +147,19 @@ code {
     animation: dash-move 0.5s linear infinite;
   }
 
+  @keyframes pulse {
+  0%, 100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.hearthlight-zone {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+
 /* Mobile viewport handling */
 @supports (height: 100dvh) {
   .min-h-screen {

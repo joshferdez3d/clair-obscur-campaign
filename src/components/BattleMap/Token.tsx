@@ -304,6 +304,22 @@ export function Token({
               </div>
             </div>
           )}
+
+          {/* Protection indicator */}
+          {token.statusEffects?.protection && (
+            <div className="w-3 h-3 bg-blue-600 rounded-full border border-blue-400 flex items-center justify-center animate-pulse">
+              <span className="text-xs text-white font-bold">🔰</span>
+            </div>
+          )}
+
+          {/* Protection tooltip */}
+          {token.statusEffects?.protection && (
+            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-100 transition-opacity z-40 pointer-events-none">
+              <div className="bg-blue-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap border border-blue-400">
+                Protected by {token.statusEffects.protection.protectorName} - Damage redirected
+              </div>
+            </div>
+          )}
         </div>
       )}
 

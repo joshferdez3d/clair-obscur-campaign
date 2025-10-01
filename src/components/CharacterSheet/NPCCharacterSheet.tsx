@@ -8,6 +8,9 @@ import type { GMCombatAction } from '../../types';
 import { doc, updateDoc, arrayUnion, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { db } from '../../services/firebase';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
+import { useCooldowns } from '../../hooks/useCooldowns';
+import { CooldownService } from '../../services/CooldownService';
+import { ProtectionService } from '../../services/ProtectionService';
 
 interface NPCCharacterSheetProps {
   npc: any;
@@ -19,6 +22,8 @@ interface NPCCharacterSheetProps {
   availableEnemies?: any[];
   availableAllies?: any[];
   npcToken?: any;
+  session?: any;  // ADD THIS LINE if not already there
+
 }
 
 const NPC_ABILITIES: { [key: string]: any } = {
@@ -111,7 +116,7 @@ const NPC_ABILITIES: { [key: string]: any } = {
       },
       {
         name: 'Rallying Cry',
-        description: 'Allies gain +1 AC for 1 round',
+        description: 'Allies gain +1 AC until Farmhand\'s next turn',
         type: 'buff',
         range: 30,
         needsAllyTarget: false,
@@ -123,7 +128,7 @@ const NPC_ABILITIES: { [key: string]: any } = {
     ],
     level2: [
       {
-        name: 'Enhanced Pitchfork',
+        name: 'Enhanced Pitchfork Jab',
         description: '+5 to hit, 1d10 piercing damage',
         damage: '1d10',
         toHit: 5,
@@ -136,16 +141,18 @@ const NPC_ABILITIES: { [key: string]: any } = {
         type: 'defensive',
         range: 5,
         needsTarget: false,
+        cooldown: 3
       }
     ],
     level3: [
       {
         name: 'Hearthlight',
-        description: 'Heal 2d4 HP to an ally',
-        damage: '2d4',
-        type: 'healing',
-        range: 30,
-        needsAllyTarget: true
+        description: 'Create healing aura (15ft radius). Heals allies 5hp/turn for 3 rounds. Once per battle.',
+        type: 'ultimate',
+        needsTarget: false,
+        range: 15,
+        healPerTurn: 5,
+        duration: 3
       }
     ]
   }
@@ -172,8 +179,10 @@ export function NPCCharacterSheet({
   const [ultimateUsed, setUltimateUsed] = useState(false);
   const [summonedSword, setSummonedSword] = useState<any>(null);
   const { triggerUltimate } = useUltimateVideo(sessionId || 'test-session');
-  const [abilityCooldowns, setAbilityCooldowns] = useState<{ [abilityName: string]: number }>({});
-
+  const { cooldowns, applyCooldown, isOnCooldown } = useCooldowns(
+    sessionId,
+    npcToken?.id
+  );
   const hpPercentage = npc?.currentHP && npc?.maxHP ? (npc.currentHP / npc.maxHP) * 100 : 100;
   const hpColor = hpPercentage > 60 ? 'bg-green-500' : hpPercentage > 30 ? 'bg-yellow-500' : 'bg-red-500';
 
@@ -188,112 +197,48 @@ export function NPCCharacterSheet({
 
   const portraitUrl = getNPCPortrait(npc?.id || '');
 
-  useEffect(() => {
-    if (!sessionId) return;
-    
-    // Subscribe to combat state changes
-    const unsubscribe = FirestoreService.subscribeToBattleSession(sessionId, (session) => {
-      if (!session || !npcToken) return;
-      
-      const combatActive = session.combatState?.isActive || false;
-      
-      // When combat becomes inactive (false), clear cooldowns
-      if (!combatActive && npcToken.repositionCooldown) {
-        // Clear cooldown from Firebase
-        FirestoreService.updateTokenProperty(
-          sessionId,
-          npcToken.id,
-          'repositionCooldown',
-          null
-        ).then(() => {
-          console.log('⚔️ Combat ended - Reposition cooldown cleared');
-        });
-        
-        // Clear local state
-        setAbilityCooldowns({});
-      }
-    });
-    
-    return () => unsubscribe();
-  }, [sessionId, npcToken?.id]);
-
-  // Manage cooldowns using Firebase
-  useEffect(() => {
-const manageCooldowns = async () => {
-  if (isNPCTurn && sessionId && npcToken) {
-    const session = await FirestoreService.getBattleSession(sessionId);
-    const currentToken = session?.tokens[npcToken.id];
-    const currentRound = session?.combatState?.round || 1; // Add this line
-    
-    if (currentToken?.repositionCooldown) {
-      // Decrement cooldown by 1 at the start of turn
-      const newCooldown = Math.max(0, currentToken.repositionCooldown - 1);
-      
-      setAbilityCooldowns(prev => ({
-        ...prev,
-        'Reposition': newCooldown
-      }));
-      
-      // Update Firebase
-      await FirestoreService.updateTokenProperty(
-        sessionId,
-        npcToken.id,
-        'repositionCooldown',
-        newCooldown > 0 ? newCooldown : null // Remove when expired
-      );
-    } else {
-      // No cooldown stored
-      setAbilityCooldowns(prev => {
-        const updated = { ...prev };
-        delete updated['Reposition'];
-        return updated;
-      });
-    }
-
-    // Handle Rallying Cry cooldown
-    if (currentToken?.rallyingCryCooldown !== undefined && currentToken?.rallyingCryCooldown !== null) {
-      // For now, just decrement the cooldown without checking when it was used
-      const newCooldown = Math.max(0, currentToken.rallyingCryCooldown - 1);
-      
-      setAbilityCooldowns(prev => ({
-        ...prev,
-        'Rallying Cry': newCooldown
-      }));
-      
-      await FirestoreService.updateTokenProperty(
-        sessionId,
-        npcToken.id,
-        'rallyingCryCooldown',
-        newCooldown > 0 ? newCooldown : null
-      );
-    }
-  }
-};
-    
-    if (isNPCTurn) {
-      manageCooldowns();
-    }
-  }, [isNPCTurn, sessionId, npcToken?.id]);
-
-
-
+  // Update the cooldown decrement effect
     useEffect(() => {
-    const loadCooldowns = async () => {
-      if (sessionId && npcToken) {
-        const session = await FirestoreService.getBattleSession(sessionId);
-        const currentToken = session?.tokens[npcToken.id];
-        
-        if (currentToken?.repositionCooldown) {
-          setAbilityCooldowns(prev => ({
-            ...prev,
-            'Reposition': currentToken.repositionCooldown || 0  // Add fallback to 0
-          }));
+      const decrementCooldowns = async () => {
+        if (isNPCTurn && sessionId && npcToken) {
+          await CooldownService.decrementCooldowns(sessionId, npcToken.id);
         }
+      };
+
+      if (isNPCTurn) {
+        decrementCooldowns();
       }
-    };
-    
-    loadCooldowns();
-  }, [sessionId, npcToken?.id]);
+    }, [isNPCTurn, sessionId, npcToken?.id]);
+
+    // Clear cooldowns when combat ends
+    useEffect(() => {
+      if (!sessionId) return;
+
+      let hasCleared = false; // Track if we've already cleared
+
+      const unsubscribe = FirestoreService.subscribeToBattleSession(sessionId, async (session) => {
+        const combatActive = session?.combatState?.isActive || false;
+
+        // Only clear once when combat becomes inactive
+        if (!combatActive && npcToken && !hasCleared) {
+          hasCleared = true;
+          
+          // Check if there are actually cooldowns to clear
+          const token = session?.tokens?.[npcToken.id];
+          if (token?.cooldowns && Object.keys(token.cooldowns).length > 0) {
+            await CooldownService.clearAllCooldowns(sessionId, npcToken.id);
+            console.log('Combat ended - Cooldowns cleared');
+          }
+        }
+        
+        // Reset the flag when combat starts again
+        if (combatActive) {
+          hasCleared = false;
+        }
+      });
+
+      return () => unsubscribe();
+    }, [sessionId, npcToken?.id]);
 
   useEffect(() => {
     const checkUltimateUsage = async () => {
@@ -342,14 +287,27 @@ const manageCooldowns = async () => {
         abilities.push(NPC_ABILITIES['the-child'].level1[1]); // Keep Reposition
       }
     } else {
-      if (npc?.level >= 1) {
-        abilities.push(...(NPC_ABILITIES[npcType]?.level1 || []));
-      }
-      if (npc?.level >= 2) {
-        abilities.push(...(NPC_ABILITIES[npcType]?.level2 || []));
-      }
-      if (npc?.level >= 3) {
-        abilities.push(...(NPC_ABILITIES[npcType]?.level3 || []));
+
+      const level = npc?.level || 1;
+
+     if (level === 1) {
+        // Level 1: Basic abilities only
+        abilities.push(...NPC_ABILITIES[npcType].level1);
+      } else if (level === 2) {
+        // Level 2: Replace Pitchfork Jab with Enhanced version, keep Rallying Cry, add Interpose
+        abilities.push(
+          NPC_ABILITIES[npcType].level2[0], // Enhanced Pitchfork Jab
+          NPC_ABILITIES[npcType].level1[1], // Rallying Cry
+          NPC_ABILITIES[npcType].level2[1]  // Interpose
+        );
+      } else if (level >= 3) {
+        // Level 3: All level 2 abilities + Hearthlight
+        abilities.push(
+          NPC_ABILITIES[npcType].level2[0], // Enhanced Pitchfork Jab
+          NPC_ABILITIES[npcType].level1[1], // Rallying Cry
+          NPC_ABILITIES[npcType].level2[1], // Interpose
+          NPC_ABILITIES[npcType].level3[0]  // Hearthlight
+        );
       }
     }
     
@@ -514,43 +472,138 @@ const manageCooldowns = async () => {
       console.error('Failed to reposition The Child:', error);
     }
   };
-  // Handle Reposition ability
-  const handleReposition = async () => {
+
+  const handleHearthlight = async () => {
     if (!npcToken || !sessionId) return;
     
+    // Check if already used this battle
+    const session = await FirestoreService.getBattleSession(sessionId);
+    if (session?.hearthlightUsed) {
+      alert('Hearthlight already used this battle!');
+      return;
+    }
+
     setIsExecuting(true);
-    
     try {
-      const targetAlly = findNearestAlly();
-      
-      if (targetAlly) {
-        // Reposition behind the ally
-        await repositionBehindAlly(targetAlly);
-        
-        // Set cooldown for Reposition ability (2 turns)
-        setAbilityCooldowns(prev => ({
-          ...prev,
-          'Reposition': 2
-        }));
-        
-        // Store cooldown on the token itself in Firebase
-        await FirestoreService.updateTokenProperty(
-          sessionId, 
-          npcToken.id, 
-          'repositionCooldown', 
-          2
-        );
-        
-        // End turn immediately after repositioning
-        await FirestoreService.nextTurn(sessionId);
-        
-        alert(`The Child repositioned behind ${targetAlly.name}!`);
-      } else {
-        alert('No valid ally to reposition behind!');
+
+      try {
+        await triggerUltimate('farmhand', 'Hearthlight');
+      } catch (error) {
+        console.error('Failed to trigger ultimate video:', error);
       }
+
+      // Calculate affected squares in 15ft radius (3 squares)
+      const affectedSquares: Array<{ x: number; y: number }> = [];
+      const radius = 3; // 15ft = 3 squares
+      
+      for (let x = npcToken.position.x - radius; x <= npcToken.position.x + radius; x++) {
+        for (let y = npcToken.position.y - radius; y <= npcToken.position.y + radius; y++) {
+          const distance = Math.sqrt(
+            Math.pow(x - npcToken.position.x, 2) + 
+            Math.pow(y - npcToken.position.y, 2)
+          );
+          if (distance <= radius && x >= 0 && y >= 0 && x < 20 && y < 15) {
+            affectedSquares.push({ x, y });
+          }
+        }
+      }
+
+      // Create Hearthlight zone
+      await FirestoreService.createHearthlightZone(sessionId, {
+        center: npcToken.position,
+        radius: 15,
+        affectedSquares,
+        healPerTurn: 5,
+        duration: 3,
+        createdBy: npcToken.id,
+        createdByName: npc.name
+      });
+
+      // Mark as used
+      await FirestoreService.updateBattleSession(sessionId, {
+        hearthlightUsed: true
+      });
+
+      alert(`🌟 Hearthlight activated! Allies in the aura will heal 5hp at the start of each of ${npc.name}'s turns for 3 rounds.`);
+      
+      await FirestoreService.nextTurn(sessionId);
     } catch (error) {
-      console.error('Failed to execute reposition:', error);
-      alert('Failed to reposition');
+      console.error('Failed to activate Hearthlight:', error);
+      alert('Failed to activate Hearthlight!');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+  const handleInterpose = async () => {
+    if (!npcToken || !sessionId) return;
+
+    // Get valid allies (within 5ft)
+    const validAllies = availableAllies.filter(ally => {
+      if (ally.id === npcToken.id) return false;
+      const distance = calculateDistance(npcToken.position, ally.position);
+      return distance <= 5;
+    });
+
+    if (validAllies.length === 0) {
+      alert('No allies within 5ft to protect!');
+      return;
+    }
+
+    // For now, protect the closest ally (you can add a modal to choose)
+    const closestAlly = validAllies.reduce((closest, ally) => {
+      const closestDist = calculateDistance(npcToken.position, closest.position);
+      const allyDist = calculateDistance(npcToken.position, ally.position);
+      return allyDist < closestDist ? ally : closest;
+    });
+
+    setIsExecuting(true);
+    try {
+      await ProtectionService.activateProtection(
+        sessionId,
+        npcToken.id,
+        npc.name,
+        closestAlly.id,
+        'Interpose'
+      );
+
+      // Apply 3-turn cooldown
+      await applyCooldown('interpose', 'Interpose', 3);
+
+      alert(`🛡️ ${npc.name} is now protecting ${closestAlly.name}! Attacks will be redirected until ${npc.name}'s next turn.`);
+      await FirestoreService.nextTurn(sessionId);
+    } catch (error) {
+      console.error('Failed to activate Interpose:', error);
+      alert('Failed to activate Interpose!');
+    } finally {
+      setIsExecuting(false);
+    }
+  };
+
+
+    const handleReposition = async () => {
+    if (!npcToken || !sessionId) return;
+
+    setIsExecuting(true);
+    try {
+      // Find the nearest ally
+      const ally = findNearestAlly();
+      if (!ally) {
+        alert('No allies in range to reposition behind!');
+        return;
+      }
+
+      // Use the existing repositionBehindAlly function to calculate and move
+      await repositionBehindAlly(ally);
+
+      // Apply cooldown using new system
+      await applyCooldown('reposition', 'Reposition', 2);
+
+      // End turn
+      await FirestoreService.nextTurn(sessionId);
+    } catch (error) {
+      console.error('Failed to reposition:', error);
+      alert('Failed to reposition!');
     } finally {
       setIsExecuting(false);
     }
@@ -559,11 +612,24 @@ const manageCooldowns = async () => {
   const handleActionSelect = (ability: any) => {
     if (!isNPCTurn || isExecuting) return;
 
-    // Check cooldown
-    if (abilityCooldowns[ability.name] && abilityCooldowns[ability.name] > 0) {
-      alert(`${ability.name} is on cooldown for ${abilityCooldowns[ability.name]} more turn(s)`);
+     // Check cooldown using new system
+    let abilityId = '';
+    if (ability.name === 'Reposition') {
+      abilityId = 'reposition';
+    } else if (ability.name === 'Rallying Cry') {
+      abilityId = 'rallying_cry';
+    } else if (ability.name === 'Interpose') {
+      abilityId = 'interpose';
+    } else {
+      abilityId = ability.name.toLowerCase().replace(/\s+/g, '_');
+    }
+
+    if (isOnCooldown(abilityId)) {
+      const remainingTurns = cooldowns[abilityId] || 0;
+      alert(`${ability.name} is on cooldown for ${remainingTurns} more turn(s)`);
       return;
     }
+
 
     // Handle Reposition ability
     if (ability.name === 'Reposition') {
@@ -575,6 +641,16 @@ const manageCooldowns = async () => {
       handleRallyingCry();
       return;
     }
+
+    if (ability.name === 'Interpose') {
+      handleInterpose();
+      return;
+    }
+    if (ability.name === 'Hearthlight') {
+      handleHearthlight();
+      return;
+    }
+
     
     // Check if this is the ultimate and if it's already used
     if (ability.type === 'ultimate' && ultimateUsed) {
@@ -612,64 +688,44 @@ const manageCooldowns = async () => {
     }
   };
 
-  // Handle Rallying Cry ability
-  // Handle Rallying Cry ability
-const handleRallyingCry = async () => {
-  if (!npcToken || !sessionId) return;
-  
-  setIsExecuting(true);
-  
-  try {
-    // For now, just create a combat action to log it
-    const action: GMCombatAction = {
-      id: `rallying-cry-${Date.now()}`,
-      type: 'ability',
-      playerId: npcToken.id,
-      playerName: npc.name,
-      targetId: 'all-allies',
-      targetName: 'All Allies',
-      sourcePosition: npcToken?.position || { x: 0, y: 0 },
-      acRoll: 0,
-      range: 30,
-      timestamp: new Date(),
-      resolved: true,
-      hit: true,
-      abilityName: 'Rallying Cry',
-      needsDamageInput: false,
-      damageApplied: false,
-    };
-    
-    await FirestoreService.addCombatAction(sessionId, action);
+  // Update Rallying Cry handler
+  const handleRallyingCry = async () => {
+    if (!npcToken || !sessionId) return;
 
-    await FirestoreService.applyRallyingCryBuff(sessionId, npcToken.id);
+    setIsExecuting(true);
+    try {
+      await FirestoreService.applyRallyingCryBuff(sessionId, npcToken.id);
 
-    
-    // Set cooldown
-    setAbilityCooldowns(prev => ({
-      ...prev,
-      'Rallying Cry': 2
-    }));
-    
-    // Store cooldown on the token itself in Firebase
-    await FirestoreService.updateTokenProperty(
-      sessionId,
-      npcToken.id,
-      'rallyingCryCooldown',
-      2
-    );
-    
-    alert('Rallying Cry activated! All allies gain +1 AC until your next turn.');
-    
-    // End turn after using Rallying Cry
-    await FirestoreService.nextTurn(sessionId);
-    
-  } catch (error) {
-    console.error('Failed to execute Rallying Cry:', error);
-    alert('Failed to activate Rallying Cry');
-  } finally {
-    setIsExecuting(false);
-  }
-};
+      // Apply cooldown using new system
+      await applyCooldown('rallying_cry', 'Rallying Cry', 2);
+
+      const action: GMCombatAction = {
+        id: `rallying-cry-${Date.now()}`,
+        type: 'ability',
+        playerId: npcToken.id,
+        playerName: npc.name,
+        targetId: 'all-allies',
+        targetName: 'All Allies',
+        sourcePosition: npcToken?.position || { x: 0, y: 0 },
+        acRoll: 0,
+        range: 30,
+        timestamp: new Date(),
+        resolved: true,
+        hit: true,
+        abilityName: 'Rallying Cry (+1 AC)',
+        needsDamageInput: false,
+        damageApplied: false,
+      };
+
+      await FirestoreService.addCombatAction(sessionId, action);
+      // alert('🛡️ Rallying Cry activated! All allies gain +1 AC until Farmhand\'s next turn.');
+      await FirestoreService.nextTurn(sessionId);
+    } catch (error) {
+      console.error('Failed to execute Rallying Cry:', error);
+    } finally {
+      setIsExecuting(false);
+    }
+  };
 
   const handleSummonSword = async (ability: any) => {
     if (!npcToken || !sessionId) return;
@@ -882,7 +938,17 @@ const handleRallyingCry = async () => {
                   </p>
                 ) : (
                   abilities.map((ability: any, index: number) => {
-                    const cooldown = abilityCooldowns[ability.name] || 0;
+                     let abilityId = '';
+                      if (ability.name === 'Reposition') {
+                        abilityId = 'reposition';
+                      } else if (ability.name === 'Rallying Cry') {
+                        abilityId = 'rallying_cry';
+                      } else if (ability.name === 'Interpose') {
+                        abilityId = 'interpose';
+                      } else {
+                        abilityId = ability.name.toLowerCase().replace(/\s+/g, '_');
+                      }                  
+                                        const cooldown = cooldowns[abilityId] || 0;
                     const onCooldown = cooldown > 0;
                     const needsTargets = ability.type === 'ranged' || ability.type === 'melee' || ability.needsAllyTarget;
                     
@@ -902,11 +968,7 @@ const handleRallyingCry = async () => {
                       hasTargets = validTargets.length > 0;
                     }
 
-                    if (needsTargets) {
-                      const validTargets = getValidTargets(ability);
-                      hasTargets = validTargets.length > 0;
-                    }
-                    
+
                     if (ability.type === 'ultimate' && ultimateUsed) {
                       hasTargets = false;
                     }

@@ -16,6 +16,19 @@ import { MovementInput } from '../Combat/MovementInput';
 import { MovementService } from '../../services/movementService'
 import { NPCTabSystem } from './NPCTabSystem';
 
+interface AbilityAction {
+  type: 'melee' | 'ranged' | 'ability';
+  id: string;
+  name: string;
+  description: string;
+  damage?: string;
+  cost?: number;
+  targetType?: 'enemy' | 'ally';
+  range?: string;
+  icon?: any;
+  disabled?: boolean;
+}
+
 interface GustaveCharacterSheetProps {
   character: Character;
   onHPChange: (delta: number) => void;
@@ -90,15 +103,10 @@ export function GustaveCharacterSheet({
   const [showTargetingModal, setShowTargetingModal] = useState(false);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+  const [selectedAlly, setSelectedAlly] = useState<string>('');
+  const [showAllySelectionModal, setShowAllySelectionModal] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<AbilityAction | null>(null);
 
-  const [selectedAction, setSelectedAction] = useState<{
-    type: 'melee' | 'ranged' | 'ability';
-    id: string;
-    name: string;
-    description: string;
-    damage?: string;
-    cost?: number;
-  } | null>(null);
   
   const handleOpenInventory = () => {
     setShowInventoryModal(true);
@@ -161,19 +169,47 @@ export function GustaveCharacterSheet({
     if (actionType === 'melee') return 5;
     if (abilityId === 'prosthetic_strike') return 5;
     if (abilityId === 'deploy_turret') return 10;
+    if (abilityId === 'leaders_sacrifice') return 999; // ADD THIS LINE - unlimited range
     return 5;
   };
 
-  const getValidTargets = (actionRange: number, actionType: string) => {
-    if (actionType === 'ranged') {
+  const getValidTargets = (
+    targetType: 'enemy' | 'ally',
+    actionRange?: number,
+    actionType?: string
+  ): Array<{
+    id: string;
+    name: string;
+    position: { x: number; y: number };
+    hp: number;
+    maxHp: number;
+    ac: number;
+  }> => {
+    if (targetType === 'ally') {
+      // Return all player tokens except Gustave himself
+      return allTokens
+        .filter(t => t.type === 'player' && t.id !== playerToken?.id)
+        .map(t => ({
+          id: t.id,
+          name: t.name,
+          position: t.position,
+          hp: t.hp || 0,
+          maxHp: t.maxHp || 0,
+          ac: t.ac || 0
+        }));
+    }
+    
+    // For enemies - handle ranged vs melee if range/type provided
+    if (actionType === 'ranged' || !actionRange) {
       return availableEnemies;
     }
+    
+    // Filter by range for melee attacks
     return availableEnemies.filter((enemy) => {
       const distance = calculateDistance(playerPosition, enemy.position);
       return distance <= actionRange;
     });
   };
-
   // REMOVED: hasActed logging since we're not tracking it anymore
   useEffect(() => {
     console.log('🔧 GUSTAVE STATE DEBUG:', {
@@ -215,8 +251,13 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    if (action.id === 'leaders_sacrifice' && abilityPoints < 1) {
-      alert(`Not enough ability points for Leader's Sacrifice! Need 1, have ${abilityPoints}`);
+    if (action.id === 'leaders_sacrifice') {
+      if (abilityPoints < 1) {
+        alert(`Not enough ability points for Leader's Sacrifice! Need 1, have ${abilityPoints}`);
+        return;
+      }
+      setSelectedAction(action);
+      setShowTargetingModal(true);  // Use the existing targeting modal
       return;
     }
 
@@ -305,12 +346,22 @@ export function GustaveCharacterSheet({
     }
 
     if (selectedAction.id === 'leaders_sacrifice') {
+      if (!selectedTarget) {
+        alert('Please select an ally to protect!');
+        return;
+      }
+
       try {
-        await FirestoreService.createLeadersSacrificePAction(sessionId, {
-          playerId: character.id,
-          playerName: character.name,
-          currentRound: session?.combatState?.round || 1
-        });
+        const { ProtectionService } = await import('../../services/ProtectionService');
+        
+        // Activate protection directly
+        await ProtectionService.activateProtection(
+          sessionId,
+          playerToken?.id || character.id,
+          character.name,
+          selectedTarget,
+          "Leader's Sacrifice"
+        );
 
         if (onTargetSelect) {
           onTargetSelect('action_taken', 0, 'ability', 'leaders_sacrifice');
@@ -319,10 +370,12 @@ export function GustaveCharacterSheet({
         // Consume ability points
         await setAbilityPoints(abilityPoints - 1);
 
-        console.log("Leader's Sacrifice activated - turn ended");
+        const allyToken = allTokens.find(t => t.id === selectedTarget);
+        console.log(`Leader's Sacrifice: ${character.name} protecting ${allyToken?.name}`);
         
-        // STREAMLINED: Auto-end turn (Leader's Sacrifice always ends turn immediately)
+        // Clear selections and end turn
         setSelectedAction(null);
+        setSelectedTarget('');
         if (onEndTurn) {
           onEndTurn();
         }
@@ -334,7 +387,6 @@ export function GustaveCharacterSheet({
         return;
       }
     }
-
     if (selectedAction.id === 'overcharge_burst') {
       console.log('🚀 Starting Overcharge Burst handling...');
 
@@ -512,6 +564,7 @@ export function GustaveCharacterSheet({
       damage: 'Redirects ally damage to you',
       cost: 1,
       range: 'Any ally',
+      targetType: 'ally' as const,  // ADD THIS
     },
     activeTurretId 
     ? {
@@ -832,29 +885,46 @@ export function GustaveCharacterSheet({
                     Self Destruct Turret
                   </button>
                 </div>
-              ) : selectedAction.id === 'leaders_sacrifice' ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
-                    <p className="text-blue-200 text-sm font-bold mb-2">
-                      Leader's Sacrifice - Protection Protocol
-                    </p>
-                    <p className="text-blue-300 text-sm mb-2">
-                      • Your turn will end immediately
-                    </p>
-                    <p className="text-blue-300 text-sm mb-2">
-                      • Call out to the GM which ally you want to protect
-                    </p>
-                    <p className="text-blue-300 text-sm">
-                      • For the next 2 rounds, you will take damage meant for that ally
-                    </p>
+                ) : selectedAction.id === 'leaders_sacrifice' ? (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-blue-900 bg-opacity-30 rounded-lg">
+                      <p className="text-blue-200 text-sm font-bold mb-2">
+                        Leader's Sacrifice - Protection Protocol
+                      </p>
+                      <p className="text-blue-300 text-sm mb-2">
+                        • Select an ally to protect
+                      </p>
+                      <p className="text-blue-300 text-sm mb-2">
+                        • Your turn will end immediately
+                      </p>
+                      <p className="text-blue-300 text-sm">
+                        • For the next 2 rounds, you will take damage meant for that ally
+                      </p>
+                    </div>
+                    
+                    {/* Use standard targeting button like other abilities */}
+                    <button
+                      onClick={() => setShowTargetingModal(true)}
+                      className="w-full p-4 bg-clair-gold-600 hover:bg-clair-gold-700 text-clair-shadow-900 rounded-lg font-bold transition-colors flex items-center justify-center"
+                    >
+                      <Target className="w-5 h-5 mr-2" />
+                      Select Ally to Protect
+                      {selectedTarget && (
+                        <span className="ml-2 text-sm">
+                          ({allTokens.find(t => t.id === selectedTarget)?.name})
+                        </span>
+                      )}
+                    </button>
+
+                    {selectedTarget && (
+                      <button 
+                        onClick={handleConfirmAction} 
+                        className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg font-bold transition-colors"
+                      >
+                        Confirm Leader's Sacrifice
+                      </button>
+                    )}
                   </div>
-                  <button 
-                    onClick={handleConfirmAction} 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg font-bold transition-colors"
-                  >
-                    Activate Leader's Sacrifice
-                  </button>
-                </div>
               ) : selectedAction.id === 'overcharge_burst' ? (
                 <div className="space-y-3">
                   <div className="p-3 bg-yellow-900 bg-opacity-30 rounded-lg">
@@ -950,12 +1020,14 @@ export function GustaveCharacterSheet({
       <EnemyTargetingModal
         isOpen={showTargetingModal}
         onClose={() => setShowTargetingModal(false)}
-        enemies={availableEnemies}
+        enemies={selectedAction?.targetType === 'ally' 
+          ? getValidTargets('ally') 
+          : availableEnemies}
         playerPosition={playerPosition}
         sessionId={sessionId}
         playerId={character.id}
-        onSelectEnemy={(enemy) => {
-          setSelectedTarget(enemy.id);
+        onSelectEnemy={(target) => {
+          setSelectedTarget(target.id);
           setShowTargetingModal(false);
         }}
         selectedEnemyId={selectedTarget}
