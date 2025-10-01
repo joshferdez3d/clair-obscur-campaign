@@ -114,7 +114,11 @@ const NPC_ABILITIES: { [key: string]: any } = {
         description: 'Allies gain +1 AC for 1 round',
         type: 'buff',
         range: 30,
-        needsAllyTarget: true
+        needsAllyTarget: false,
+        cooldown: 2, // 2 round cooldown after use
+        appliesEffect: 'ac_buff',
+        buffValue: 1,
+        buffDuration: 'until_next_turn'
       }
     ],
     level2: [
@@ -130,7 +134,8 @@ const NPC_ABILITIES: { [key: string]: any } = {
         name: 'Interpose',
         description: 'Redirect attack to self',
         type: 'defensive',
-        range: 5
+        range: 5,
+        needsTarget: false,
       }
     ],
     level3: [
@@ -214,37 +219,56 @@ export function NPCCharacterSheet({
 
   // Manage cooldowns using Firebase
   useEffect(() => {
-    const manageCooldowns = async () => {
-      if (isNPCTurn && sessionId && npcToken) {
-        const session = await FirestoreService.getBattleSession(sessionId);
-        const currentToken = session?.tokens[npcToken.id];
-        
-        if (currentToken?.repositionCooldown) {
-          // Decrement cooldown by 1 at the start of turn
-          const newCooldown = Math.max(0, currentToken.repositionCooldown - 1);
-          
-          setAbilityCooldowns(prev => ({
-            ...prev,
-            'Reposition': newCooldown
-          }));
-          
-          // Update Firebase
-          await FirestoreService.updateTokenProperty(
-            sessionId,
-            npcToken.id,
-            'repositionCooldown',
-            newCooldown > 0 ? newCooldown : null // Remove when expired
-          );
-        } else {
-          // No cooldown stored
-          setAbilityCooldowns(prev => {
-            const updated = { ...prev };
-            delete updated['Reposition'];
-            return updated;
-          });
-        }
-      }
-    };
+const manageCooldowns = async () => {
+  if (isNPCTurn && sessionId && npcToken) {
+    const session = await FirestoreService.getBattleSession(sessionId);
+    const currentToken = session?.tokens[npcToken.id];
+    const currentRound = session?.combatState?.round || 1; // Add this line
+    
+    if (currentToken?.repositionCooldown) {
+      // Decrement cooldown by 1 at the start of turn
+      const newCooldown = Math.max(0, currentToken.repositionCooldown - 1);
+      
+      setAbilityCooldowns(prev => ({
+        ...prev,
+        'Reposition': newCooldown
+      }));
+      
+      // Update Firebase
+      await FirestoreService.updateTokenProperty(
+        sessionId,
+        npcToken.id,
+        'repositionCooldown',
+        newCooldown > 0 ? newCooldown : null // Remove when expired
+      );
+    } else {
+      // No cooldown stored
+      setAbilityCooldowns(prev => {
+        const updated = { ...prev };
+        delete updated['Reposition'];
+        return updated;
+      });
+    }
+
+    // Handle Rallying Cry cooldown
+    if (currentToken?.rallyingCryCooldown !== undefined && currentToken?.rallyingCryCooldown !== null) {
+      // For now, just decrement the cooldown without checking when it was used
+      const newCooldown = Math.max(0, currentToken.rallyingCryCooldown - 1);
+      
+      setAbilityCooldowns(prev => ({
+        ...prev,
+        'Rallying Cry': newCooldown
+      }));
+      
+      await FirestoreService.updateTokenProperty(
+        sessionId,
+        npcToken.id,
+        'rallyingCryCooldown',
+        newCooldown > 0 ? newCooldown : null
+      );
+    }
+  }
+};
     
     if (isNPCTurn) {
       manageCooldowns();
@@ -546,6 +570,11 @@ export function NPCCharacterSheet({
       handleReposition();
       return;
     }
+
+    if (ability.name === 'Rallying Cry') {
+      handleRallyingCry();
+      return;
+    }
     
     // Check if this is the ultimate and if it's already used
     if (ability.type === 'ultimate' && ultimateUsed) {
@@ -582,6 +611,65 @@ export function NPCCharacterSheet({
       setSelectedAction(ability);
     }
   };
+
+  // Handle Rallying Cry ability
+  // Handle Rallying Cry ability
+const handleRallyingCry = async () => {
+  if (!npcToken || !sessionId) return;
+  
+  setIsExecuting(true);
+  
+  try {
+    // For now, just create a combat action to log it
+    const action: GMCombatAction = {
+      id: `rallying-cry-${Date.now()}`,
+      type: 'ability',
+      playerId: npcToken.id,
+      playerName: npc.name,
+      targetId: 'all-allies',
+      targetName: 'All Allies',
+      sourcePosition: npcToken?.position || { x: 0, y: 0 },
+      acRoll: 0,
+      range: 30,
+      timestamp: new Date(),
+      resolved: true,
+      hit: true,
+      abilityName: 'Rallying Cry',
+      needsDamageInput: false,
+      damageApplied: false,
+    };
+    
+    await FirestoreService.addCombatAction(sessionId, action);
+
+    await FirestoreService.applyRallyingCryBuff(sessionId, npcToken.id);
+
+    
+    // Set cooldown
+    setAbilityCooldowns(prev => ({
+      ...prev,
+      'Rallying Cry': 2
+    }));
+    
+    // Store cooldown on the token itself in Firebase
+    await FirestoreService.updateTokenProperty(
+      sessionId,
+      npcToken.id,
+      'rallyingCryCooldown',
+      2
+    );
+    
+    alert('Rallying Cry activated! All allies gain +1 AC until your next turn.');
+    
+    // End turn after using Rallying Cry
+    await FirestoreService.nextTurn(sessionId);
+    
+  } catch (error) {
+    console.error('Failed to execute Rallying Cry:', error);
+    alert('Failed to activate Rallying Cry');
+  } finally {
+    setIsExecuting(false);
+  }
+};
 
   const handleSummonSword = async (ability: any) => {
     if (!npcToken || !sessionId) return;

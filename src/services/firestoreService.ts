@@ -1274,9 +1274,9 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     const targetToken = session.tokens[targetId];
     if (!playerToken || !targetToken) throw new Error('Player or target not found');
 
-    const targetAC = targetToken.ac ?? 13;
+    const targetAC = this.calculateEffectiveAC(targetToken);
     const hit = acRoll >= targetAC;
-
+    
     const action: GMCombatAction = {
       id: `action-${Date.now()}`,
       type: 'attack',
@@ -2626,6 +2626,106 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       'luneElementalGenesisUsed': false, // Reset Lune's ultimate on combat end
       updatedAt: serverTimestamp()
     });
+  }
+
+  // Apply Rallying Cry buff to all allies
+  static async applyRallyingCryBuff(
+    sessionId: string, 
+    farmhandId: string
+  ): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens) return;
+    
+    const updates: Record<string, any> = {};
+    const currentRound = session.combatState?.round || 1;
+    
+    // Find the farmhand token to get its name
+    const farmhandToken = Object.values(session.tokens).find(
+      (t: any) => t.id === farmhandId
+    );
+    const farmhandName = farmhandToken?.name || 'The Farmhand';
+    
+    // Apply buff to all player tokens
+    Object.entries(session.tokens).forEach(([tokenId, token]: [string, any]) => {
+      if (token.type === 'player') {
+        // Add rallying cry buff to status effects
+        updates[`tokens.${tokenId}.statusEffects.rallyingCry`] = {
+          acBonus: 1,
+          source: farmhandName,
+          sourceId: farmhandId,
+          appliedOnRound: currentRound,
+          expiresOnFarmhandTurn: true,
+          description: '+1 AC until Farmhand\'s next turn'
+        };
+        
+        console.log(`🛡️ Applied Rallying Cry to ${token.name}`);
+      }
+    });
+    
+    // Track that Rallying Cry is active
+    updates['activeEffects.rallyingCry'] = {
+      active: true,
+      sourceId: farmhandId,
+      sourceName: farmhandName,
+      appliedRound: currentRound,
+      affectedTokens: Object.entries(session.tokens)
+        .filter(([_, t]: [string, any]) => t.type === 'player')
+        .map(([id]) => id)
+    };
+    
+    const sessionRef = doc(db, 'battleSessions', sessionId);
+    await updateDoc(sessionRef, {
+      ...updates,
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log('✅ Rallying Cry buff applied to all allies');
+  }
+
+  // Remove Rallying Cry buff when Farmhand's turn starts
+  static async removeRallyingCryBuff(sessionId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens) return;
+    
+    const updates: Record<string, any> = {};
+    let buffRemoved = false;
+    
+    // Remove buff from all tokens
+    Object.entries(session.tokens).forEach(([tokenId, token]: [string, any]) => {
+      if (token.statusEffects?.rallyingCry) {
+        updates[`tokens.${tokenId}.statusEffects.rallyingCry`] = deleteField();
+        buffRemoved = true;
+        console.log(`🛡️ Removed Rallying Cry from ${token.name}`);
+      }
+    });
+    
+    // Clear active effect
+    if (session.activeEffects?.rallyingCry) {
+      updates['activeEffects.rallyingCry'] = deleteField();
+    }
+    
+    if (buffRemoved) {
+      const sessionRef = doc(db, 'battleSessions', sessionId);
+      await updateDoc(sessionRef, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ Rallying Cry buff expired and removed');
+    }
+  }
+
+  // Helper method to calculate effective AC including buffs
+  static calculateEffectiveAC(token: BattleToken): number {
+    let baseAC = token.ac || 10;
+    
+    // Add Rallying Cry buff
+    if (token.statusEffects?.rallyingCry) {
+      baseAC += token.statusEffects.rallyingCry.acBonus || 1;
+      console.log(`🛡️ ${token.name} has +${token.statusEffects.rallyingCry.acBonus} AC from Rallying Cry`);
+    }
+    
+    return baseAC;
   }
 
   static async createDefaultPlayerTokens(sessionId: string): Promise<void> {

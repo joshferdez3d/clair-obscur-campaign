@@ -288,6 +288,22 @@ export function Token({
               <span className="text-xs text-white font-bold">-</span>
             </div>
           )}
+
+          {/* Add this in the status effects indicators section */}
+          {token.statusEffects?.rallyingCry && (
+            <div className="w-3 h-3 bg-green-600 rounded-full border border-green-400 flex items-center justify-center animate-pulse">
+              <span className="text-xs text-white font-bold">🛡️</span>
+            </div>
+          )}
+
+          {/* Add tooltip for Rallying Cry buff */}
+          {token.statusEffects?.rallyingCry && (
+            <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 opacity-0 hover:opacity-100 transition-opacity z-40 pointer-events-none">
+              <div className="bg-green-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap border border-green-400">
+                Rallying Cry: +1 AC from {token.statusEffects.rallyingCry.source}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

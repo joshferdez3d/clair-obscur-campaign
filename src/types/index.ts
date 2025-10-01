@@ -91,6 +91,15 @@ export interface BattleToken {
       appliedOnRound: number;
       description?: string;
     };
+    rallyingCry?: {
+      acBonus: number;
+      source: string;
+      sourceId?: string;
+      appliedOnRound: number;
+      expiresOnFarmhandTurn?: boolean;
+      description: string;
+    };
+
   };
 
   controlledBy?: 'maelle' | 'sciel' | 'gm';
@@ -98,8 +107,7 @@ export interface BattleToken {
   hasActed?: boolean;
   hasMoved?: boolean;
   repositionCooldown?: number;
-
-  
+  rallyingCryCooldown?: number;
 }
 
 export interface BattleMapPreset {
@@ -480,6 +488,16 @@ export interface BattleSession {
     protectedAlly: string;
     type: 'leaders_sacrifice';
   }>;
+
+  activeEffects?: {
+    rallyingCry?: {
+      active: boolean;
+      sourceId: string;
+      sourceName: string;
+      appliedRound: number;
+      affectedTokens: string[];
+    };
+  };
 }
 
 export interface MapConfig {
@@ -548,6 +566,16 @@ export interface BattleSessionDoc {
       createdAt: number;
       expiresOnRound?: number;
     }>;
+    activeEffects?: {
+        rallyingCry?: {
+          active: boolean;
+          sourceId: string;
+          sourceName: string;
+          appliedRound: number;
+          affectedTokens: string[];
+        };
+      };
+
 }
 
 // Elemental stain type

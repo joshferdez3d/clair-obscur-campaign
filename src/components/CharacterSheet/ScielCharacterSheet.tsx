@@ -1,6 +1,6 @@
 // src/components/CharacterSheet/ScielCharacterSheet.tsx - STREAMLINED VERSION
 import React, { useState, useEffect } from 'react';
-import { User, Sparkles, Target, Eye, Zap, Circle, Heart, Shuffle } from 'lucide-react';
+import { User, Sparkles, Target, Eye, Zap, Circle, Heart, Shuffle, Shield } from 'lucide-react';
 import { FirestoreService } from '../../services/firestoreService';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
@@ -85,6 +85,7 @@ export function ScielCharacterSheet({
   const { triggerUltimate } = useUltimateVideo(sessionId);
   const [showInventoryModal, setShowInventoryModal] = useState(false);
   const { gold: goldAmount, inventory, loading: inventoryLoading } = useRealtimeInventory(character?.id || '');
+  const hasRallyingCryBuff = session?.tokens?.[`player-${character.id}`]?.statusEffects?.rallyingCry;
 
   const [selectedAction, setSelectedAction] = useState<{
     type: 'basic' | 'ability' | 'bonus';
@@ -559,7 +560,14 @@ export function ScielCharacterSheet({
 
         {/* HP TRACKER */}
         <HPTracker currentHP={character.currentHP} maxHP={character.maxHP} onHPChange={onHPChange} isLoading={isLoading} showControls={false}/>
-
+        {hasRallyingCryBuff && (
+          <div className="bg-green-900 bg-opacity-50 border border-green-500 rounded p-2 mb-2">
+            <div className="flex items-center text-green-300 text-sm">
+              <Shield className="w-4 h-4 mr-2" />
+              <span>Rallying Cry: +1 AC (from Farmhand)</span>
+            </div>
+          </div>
+        )}
         {/* ABILITY SCORES */}
         <StatDisplay stats={character.stats} />
 

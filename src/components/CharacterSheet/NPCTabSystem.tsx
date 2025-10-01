@@ -122,6 +122,23 @@ export function NPCTabSystem({
     }
   }, [isNPCTurn, autoSwitchEnabled, currentTurnName]); // Remove activeTab from dependencies
 
+
+  // Add effect to detect when Farmhand's turn starts and remove old buff
+  useEffect(() => {
+    const handleFarmhandTurnStart = async () => {
+      if (isNPCTurn && npcInfo?.id === 'farmhand' && sessionId) {
+        // Remove Rallying Cry buff from previous turn
+        await FirestoreService.removeRallyingCryBuff(sessionId);
+        console.log('🛡️ Farmhand turn started - previous Rallying Cry buff removed');
+      }
+    };
+    
+    if (isNPCTurn && npcInfo?.id === 'farmhand') {
+      handleFarmhandTurnStart();
+    }
+  }, [isNPCTurn, npcInfo?.id, sessionId]);
+
+
   // Initialize NPC data with correct level and HP based on level
   useEffect(() => {
     if (!npcInfo) return;
