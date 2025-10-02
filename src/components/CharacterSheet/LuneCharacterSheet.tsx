@@ -630,6 +630,8 @@ export function LuneCharacterSheet({
       if (selectedAction.id === 'elemental_strike' && consumedElement && selectedTarget) {
         console.log('Applying status effect:', consumedElement, 'to target:', selectedTarget);
         
+        await FirestoreService.clearLuneStatusEffects(sessionId, selectedTarget);
+
         const statusEffectMap: Record<ElementType, any> = {
           fire: { turnsRemaining: 3, damage: 5, appliedOnRound: session?.combatState?.round || 1 },
           ice: { turnsRemaining: 2, appliedOnRound: session?.combatState?.round || 1 },

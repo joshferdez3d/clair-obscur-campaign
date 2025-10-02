@@ -200,8 +200,22 @@ export class FirestoreService {
         totalTurns: 0,
         pendingRolls: [],
       },
-      hearthlightUsed: false,  // ADD THIS LINE
-      hearthlightZones: [], 
+
+      luneElementalGenesisUsed: false,
+      theChildUltimateUsed: false,
+      hearthlightUsed: false,
+      hearthlightZones: [],
+      fireTerrainZones: [],
+      iceWalls: [],
+      lightBlindEffects: [],
+      activeBuffs: [],
+      vanishedEnemies: [],
+      activeSummons: [],
+      activeProtections: {},
+      activeProtectionEffects: [],
+      activeEffects: {},
+      ultimateVideoEvent: null,
+
       updatedAt: serverTimestamp(),
     });
 
@@ -2742,6 +2756,44 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     } catch (e) {
       console.error('getBattleSession error:', e);
       return null;
+    }
+  }
+
+  // Add this method to FirestoreService class
+  static async clearLuneStatusEffects(sessionId: string, targetId: string): Promise<void> {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens?.[targetId]) return;
+
+    const token = session.tokens[targetId];
+    const updates: any = {};
+    let hasUpdates = false;
+
+    // Clear fire, ice, and blind status effects (Lune's elemental effects)
+    if (token.statusEffects?.fire) {
+      updates[`tokens.${targetId}.statusEffects.fire`] = deleteField();
+      hasUpdates = true;
+      console.log(`🔥 Cleared fire status from ${token.name}`);
+    }
+    
+    if (token.statusEffects?.ice) {
+      updates[`tokens.${targetId}.statusEffects.ice`] = deleteField();
+      hasUpdates = true;
+      console.log(`❄️ Cleared ice status from ${token.name}`);
+    }
+    
+    if (token.statusEffects?.blind) {
+      updates[`tokens.${targetId}.statusEffects.blind`] = deleteField();
+      hasUpdates = true;
+      console.log(`💡 Cleared blind status from ${token.name}`);
+    }
+
+    if (hasUpdates) {
+      const ref = doc(db, 'battleSessions', sessionId);
+      await updateDoc(ref, {
+        ...updates,
+        updatedAt: serverTimestamp()
+      });
+      console.log(`✨ Cleared previous Lune status effects from ${token.name} before applying new one`);
     }
   }
 

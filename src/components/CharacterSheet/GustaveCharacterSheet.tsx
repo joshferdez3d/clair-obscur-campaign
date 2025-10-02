@@ -36,8 +36,8 @@ interface GustaveCharacterSheetProps {
   // Persistent state props
   overchargePoints: number;
   setOverchargePoints: (points: number) => Promise<void>;
-  abilityPoints: number;
-  setAbilityPoints: (points: number) => Promise<void>;
+  // abilityPoints: number;
+  // setAbilityPoints: (points: number) => Promise<void>;
   activeTurretId: string | null;
   setActiveTurretId: (id: string | null) => Promise<void>;
   turretsDeployedThisBattle: number;
@@ -74,8 +74,8 @@ export function GustaveCharacterSheet({
   onHPChange,
   overchargePoints,
   setOverchargePoints,
-  abilityPoints,
-  setAbilityPoints,
+  // abilityPoints,
+  // setAbilityPoints,
   activeTurretId,
   setActiveTurretId,
   turretsDeployedThisBattle,
@@ -213,20 +213,19 @@ export function GustaveCharacterSheet({
   // REMOVED: hasActed logging since we're not tracking it anymore
   useEffect(() => {
     console.log('🔧 GUSTAVE STATE DEBUG:', {
-      abilityPoints,
       overchargePoints,
       isMyTurn,
       combatActive,
     });
-  }, [abilityPoints, overchargePoints, isMyTurn, combatActive]);
+  }, [overchargePoints, isMyTurn, combatActive]);
 
   const handleActionSelect = (action: any) => {
     // REMOVED: hasActed validation since we auto-end turn
 
     // Ability point validation
     if (action.type === 'ability' && action.cost) {
-      if (action.cost > abilityPoints) {
-        alert(`Not enough ability points! Need ${action.cost}, have ${abilityPoints}`);
+      if (action.cost > overchargePoints) {
+        alert(`Not enough overcharge! Need ${action.cost}, have ${overchargePoints}`);
         return;
       }
     }
@@ -240,8 +239,8 @@ export function GustaveCharacterSheet({
         alert('Maximum 2 turrets per battle reached!');
         return;
       }
-      if (abilityPoints < 3) {
-        alert(`Not enough ability points for turret! Need 3, have ${abilityPoints}`);
+      if (overchargePoints < 3) {
+        alert(`Not enough ability points for turret! Need 3, have ${overchargePoints}`);
         return;
       }
     }
@@ -252,8 +251,8 @@ export function GustaveCharacterSheet({
     }
 
     if (action.id === 'leaders_sacrifice') {
-      if (abilityPoints < 1) {
-        alert(`Not enough ability points for Leader's Sacrifice! Need 1, have ${abilityPoints}`);
+      if (overchargePoints < 1) {
+        alert(`Not enough ability points for Leader's Sacrifice! Need 1, have ${overchargePoints}`);
         return;
       }
       setSelectedAction(action);
@@ -261,8 +260,8 @@ export function GustaveCharacterSheet({
       return;
     }
 
-    if (action.id === 'prosthetic_strike' && abilityPoints < 2) {
-      alert(`Not enough ability points for Prosthetic Strike! Need 2, have ${abilityPoints}`);
+    if (action.id === 'prosthetic_strike' && overchargePoints < 2) {
+      alert(`Not enough ability points for Prosthetic Strike! Need 2, have ${overchargePoints}`);
       return;
     }
 
@@ -292,7 +291,7 @@ export function GustaveCharacterSheet({
         }
 
         // Consume ability points
-        await setAbilityPoints(abilityPoints - 3);
+        await setOverchargePoints(overchargePoints - 3);
         
         console.log('Turret placement action created for GM');
         
@@ -368,7 +367,7 @@ export function GustaveCharacterSheet({
         }
 
         // Consume ability points
-        await setAbilityPoints(abilityPoints - 1);
+        await setOverchargePoints(overchargePoints - 1);
 
         const allyToken = allTokens.find(t => t.id === selectedTarget);
         console.log(`Leader's Sacrifice: ${character.name} protecting ${allyToken?.name}`);
@@ -480,7 +479,7 @@ export function GustaveCharacterSheet({
         // Handle resource costs based on action type
         if (selectedAction.type === 'ability' && selectedAction.cost) {
           // Consume ability points for abilities like prosthetic_strike
-          await setAbilityPoints(abilityPoints - selectedAction.cost);
+          await setOverchargePoints(overchargePoints - selectedAction.cost);
           console.log(`Consumed ${selectedAction.cost} ability points for ${selectedAction.name}`);
         }
 
@@ -492,7 +491,6 @@ export function GustaveCharacterSheet({
           if (hit) {
             // Sword attacks build both overcharge and ability points when they HIT
             await setOverchargePoints(Math.min(3, overchargePoints + 1));
-            await setAbilityPoints(Math.min(5, abilityPoints + 1));
             console.log('🗡️ Sword attack HIT: +1 Overcharge, +1 Ability Point');
           } else {
             console.log('🗡️ Sword attack MISSED: No resource gain');
@@ -553,7 +551,7 @@ export function GustaveCharacterSheet({
       name: 'Prosthetic Strike',
       description: 'Energy blast from mechanical arm. Turn ends automatically.',
       damage: '1d10 bludgeoning',
-      cost: 2,
+      cost: 1,
       range: '5ft',
     },
     {
@@ -584,7 +582,7 @@ export function GustaveCharacterSheet({
           ? 'Maximum 2 turrets per battle' 
           : 'Place turret that attacks enemies. Turn ends automatically.',
         damage: 'No direct damage',
-        cost: 3,
+        cost: 2,
         range: '5ft placement radius',
         disabled: turretsDeployedThisBattle >= 2
       }
@@ -596,7 +594,7 @@ export function GustaveCharacterSheet({
     name: 'Overcharge Burst',
     description: 'Lightning explosion affecting all nearby units. Turn ends automatically.',
     damage: '6d6 lightning (30ft radius)',
-    cost: 0,
+    cost: 3,
     range: '30ft AoE',
   };
 
@@ -698,30 +696,6 @@ export function GustaveCharacterSheet({
           </div>
         )}
 
-
-        {/* Ability Points */}
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-clair-gold-600">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center">
-              <Sparkles className="w-6 h-6 text-clair-gold-500 mr-2" />
-              <h3 className="font-display text-lg font-bold text-clair-gold-400">Ability Points</h3>
-            </div>
-            <div className="font-serif text-2xl font-bold text-clair-gold-50">{abilityPoints} / 5</div>
-          </div>
-          <div className="flex justify-center space-x-2 mb-2">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div
-                key={index}
-                className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
-                  index < abilityPoints
-                    ? 'bg-clair-gold-500 border-clair-gold-400 shadow-lg'
-                    : 'bg-clair-shadow-800 border-clair-shadow-400'
-                }`}
-              />
-            ))}
-          </div>
-        </div>
-
         {/* Overcharge Points */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 mb-4 border border-yellow-600">
           <div className="flex items-center justify-between mb-3">
@@ -796,7 +770,7 @@ export function GustaveCharacterSheet({
                     <button
                       key={ability.id}
                       onClick={() => handleActionSelect(ability)}
-                      disabled={!isMyTurn || !combatActive || abilityPoints < ability.cost}
+                      disabled={!isMyTurn || !combatActive || overchargePoints < ability.cost}
                       className="w-full bg-orange-600 hover:bg-orange-700 disabled:bg-gray-600 disabled:opacity-50 p-3 rounded-lg transition-colors text-left text-white"
                     >
                       <div className="flex items-center">
@@ -1005,7 +979,7 @@ export function GustaveCharacterSheet({
             <h4 className="font-serif font-bold text-clair-gold-400 text-sm mb-2">Combat Tips:</h4>
             <ul className="text-xs text-clair-gold-300 space-y-1">
               <li>⚡ Your turn ends automatically after any action</li>
-              <li>• Melee attacks build both Ability and Overcharge points</li>
+              <li>• Melee attacks build both Overcharge points</li>
               <li>• Pistol shots have unlimited range but no Overcharge gain</li>
               <li>• Ranged attacks get -2 AC penalty per 5ft beyond 20ft</li>
               <li>• Deploy turrets strategically for area control</li>

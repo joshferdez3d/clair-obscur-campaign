@@ -553,8 +553,33 @@ const handleSwordAutoAttack = useCallback(async () => {
 };
 
 const handleExpeditionerSelected = (expeditioner: BattleToken) => {
-  console.log('🚢 Expeditioner selected:', expeditioner.name);
-  setPendingExpeditioner(expeditioner);
+  // Get current level from session
+  const npcType = expeditioner.name.toLowerCase().includes('child') ? 'the-child' : 'farmhand';
+  const currentLevel = session?.npcLevels?.[npcType === 'the-child' ? 'newRecruit' : 'farmhand'] || 1;
+  
+  // Calculate HP based on level
+  const getHPForLevel = (baseHP: number, level: number, npcType: string): number => {
+    if (npcType === 'the-child') {
+      const hpByLevel = [14, 25, 35];
+      return hpByLevel[level - 1] || baseHP;
+    } else {
+      const hpByLevel = [30, 40, 50];
+      return hpByLevel[level - 1] || baseHP;
+    }
+  };
+  
+  const levelAdjustedHP = getHPForLevel(expeditioner.maxHp || 30, currentLevel, npcType);
+  
+  // Update token with level-adjusted HP
+  const adjustedToken = {
+    ...expeditioner,
+    hp: levelAdjustedHP,
+    maxHp: levelAdjustedHP,
+    npcLevel: currentLevel
+  };
+  
+  setPendingExpeditioner(adjustedToken);
+  setShowExpeditionModal(false);
 };
 
   const handleMapClickForExpeditioner = async (position: Position) => {
@@ -575,7 +600,32 @@ const handleExpeditionerSelected = (expeditioner: BattleToken) => {
   };
 
   const handleNPCSelected = (npcToken: BattleToken) => {
-    setSelectedNPCType(npcToken);
+    // Get current level from session
+    const npcType = npcToken.name.toLowerCase().includes('child') ? 'the-child' : 'farmhand';
+    const currentLevel = session?.npcLevels?.[npcType === 'the-child' ? 'newRecruit' : 'farmhand'] || 1;
+    
+    // Calculate HP based on level
+    const getHPForLevel = (baseHP: number, level: number, npcType: string): number => {
+      if (npcType === 'the-child') {
+        const hpByLevel = [14, 25, 35];
+        return hpByLevel[level - 1] || baseHP;
+      } else {
+        const hpByLevel = [30, 40, 50];
+        return hpByLevel[level - 1] || baseHP;
+      }
+    };
+    
+    const levelAdjustedHP = getHPForLevel(npcToken.maxHp || 30, currentLevel, npcType);
+    
+    // Update token with level-adjusted HP
+    const adjustedToken = {
+      ...npcToken,
+      hp: levelAdjustedHP,
+      maxHp: levelAdjustedHP,
+      npcLevel: currentLevel
+    };
+    
+    setSelectedNPCType(adjustedToken);
     setIsPlacingNPC(true);
     setShowNPCModal(false);
   };

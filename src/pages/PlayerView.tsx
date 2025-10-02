@@ -337,8 +337,7 @@ export function PlayerView() {
         // Pass persistent state values and setters
         overchargePoints={persistentCombatState.overchargePoints}
         setOverchargePoints={persistentCombatState.setOverchargePoints}
-        abilityPoints={character.charges || 0}
-        setAbilityPoints={changeCharges}
+
         activeTurretId={persistentCombatState.activeTurretId}
         setActiveTurretId={persistentCombatState.setActiveTurretId}
         turretsDeployedThisBattle={persistentCombatState.turretsDeployedThisBattle}
