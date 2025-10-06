@@ -3,6 +3,7 @@ import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import { Token } from './Token';
 import { Grid } from './Grid';
 import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types';
+import { MineService, type Mine } from '../../services/MineService';
 
 interface FireTerrainOverlayProps {
   gridSize: number;
@@ -164,6 +165,64 @@ export function BattleMap({
     return `${letter}${number}`;
   };
 
+  const renderMineOverlays = useCallback(() => {
+    if (!session?.mines) return null;
+
+    const overlays: JSX.Element[] = [];
+
+    session.mines.forEach((mine: Mine) => {
+      if (mine.isTriggered) return;
+
+      const pixelX = mine.position.x * gridSize + coordinatePadding;
+      const pixelY = mine.position.y * gridSize + coordinatePadding;
+
+      const shouldShow = isGM || mine.isDetected;
+      if (!shouldShow) return;
+
+      overlays.push(
+        <div
+          key={`mine-${mine.id}`}
+          className="absolute pointer-events-none"
+          style={{
+            left: pixelX,
+            top: pixelY,
+            width: gridSize,
+            height: gridSize,
+            zIndex: 6,
+          }}
+        >
+          <div className="relative w-full h-full">
+            <div 
+              className={`absolute inset-0 rounded-full ${
+                mine.isDetected ? 'bg-yellow-500' : 'bg-red-500'
+              } opacity-30 animate-pulse`}
+            />
+            
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className={`text-3xl ${mine.isDetected ? 'animate-bounce' : ''}`}>
+                {mine.isDetected ? '⚠️' : '💣'}
+              </div>
+            </div>
+
+            {mine.isDetected && (
+              <div className="absolute -top-2 -right-2 bg-yellow-500 text-black text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                !
+              </div>
+            )}
+
+            {isGM && !mine.isDetected && (
+              <div className="absolute top-0 left-0 bg-black bg-opacity-70 text-white text-xs p-1 rounded">
+                Hidden
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    });
+
+    return <>{overlays}</>;
+  }, [session?.mines, gridSize, coordinatePadding, isGM]);
+
  
   const calculateDistance = (a: Position, b: Position): number => {
     const dx = Math.abs(a.x - b.x);
@@ -300,9 +359,35 @@ export function BattleMap({
       return;
     }
 
+    // ===== ADD MINE CHECKING HERE =====
+    // CHECK FOR MINES BEFORE ALLOWING MOVEMENT
+    if (session?.mines) {
+      const mine = MineService.hasMineAtPosition(session, dest);
+      
+      if (mine && !mine.isDetected) {
+        console.log(`💥 ${draggedToken.name} stepped on a mine!`);
+        
+        // Trigger the mine
+        await MineService.triggerMine(
+          session.id || 'test-session',
+          mine.id,
+          draggedToken.id
+        );
+        
+        // Alert players
+        setTimeout(() => {
+          alert(`💥 MINE TRIGGERED!\n${mine.damage} damage dealt to nearby tokens!\nA Demineur has spawned at (${dest.x}, ${dest.y})!`);
+        }, 500);
+        
+        setDraggedToken(null);
+        return; // Stop the movement - they stepped on a mine!
+      }
+    }
+    // ===== END MINE CHECKING =====
+
     await handleTokenMove(draggedToken.id, dest);
     setDraggedToken(null);
-  }, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove]);
+  }, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove, session]);
 
   const handleGridHover = useCallback((pos: Position | null) => {
     setHoveredPosition(pos);
@@ -578,6 +663,7 @@ export function BattleMap({
 
           {renderFireTerrainOverlays()}
           {renderHearthlightOverlays()}  {/* ADD THIS LINE */}
+          {renderMineOverlays()}
 
           {validateTokens(tokens).map((token) => {
             // Check if this token is the current storm target

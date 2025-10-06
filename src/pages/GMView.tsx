@@ -42,7 +42,9 @@ import {
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
 import NPCLevelManager from '../components/NPCLevelManager';
 import { mapFirebaseToLocal } from '../utils/npcLevelMapper';
-
+import { PlayerTokenManager } from '../components/Combat/PlayerTokenManager';
+import { MineManagementPanel } from '../components/Combat/MineManagementPanel';
+import { MineService } from '../services/MineService';
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
   // NEW: Enemy selection state
@@ -61,6 +63,16 @@ export function GMView() {
   const [charactersWithInventory, setCharactersWithInventory] = useState<Character[]>([]);
   const [npcLevels, setNpcLevels] = useState<{ theChild: number; farmhand: number } | null>(null);
   const [swordActedThisRound, setSwordActedThisRound] = useState<{ round: number; acted: boolean }>({ round: 0, acted: false });
+  const [isPlacingPlayer, setIsPlacingPlayer] = useState(false);
+  const [selectedPlayerCharacter, setSelectedPlayerCharacter] = useState<any>(null);
+  const [isPlacingMine, setIsPlacingMine] = useState(false);
+
+  const PLAYER_CHARACTERS = [
+  { id: 'maelle', name: 'Maelle', maxHp: 28, ac: 15, color: '#9333ea' },
+  { id: 'gustave', name: 'Gustave', maxHp: 32, ac: 15, color: '#ef4444' },
+  { id: 'lune', name: 'Lune', maxHp: 22, ac: 14, color: '#8b5cf6' },
+  { id: 'sciel', name: 'Sciel', maxHp: 24, ac: 14, color: '#10b981' }
+];
 
   const [ultimateInteractionMode, setUltimateInteractionMode] = useState<{
     active: boolean;
@@ -522,6 +534,39 @@ const handleSwordAutoAttack = useCallback(async () => {
     }
   };
 
+  const handleSelectPlayerForPlacement = (character: any) => {
+    setSelectedPlayerCharacter(character);
+    setIsPlacingPlayer(true);
+    console.log(`📍 Click on the map to place ${character.name}`);
+  };
+
+  const handleRemovePlayerToken = async (tokenId: string) => {
+    if (!sessionId) return;
+    
+    try {
+      const session = await FirestoreService.getBattleSession(sessionId);
+      if (!session) return;
+
+      const updatedTokens = { ...session.tokens };
+      delete updatedTokens[tokenId];
+
+      const updatedInitiative = session.combatState?.initiativeOrder.filter(
+        entry => entry.id !== tokenId && entry.characterId !== tokenId
+      ) || [];
+
+      await FirestoreService.updateBattleSession(sessionId, {
+        tokens: updatedTokens,
+        'combatState.initiativeOrder': updatedInitiative,
+        'combatState.turnOrder': updatedInitiative.map(e => e.id),
+        updatedAt: new Date()
+      });
+
+      console.log('✅ Player token removed from map and initiative');
+    } catch (error) {
+      console.error('❌ Failed to remove player token:', error);
+    }
+  };
+
   const handlePresetLoad = (preset: BattleMapPreset) => {
     console.log(`Loading preset: ${preset.name}`);
     // The FirestoreService.loadBattleMapPreset already updates the session
@@ -771,9 +816,101 @@ const handleResetSession = async () => {
     setIsPlacingEnemy(false);
   };
 
+  const handlePlaceMineMode = () => {
+    setIsPlacingMine(true);
+    console.log('💣 Click on the map to place a mine');
+  };
+
+  const handleClearAllMines = async () => {
+    if (window.confirm('Clear all mines from the map?')) {
+      await MineService.clearAllMines(sessionId || 'test-session');
+    }
+  };
+
 
 
   const handleGridClick = async (position: Position) => {
+
+    // MINE PLACEMENT - ADD THIS FIRST
+  if (isPlacingMine) {
+    await MineService.placeMine(sessionId || 'test-session', position);
+    setIsPlacingMine(false);
+    console.log(`💣 Mine placed at (${position.x}, ${position.y})`);
+    return;
+  }
+
+    // PLAYER PLACEMENT - ADD THIS FIRST
+  if (isPlacingPlayer && selectedPlayerCharacter) {
+    console.log(`👤 Placing ${selectedPlayerCharacter.name} at:`, position);
+
+    if (!session || !sessionId) {
+      console.error('Session not available');
+      alert('Session not available. Please refresh and try again.');
+      setSelectedPlayerCharacter(null);
+      setIsPlacingPlayer(false);
+      return;
+    }
+
+    try {
+      const playerTokenId = `player-${selectedPlayerCharacter.id}-${Date.now()}`;
+      const playerToken: BattleToken = {
+        id: playerTokenId,
+        characterId: selectedPlayerCharacter.id,
+        name: selectedPlayerCharacter.name,
+        position: position,
+        type: 'player',
+        hp: selectedPlayerCharacter.maxHp,
+        maxHp: selectedPlayerCharacter.maxHp,
+        ac: selectedPlayerCharacter.ac,
+        size: 1,
+        color: selectedPlayerCharacter.color
+      };
+
+      const updatedTokens = { ...session.tokens, [playerTokenId]: playerToken };
+      let currentInitiativeOrder = session.combatState?.initiativeOrder || [];
+
+      const alreadyInInitiative = currentInitiativeOrder.some(
+        entry => entry.characterId === selectedPlayerCharacter.id
+      );
+
+      if (!alreadyInInitiative) {
+        const initiativeRoll = Math.floor(Math.random() * 20) + 1;
+        console.log(`🎲 Rolling initiative for ${selectedPlayerCharacter.name}: ${initiativeRoll}`);
+
+        const newInitiativeEntry = {
+          id: playerTokenId,
+          characterId: selectedPlayerCharacter.id,
+          name: selectedPlayerCharacter.name,
+          initiative: initiativeRoll,
+          type: 'player' as const,
+          hasActed: false
+        };
+
+        currentInitiativeOrder = [...currentInitiativeOrder, newInitiativeEntry]
+          .sort((a, b) => b.initiative - a.initiative);
+
+        console.log(`➕ Added ${selectedPlayerCharacter.name} to initiative with roll: ${initiativeRoll}`);
+      }
+
+      await FirestoreService.updateBattleSession(sessionId || 'test-session', {
+        tokens: updatedTokens,
+        'combatState.initiativeOrder': currentInitiativeOrder,
+        'combatState.turnOrder': currentInitiativeOrder.map(e => e.id),
+        updatedAt: new Date()
+      });
+
+      console.log(`✅ ${selectedPlayerCharacter.name} placed on battlefield`);
+      setSelectedPlayerCharacter(null);
+      setIsPlacingPlayer(false);
+
+    } catch (error) {
+      console.error('❌ Failed to place player token:', error);
+      alert('Failed to place player token. Please try again.');
+    }
+
+    return; // Stop here, don't continue to other placement logic
+  }
+
     console.log('Grid clicked at:', position, 'Interaction mode:', ultimateInteractionMode);
     
     // Handle Ultimate interactions first (highest priority)
@@ -1402,6 +1539,28 @@ const handleResetSession = async () => {
           characterNames={characterNames}
           sessionId={sessionId} // ADD THIS LINE
         />
+
+        <div className="mt-4">
+          <MineManagementPanel
+            sessionId={sessionId || 'test-session'}
+            mines={session?.mines || []}
+            onPlaceMineMode={handlePlaceMineMode}
+            onClearMines={handleClearAllMines}
+            isPlacingMine={isPlacingMine}
+          />
+        </div>
+
+
+        {/* ADD PLAYER TOKEN MANAGER HERE */}
+        <div className="mt-4">
+          <PlayerTokenManager
+            availableCharacters={PLAYER_CHARACTERS}
+            currentTokens={tokens}
+            onSelectForPlacement={handleSelectPlayerForPlacement}
+            onRemoveToken={handleRemovePlayerToken}
+          />
+        </div>
+
 
         <div className="mt-4">
         <div className="bg-clair-shadow-700 border border-clair-gold-600 rounded-lg p-4">

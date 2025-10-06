@@ -136,7 +136,7 @@ export const enemies: { [key: string]: EnemyData } = {
     resistances: ['fire'],
     vulnerabilities: ['lightning'],
     conditionImmunities: [],
-    traits: ['Cinder Aura: creatures starting within 5 ft take 1 fire damage'],
+    traits: ['Cinder Aura: creatures starting within 5 ft take 5 fire damage'],
     attacks: [
       {
         name: 'Flame Lash',

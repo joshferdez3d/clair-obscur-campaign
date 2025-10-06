@@ -1142,13 +1142,15 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
   }
 
   // Enhanced updateTokenHP that removes dead enemies (replace existing method)
+  // Update token HP with smart removal for enemies only
   static async updateTokenHP(sessionId: string, tokenId: string, newHP: number) {
     const session = await this.getBattleSession(sessionId);
     if (!session?.tokens[tokenId]) return;
 
+    const token = session.tokens[tokenId];
     const currentHP = Math.max(0, newHP);
     
-    if (currentHP <= 0) {
+    if (currentHP <= 0 && token.type === 'enemy') {
       // Enemy is dead - remove the token entirely
       const updatedTokens = { ...session.tokens };
       delete updatedTokens[tokenId];
@@ -1159,14 +1161,18 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
         updatedAt: serverTimestamp() 
       });
       
-      console.log(`Token ${tokenId} died and was removed`);
+      console.log(`💀 Enemy ${token.name} was defeated and removed from the battlefield`);
     } else {
-      // Token survives - just update HP
+      // Token survives OR is a player/NPC going unconscious - just update HP
       const ref = doc(db, 'battleSessions', sessionId);
       await updateDoc(ref, {
         [`tokens.${tokenId}.hp`]: currentHP,
         updatedAt: serverTimestamp()
       });
+      
+      if (currentHP <= 0) {
+        console.log(`😵 ${token.name} is unconscious (${token.type})`);
+      }
     }
   }
 

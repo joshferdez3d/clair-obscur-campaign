@@ -9,6 +9,7 @@ import { enemies } from '../data/enemies'; // FIXED: Use 'enemies' not 'enemiesD
 import type { EnemyData } from '../types';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
 import { ProtectionService } from '../services/ProtectionService';
+import { PassiveEnemyAbilityService } from '../services/passiveEnemyAbilityService';
 
 interface EnemyAttack {
   name: string;
@@ -275,6 +276,45 @@ const EnemyView: React.FC = () => {
     // Reset enemy index when turn changes
     setCurrentEnemyIndex(0);
   }, [currentTurnEntry?.id]);
+
+  useEffect(() => {
+    // Process passive abilities at the start of each enemy's turn
+    const processPassives = async () => {
+      if (!activeEnemy || !sessionId || !currentTurnEntry) return;
+      
+      // Only process when it's actually this enemy's turn and combat is active
+      if (currentTurnEntry.type !== 'enemy' || !session?.combatState?.isActive) return;
+      
+      // Extract enemy type from token ID (format: "enemy-bruler-timestamp")
+      // or fallback to normalized name
+      let enemyType = '';
+      if (activeEnemy.id.startsWith('enemy-')) {
+        const parts = activeEnemy.id.split('-');
+        if (parts.length >= 2) {
+          enemyType = parts[1]; // Get the enemy type from ID (e.g., "bruler")
+        }
+      }
+      
+      // Fallback: normalize the name if ID parsing failed
+      if (!enemyType) {
+        enemyType = activeEnemy.name.toLowerCase().replace(/\s+/g, '_');
+      }
+      
+      console.log(`⚡ Processing passive abilities for ${activeEnemy.name} (${enemyType})`);
+      
+      try {
+        await PassiveEnemyAbilityService.processPassiveAbilities(
+          sessionId,
+          activeEnemy.id,
+          enemyType
+        );
+      } catch (error) {
+        console.error('Failed to process passive abilities:', error);
+      }
+    };
+
+    processPassives();
+  }, [activeEnemy?.id, currentTurnEntry?.id, session?.combatState?.isActive, sessionId]); // Added missing dependencies
 
     
   // Loading and error states

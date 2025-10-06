@@ -206,11 +206,19 @@ export function Token({
           <img
             src={tokenImage}
             alt={token.name}
-            className="w-full h-full object-cover"
+            className={`w-full h-full object-cover ${
+              (token.hp ?? 0) <= 0 && (token.type === 'player' || token.type === 'npc') 
+                ? 'grayscale opacity-40' 
+                : ''
+            }`}
             style={{ imageRendering: 'crisp-edges' }}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
+          <div className={`w-full h-full flex items-center justify-center ${
+            (token.hp ?? 0) <= 0 && (token.type === 'player' || token.type === 'npc')
+              ? 'grayscale opacity-40' 
+              : ''
+          }`}>
             <User className="w-6 h-6 text-white" />
           </div>
         )}
@@ -226,16 +234,9 @@ export function Token({
         )}
       </div>
 
-      {/* HP Bar */}
-      {token.hp !== undefined && token.maxHp !== undefined && (
-        <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-8 h-1.5 bg-gray-800 rounded-full border border-gray-600">
-          <div
-            className="h-full rounded-full transition-all duration-300"
-            style={{
-              width: `${getHPPercentage()}%`,
-              backgroundColor: getHPColor(),
-            }}
-          />
+      {/* Unconscious Indicator - Only for players and NPCs */}
+      {(token.hp ?? 0) <= 0 && (token.type === 'player' || token.type === 'npc') && (
+        <div className="absolute inset-0 flex items-center justify-center">
         </div>
       )}
 

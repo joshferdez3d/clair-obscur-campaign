@@ -2,6 +2,7 @@
 export * from './character';
 import type { Character } from './character'; // Add this explicit import
 import type { ProtectionEffect } from '../services/ProtectionService';
+import type { Mine } from '../services/MineService';
 
 // Basic interfaces
 export interface Position {
@@ -529,6 +530,9 @@ export interface BattleSession {
       affectedTokens: string[];
     };
   };
+
+    mines?: Mine[];
+
 }
 
 export interface MapConfig {
