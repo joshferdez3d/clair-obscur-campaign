@@ -790,7 +790,32 @@ const handleResetSession = async () => {
   }
 };
 
-  const handleTokenMove = async (id: string, pos: Position) => await attemptMove(id, pos);
+  const handleTokenMove = async (tokenId: string, newPosition: Position): Promise<boolean> => {
+    if (!session) return false;
+
+    // Check if there's a mine at the new position
+    const mine = MineService.hasMineAtPosition(session, newPosition);
+    
+    if (mine && !mine.isDetected) {
+      // Hit a mine - trigger it (existing logic)
+      await MineService.triggerMine(session.id || 'test-session', mine.id, tokenId);
+      return true;
+    }
+
+    // Only reveal squares during combat when mines are present
+    if (!mine && session.combatState?.isActive && session.mines && session.mines.length > 0) {
+      const posKey = `${newPosition.x}-${newPosition.y}`;
+      if (!session.revealedSquares?.[posKey]) {
+        // Reveal this square
+        await MineService.revealSquare(session.id || 'test-session', newPosition);
+      }
+    }
+
+    // Perform the actual token movement
+    await FirestoreService.updateTokenPosition(session.id || 'test-session', tokenId, newPosition);
+    return true;
+  };
+
 
   const handleAddEnemy = async (pos: Position) => {
     const tok: BattleToken = {

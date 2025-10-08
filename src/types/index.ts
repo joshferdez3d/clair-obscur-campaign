@@ -531,7 +531,8 @@ export interface BattleSession {
     };
   };
 
-    mines?: Mine[];
+  mines?: Mine[];
+  revealedSquares?: { [key: string]: number }; // "x-y": adjacentMineCount
 
 }
 

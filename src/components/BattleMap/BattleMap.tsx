@@ -4,6 +4,7 @@ import { Token } from './Token';
 import { Grid } from './Grid';
 import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types';
 import { MineService, type Mine } from '../../services/MineService';
+import { RevealedSquareOverlay } from './RevealedSquareOverlay';
 
 interface FireTerrainOverlayProps {
   gridSize: number;
@@ -164,6 +165,39 @@ export function BattleMap({
     const number = pos.y + 1;
     return `${letter}${number}`;
   };
+
+  const renderRevealedSquareOverlays = useCallback(() => {
+      // Only show revealed squares when combat is active and there are mines
+      if (!combatActive) return null;
+      if (!session?.mines || session.mines.length === 0) return null;
+      if (!session?.revealedSquares) return null;
+
+      const overlays: JSX.Element[] = [];
+
+      Object.entries(session.revealedSquares).forEach(([posKey, mineCount]: [string, number]) => {
+        const [x, y] = posKey.split('-').map(Number);
+        const pixelX = x * gridSize + coordinatePadding;
+        const pixelY = y * gridSize + coordinatePadding;
+
+        overlays.push(
+          <div
+            key={`revealed-${posKey}`}
+            className="absolute pointer-events-none"
+            style={{
+              left: pixelX,
+              top: pixelY,
+              width: gridSize,
+              height: gridSize,
+              zIndex: 4,
+            }}
+          >
+            <RevealedSquareOverlay mineCount={mineCount} gridSize={gridSize} />
+          </div>
+        );
+      });
+
+      return <>{overlays}</>;
+    }, [session?.revealedSquares, session?.mines, gridSize, coordinatePadding, combatActive]);
 
   const renderMineOverlays = useCallback(() => {
     if (!session?.mines) return null;
@@ -664,6 +698,7 @@ export function BattleMap({
           {renderFireTerrainOverlays()}
           {renderHearthlightOverlays()}  {/* ADD THIS LINE */}
           {renderMineOverlays()}
+          {renderRevealedSquareOverlays()}
 
           {validateTokens(tokens).map((token) => {
             // Check if this token is the current storm target

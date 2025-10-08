@@ -19,6 +19,7 @@ export function MineManagementPanel({
   isPlacingMine
 }: MineManagementPanelProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isRevealing, setIsRevealing] = useState(false);
 
   const activeMines = mines.filter(m => !m.isTriggered);
   const triggeredMines = mines.filter(m => m.isTriggered);
@@ -31,18 +32,59 @@ export function MineManagementPanel({
     }
   };
 
-  const handleQuickSetup = async () => {
-    // Predefined mine positions for Coral Minefield (17x22 grid)
+  const handleToggleMineDetection = async (mineId: string) => {
+    await MineService.toggleMineDetection(sessionId, mineId);
+  };
+
+  const handleRevealAllMines = async () => {
+    setIsRevealing(true);
+    await MineService.revealAllMinesTemporarily(sessionId, 5000);
+    
+    // Reset button state after reveal duration
+    setTimeout(() => {
+      setIsRevealing(false);
+    }, 5000);
+  };
+
+const handleQuickSetup = async () => {
+    // Intermediate difficulty mine positions for 17x17 grid (30 mines total)
+    // 17.6% density - balanced for logical deduction
+    // Safe starting zone (rows 0-6), mines start at row 7
     const minePositions = [
-      { x: 3, y: 5 }, { x: 7, y: 4 }, { x: 12, y: 6 },
-      { x: 5, y: 9 }, { x: 10, y: 8 }, { x: 14, y: 10 },
-      { x: 2, y: 13 }, { x: 8, y: 15 }, { x: 13, y: 14 },
-      { x: 6, y: 18 }, { x: 11, y: 19 }
+      // Row 7 (3 mines) - sparse start
+      { x: 4, y: 7 }, { x: 9, y: 7 }, { x: 14, y: 7 },
+      
+      // Row 8 (3 mines)
+      { x: 2, y: 8 }, { x: 11, y: 8 }, { x: 16, y: 8 },
+      
+      // Row 9 (4 mines)
+      { x: 5, y: 9 }, { x: 8, y: 9 }, { x: 12, y: 9 }, { x: 15, y: 9 },
+      
+      // Row 10 (3 mines)
+      { x: 1, y: 10 }, { x: 7, y: 10 }, { x: 13, y: 10 },
+      
+      // Row 11 (3 mines)
+      { x: 3, y: 11 }, { x: 10, y: 11 }, { x: 16, y: 11 },
+      
+      // Row 12 (4 mines)
+      { x: 0, y: 12 }, { x: 6, y: 12 }, { x: 9, y: 12 }, { x: 14, y: 12 },
+      
+      // Row 13 (3 mines)
+      { x: 4, y: 13 }, { x: 11, y: 13 }, { x: 15, y: 13 },
+      
+      // Row 14 (3 mines)
+      { x: 2, y: 14 }, { x: 8, y: 14 }, { x: 13, y: 14 },
+      
+      // Row 15 (2 mines)
+      { x: 5, y: 15 }, { x: 10, y: 15 },
+      
+      // Row 16 (2 mines) - sparse ending
+      { x: 7, y: 16 }, { x: 12, y: 16 }
     ];
 
-    if (window.confirm(`Place ${minePositions.length} mines in preset positions?`)) {
+    if (window.confirm(`Place ${minePositions.length} mines in strategic positions (Intermediate difficulty)?`)) {
       await MineService.placeMines(sessionId, minePositions);
-      console.log(`Placed ${minePositions.length} coral mines`);
+      console.log(`Placed ${minePositions.length} mines for Flying Waters minesweeper puzzle`);
     }
   };
 
@@ -107,17 +149,32 @@ export function MineManagementPanel({
               className="w-full flex items-center justify-center px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:opacity-50 text-white rounded-lg font-bold text-sm transition-colors"
             >
               <Bomb className="w-4 h-4 mr-1" />
-              Quick Setup (11 Mines)
+              Quick Setup (48 Mines)
             </button>
 
             {activeMines.length > 0 && (
-              <button
-                onClick={onClearMines}
-                className="w-full flex items-center justify-center px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-bold text-sm transition-colors"
-              >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Clear All Mines
-              </button>
+              <>
+                <button
+                  onClick={handleRevealAllMines}
+                  disabled={isRevealing}
+                  className={`w-full flex items-center justify-center px-4 py-2 rounded-lg font-bold text-sm transition-colors ${
+                    isRevealing
+                      ? 'bg-blue-700 text-blue-100 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  }`}
+                >
+                  <Eye className="w-4 h-4 mr-1" />
+                  {isRevealing ? 'Revealing... (5s)' : 'Reveal All (5 seconds)'}
+                </button>
+
+                <button
+                  onClick={onClearMines}
+                  className="w-full flex items-center justify-center px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-lg font-bold text-sm transition-colors"
+                >
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Clear All Mines
+                </button>
+              </>
             )}
           </div>
 
@@ -151,12 +208,30 @@ export function MineManagementPanel({
                           {mine.damage} dmg • {mine.aoERadius}ft AoE • Spawns {mine.spawnsEnemy}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveMine(mine.id)}
-                        className="ml-2 p-1 text-red-400 hover:text-red-300 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleToggleMineDetection(mine.id)}
+                          className={`p-1 transition-colors ${
+                            mine.isDetected
+                              ? 'text-yellow-400 hover:text-yellow-300'
+                              : 'text-red-400 hover:text-red-300'
+                          }`}
+                          title={mine.isDetected ? 'Hide mine' : 'Reveal mine'}
+                        >
+                          {mine.isDetected ? (
+                            <EyeOff className="w-4 h-4" />
+                          ) : (
+                            <Eye className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleRemoveMine(mine.id)}
+                          className="p-1 text-red-400 hover:text-red-300 transition-colors"
+                          title="Remove mine"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -172,6 +247,8 @@ export function MineManagementPanel({
               <li>• Players can detect with skill checks</li>
               <li>• Detected mines shown with warning icon</li>
               <li>• Hidden mines only visible to GM</li>
+              <li>• Click eye icons to toggle individual mine visibility</li>
+              <li>• Use "Reveal All" to show all mines for 5 seconds</li>
             </ul>
           </div>
         </div>

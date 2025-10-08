@@ -136,6 +136,137 @@ export class MineService {
   }
 
   /**
+   * Toggle mine visibility (for GM skill check results)
+   */
+  static async toggleMineDetection(
+    sessionId: string,
+    mineId: string
+  ): Promise<void> {
+    const session = await FirestoreService.getBattleSession(sessionId);
+    if (!session?.mines) return;
+
+    const updatedMines = session.mines.map((mine: Mine) => {
+      if (mine.id === mineId) {
+        return {
+          ...mine,
+          isDetected: !mine.isDetected
+        };
+      }
+      return mine;
+    });
+
+    await FirestoreService.updateBattleSession(sessionId, {
+      mines: updatedMines,
+      updatedAt: new Date()
+    });
+
+    console.log(`Mine ${mineId} detection toggled`);
+  }
+
+  /**
+   * Temporarily reveal all mines (returns original states for restoration)
+   */
+  static async revealAllMinesTemporarily(
+    sessionId: string,
+    durationMs: number = 5000
+  ): Promise<void> {
+    const session = await FirestoreService.getBattleSession(sessionId);
+    if (!session?.mines) return;
+
+    // Store original detection states
+    const originalStates = session.mines.map((mine: Mine) => ({
+      id: mine.id,
+      isDetected: mine.isDetected
+    }));
+
+    // Reveal all mines
+    const revealedMines = session.mines.map((mine: Mine) => ({
+      ...mine,
+      isDetected: true
+    }));
+
+    await FirestoreService.updateBattleSession(sessionId, {
+      mines: revealedMines,
+      updatedAt: new Date()
+    });
+
+    console.log(`All mines revealed for ${durationMs}ms`);
+
+    // Restore original states after duration
+    setTimeout(async () => {
+      const currentSession = await FirestoreService.getBattleSession(sessionId);
+      if (!currentSession?.mines) return;
+
+      const restoredMines = currentSession.mines.map((mine: Mine) => {
+        const originalState = originalStates.find(s => s.id === mine.id);
+        return {
+          ...mine,
+          isDetected: originalState ? originalState.isDetected : mine.isDetected
+        };
+      });
+
+      await FirestoreService.updateBattleSession(sessionId, {
+        mines: restoredMines,
+        updatedAt: new Date()
+      });
+
+      console.log('Mines restored to original detection states');
+    }, durationMs);
+  }
+
+   /**
+   * Get count of adjacent mines (for Minesweeper reveal)
+   */
+  static getAdjacentMineCount(session: any, position: Position): number {
+    if (!session?.mines) return 0;
+    
+    let count = 0;
+    const directions = [
+      {x: -1, y: -1}, {x: 0, y: -1}, {x: 1, y: -1},
+      {x: -1, y: 0},                 {x: 1, y: 0},
+      {x: -1, y: 1},  {x: 0, y: 1},  {x: 1, y: 1}
+    ];
+    
+    directions.forEach(dir => {
+      const checkPos = {x: position.x + dir.x, y: position.y + dir.y};
+      const mine = session.mines.find((m: Mine) => 
+        m.position.x === checkPos.x && 
+        m.position.y === checkPos.y && 
+        !m.isTriggered
+      );
+      if (mine) count++;
+    });
+    
+    return count;
+  }
+
+    /**
+   * Reveal a square (for Minesweeper mode)
+   */
+  static async revealSquare(
+    sessionId: string,
+    position: Position
+  ): Promise<number> {
+    const session = await FirestoreService.getBattleSession(sessionId);
+    if (!session) throw new Error('Session not found');
+
+    const posKey = `${position.x}-${position.y}`;
+    const mineCount = this.getAdjacentMineCount(session, position);
+    
+    const revealedSquares = session.revealedSquares || {};
+    revealedSquares[posKey] = mineCount;
+
+    await FirestoreService.updateBattleSession(sessionId, {
+      revealedSquares,
+      updatedAt: new Date()
+    });
+
+    console.log(`Square (${position.x}, ${position.y}) revealed: ${mineCount} adjacent mines`);
+    return mineCount;
+  }
+
+
+  /**
    * Trigger a mine - deals AoE damage and spawns enemy
    */
   static async triggerMine(
@@ -249,6 +380,22 @@ export class MineService {
     const radiusSquares = radiusFeet / 5; // Convert feet to grid squares
     
     return Object.values(tokens).filter(token => {
+      // Defensive checks - ensure token and position exist
+      if (!token) {
+        console.warn('Undefined token in getTokensInRadius');
+        return false;
+      }
+      
+      if (!token.position) {
+        console.warn(`Token ${token.id || 'unknown'} has no position`);
+        return false;
+      }
+      
+      if (typeof token.position.x !== 'number' || typeof token.position.y !== 'number') {
+        console.warn(`Token ${token.id} has invalid position:`, token.position);
+        return false;
+      }
+      
       const distance = Math.max(
         Math.abs(token.position.x - center.x),
         Math.abs(token.position.y - center.y)
@@ -315,6 +462,7 @@ export class MineService {
   static async clearAllMines(sessionId: string): Promise<void> {
     await FirestoreService.updateBattleSession(sessionId, {
       mines: [],
+      revealedSquares: {},
       updatedAt: new Date()
     });
 
