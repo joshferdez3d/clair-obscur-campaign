@@ -191,7 +191,7 @@ export function BattleMapView() {
         />
       )}
       {/* Left Panel - Enemy Status (for players) */}
-      <div className="w-72 bg-clair-shadow-800 border-r border-clair-gold-600 p-4 overflow-y-auto flex-shrink-0">
+      <div className="w-48 bg-clair-shadow-800 border-r border-clair-gold-600 p-2 overflow-y-auto flex-shrink-0">
         <div className="mb-4">
           <h1 className="font-display text-xl font-bold text-clair-gold-400 mb-2">
             Battle Status

@@ -114,7 +114,7 @@ export function BattleMap({
   };
 
   // Space around the board for the coordinate labels we draw
-  const coordinatePadding = 24;
+  const coordinatePadding = mode === 'player' ? 20 : 24;
 
   // Measure either the window (player fullscreen) or the parent container (gm)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -149,10 +149,14 @@ export function BattleMap({
   const viewportWidth = containerSize.width - coordinatePadding;
   const viewportHeight = containerSize.height - coordinatePadding;
 
-  // FIXED: Use safeMap instead of map to prevent undefined errors
-  const maxGridSizeByWidth = Math.floor((viewportWidth - 80) / safeMap.gridSize.width);
-  const maxGridSizeByHeight = Math.floor((viewportHeight - 120) / safeMap.gridSize.height);
-  const gridSize = Math.max(8, Math.min(maxGridSizeByWidth, maxGridSizeByHeight, 60));
+  // Optimized for player TV view - much larger map with minimal padding
+  const paddingX = mode === 'player' ? 20 : 80;
+  const paddingY = mode === 'player' ? 30 : 120;
+  const maxGridCap = mode === 'player' ? 120 : 60; // Double the size for player view!
+
+  const maxGridSizeByWidth = Math.floor((viewportWidth - paddingX) / safeMap.gridSize.width);
+  const maxGridSizeByHeight = Math.floor((viewportHeight - paddingY) / safeMap.gridSize.height);
+  const gridSize = Math.max(8, Math.min(maxGridSizeByWidth, maxGridSizeByHeight, maxGridCap));
 
   const totalWidth = safeMap.gridSize.width * gridSize;
   const totalHeight = safeMap.gridSize.height * gridSize;
@@ -623,17 +627,18 @@ export function BattleMap({
       }
       style={mode === 'gm' ? { minHeight: 300 } : undefined}
     >
-      {/* Top status bar */}
+    {/* Top status bar - Only show in GM mode */}
+    {mode === 'gm' && (
       <div className="flex-shrink-0 p-2">
         <div className="flex justify-between items-center">
           {/* Map Info */}
-          <div className="bg-clair-shadow-800/95 backdrop-blur-sm border border-clair-gold-600 text-clair-gold-50 px-4 py-2 rounded-lg shadow-shadow">
-            <h2 className="font-display text-lg font-bold text-clair-gold-400">{safeMap.name}</h2>
+          <div className="bg-clair-shadow-800/95 backdrop-blur-sm border border-clair-gold-600 text-clair-gold-50 px-3 py-1 rounded-lg shadow-shadow">
+            <h2 className="font-display text-sm font-bold text-clair-gold-400">{safeMap.name}</h2>
           </div>
 
           {/* Current Turn */}
           {combatActive && currentTurnToken && (
-            <div className="bg-green-700/95 backdrop-blur-sm border border-green-500 text-white px-4 py-2 rounded-lg shadow-shadow">
+            <div className="bg-green-700/95 backdrop-blur-sm border border-green-500 text-white px-3 py-1 rounded-lg shadow-shadow">
               <p className="font-serif text-sm">
                 <span className="font-bold">{currentTurnToken.name}</span>&nbsp;is acting
               </p>
@@ -642,7 +647,7 @@ export function BattleMap({
 
           {/* Targeting Mode */}
           {targetingMode?.active && (
-            <div className="bg-clair-mystical-800/95 backdrop-blur-sm border border-clair-mystical-500 text-clair-mystical-50 px-4 py-2 rounded-lg shadow-shadow">
+            <div className="bg-clair-mystical-800/95 backdrop-blur-sm border border-clair-mystical-500 text-clair-mystical-50 px-3 py-1 rounded-lg shadow-shadow">
               <p className="font-serif font-bold text-sm text-clair-mystical-200">
                 Targeting • Range: {targetingMode.range}ft
               </p>
@@ -650,6 +655,7 @@ export function BattleMap({
           )}
         </div>
       </div>
+    )}
 
       {/* Board container */}
       <div className="flex-1 flex items-center justify-center p-2">
