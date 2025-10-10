@@ -377,56 +377,37 @@ export function BattleMap({
   }, []);
 
   const handleDrop = useCallback(async (ev: React.DragEvent) => {
-    ev.preventDefault();
-    if (!draggedToken) return;
+  ev.preventDefault();
+  if (!draggedToken) return;
 
-    const rect = ev.currentTarget.getBoundingClientRect();
-    const x = Math.floor((ev.clientX - rect.left - coordinatePadding) / gridSize);
-    const y = Math.floor((ev.clientY - rect.top - coordinatePadding) / gridSize);
+  const rect = ev.currentTarget.getBoundingClientRect();
+  const x = Math.floor((ev.clientX - rect.left - coordinatePadding) / gridSize);
+  const y = Math.floor((ev.clientY - rect.top - coordinatePadding) / gridSize);
 
-    // FIXED: Use safeMap instead of map
-    if (x < 0 || x >= safeMap.gridSize.width || y < 0 || y >= safeMap.gridSize.height) {
-      setDraggedToken(null);
-      return;
-    }
-
-    const dest = { x, y };
-    if (combatActive && !isGM && !isWithinMovementRange(draggedToken, dest)) {
-      console.log('Movement exceeds range limit');
-      setDraggedToken(null);
-      return;
-    }
-
-    // ===== ADD MINE CHECKING HERE =====
-    // CHECK FOR MINES BEFORE ALLOWING MOVEMENT
-    if (session?.mines) {
-      const mine = MineService.hasMineAtPosition(session, dest);
-      
-      if (mine && !mine.isDetected) {
-        console.log(`💥 ${draggedToken.name} stepped on a mine!`);
-        
-        // Trigger the mine
-        await MineService.triggerMine(
-          session.id || 'test-session',
-          mine.id,
-          draggedToken.id
-        );
-        
-        // Alert players
-        setTimeout(() => {
-          alert(`💥 MINE TRIGGERED!\n${mine.damage} damage dealt to nearby tokens!\nA Demineur has spawned at (${dest.x}, ${dest.y})!`);
-        }, 500);
-        
-        setDraggedToken(null);
-        return; // Stop the movement - they stepped on a mine!
-      }
-    }
-    // ===== END MINE CHECKING =====
-
-    await handleTokenMove(draggedToken.id, dest);
+  // Validate bounds
+  if (x < 0 || x >= safeMap.gridSize.width || y < 0 || y >= safeMap.gridSize.height) {
     setDraggedToken(null);
-  }, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove, session]);
+    return;
+  }
 
+  const dest = { x, y };
+  
+  // Check movement range
+  if (combatActive && !isGM && !isWithinMovementRange(draggedToken, dest)) {
+    console.log('Movement exceeds range limit');
+    setDraggedToken(null);
+    return;
+  }
+
+  // === MINE CHECKING REMOVED ===
+  // MovementService.moveToken now handles all mine logic automatically
+  // (checks for mines, triggers explosion, moves player back)
+  
+  // Move the token - mine handling is done inside handleTokenMove -> MovementService
+  await handleTokenMove(draggedToken.id, dest);
+  setDraggedToken(null);
+}, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove, coordinatePadding]);
+  
   const handleGridHover = useCallback((pos: Position | null) => {
     setHoveredPosition(pos);
   }, []);

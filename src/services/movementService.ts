@@ -2,6 +2,7 @@
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { Position, BattleToken } from '../types';
+import { MineService } from './MineService';
 
 export class MovementService {
   /**
@@ -40,6 +41,7 @@ export class MovementService {
 
   /**
    * Move a token to a new position
+   * NOW WITH MINE CHECKING!
    */
   static async moveToken(
     sessionId: string,
@@ -62,6 +64,57 @@ export class MovementService {
       if (!token) {
         console.error('Token not found');
         return false;
+      }
+
+      // Store the original position before moving
+      const originalPosition = { ...token.position };
+
+      // === MINE CHECKING LOGIC ===
+      // Check if there's a mine at the destination
+      const mine = MineService.hasMineAtPosition(sessionData, newPosition);
+      
+      if (mine && !mine.isDetected) {
+        console.log(`💥 ${token.name} stepped on a mine at (${newPosition.x}, ${newPosition.y})!`);
+        
+        // First, move the token to the mine position briefly so they "step on it"
+        await updateDoc(sessionRef, {
+          [`tokens.${tokenId}.position`]: newPosition,
+          lastUpdated: new Date()
+        });
+
+        // Trigger the mine (this handles damage and spawning enemies)
+        await MineService.triggerMine(sessionId, mine.id, tokenId);
+        
+        // Wait a brief moment for the explosion to register
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        // Move the player BACK to their original position
+        await updateDoc(sessionRef, {
+          [`tokens.${tokenId}.position`]: originalPosition,
+          lastUpdated: new Date()
+        });
+
+        console.log(`⬅️ ${token.name} moved back to (${originalPosition.x}, ${originalPosition.y}) after mine explosion`);
+
+        // Alert the player about the mine (only for players, not enemies)
+        if (token.type !== 'enemy') {
+          setTimeout(() => {
+            alert(`💥 MINE TRIGGERED!\n${token.name} stepped on a mine!\n${mine.damage} damage dealt to nearby tokens!\nA Demineur has spawned!\n\nYou've been moved back to your previous position.`);
+          }, 500);
+        }
+        
+        return true; // Return true because the action completed (even though they didn't stay at destination)
+      }
+
+      // === NO MINE - PROCEED WITH NORMAL MOVEMENT ===
+      
+      // Only reveal squares during combat when mines are present
+      if (sessionData.combatState?.isActive && sessionData.mines && sessionData.mines.length > 0) {
+        const posKey = `${newPosition.x}-${newPosition.y}`;
+        if (!sessionData.revealedSquares?.[posKey]) {
+          // Reveal this square
+          await MineService.revealSquare(sessionId, newPosition);
+        }
       }
 
       // Update token position

@@ -2870,16 +2870,31 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     
     await ProtectionService.clearAllProtections(sessionId);
 
-    const ref = doc(db, 'battleSessions', sessionId);
-    await updateDoc(ref, {
+    // Get current session to preserve token data
+    const session = await this.getBattleSession(sessionId);
+    if (!session) return;
+
+    // Build update object
+    const updates: any = {
       'combatState.isActive': false,
       'combatState.phase': 'ended',
       'combatState.currentTurn': '',
       pendingActions: [],
-      'tokens.token-maelle.phantomStrikeUsed': false,
-      'luneElementalGenesisUsed': false, // Reset Lune's ultimate on combat end
+      'luneElementalGenesisUsed': false,
       updatedAt: serverTimestamp()
-    });
+    };
+
+    // Only update phantomStrikeUsed if the token exists and preserve all other token data
+    if (session.tokens && session.tokens['token-maelle']) {
+      // Preserve the entire token object but update only phantomStrikeUsed
+      updates['tokens.token-maelle'] = {
+        ...session.tokens['token-maelle'],
+        phantomStrikeUsed: false
+      };
+    }
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, updates);
   }
 
   // Apply Rallying Cry buff to all allies

@@ -1,6 +1,8 @@
-// src/services/maelleAfterimageService.ts
-import { doc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase'; // ✅ Correct path - you have firebase.ts
+// In src/services/maelleAfterimageService.ts
+// Replace these methods with the fixed versions:
+
+import { doc, updateDoc, serverTimestamp, onSnapshot, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
 import { useState, useEffect } from 'react';
 
 export interface MaelleCombatState {
@@ -9,6 +11,16 @@ export interface MaelleCombatState {
   phantomStrikeAvailable: boolean;
   temporalEchoAvailable?: boolean;
   phaseDashAvailable?: boolean;
+}
+
+// Return type for the hook including methods
+export interface MaelleAfterimageHook extends MaelleCombatState {
+  updateStacks: (newStacks: number) => Promise<void>;
+  onBasicAttackHit: (wasCritical?: boolean) => Promise<void>;
+  onAbilityUse: (stacksToConsume: number) => Promise<void>;
+  usePhantomStrike: (enemiesHit: number) => Promise<void>;
+  canUseAbility: (stacksRequired: number) => boolean;
+  canUsePhantomStrike: () => boolean;
 }
 
 export class MaelleAfterimageService {
@@ -22,10 +34,22 @@ export class MaelleAfterimageService {
       const clampedStacks = Math.max(0, Math.min(maxStacks, newStacks));
       const sessionRef = doc(db, 'battleSessions', sessionId);
       
-      await updateDoc(sessionRef, {
-        'tokens.token-maelle.afterimageStacks': clampedStacks,
-        updatedAt: serverTimestamp()
-      });
+      // Get current session to preserve token data
+      const sessionDoc = await getDoc(sessionRef);
+      if (!sessionDoc.exists()) return;
+      
+      const sessionData = sessionDoc.data();
+      const maelleToken = sessionData.tokens?.['token-maelle'];
+      
+      if (maelleToken) {
+        await updateDoc(sessionRef, {
+          'tokens.token-maelle': {
+            ...maelleToken,
+            afterimageStacks: clampedStacks
+          },
+          updatedAt: serverTimestamp()
+        });
+      }
     } catch (error) {
       console.error('Error updating Afterimage stacks:', error);
       throw error;
@@ -55,7 +79,7 @@ export class MaelleAfterimageService {
     await this.updateAfterimageStacks(sessionId, newStacks, maxStacks);
   }
 
-  // Handle Phantom Strike usage
+  // Handle Phantom Strike usage - FIXED VERSION
   static async usePhantomStrike(
     sessionId: string, 
     enemiesHit: number
@@ -63,12 +87,25 @@ export class MaelleAfterimageService {
     try {
       const sessionRef = doc(db, 'battleSessions', sessionId);
       
+      // Get current session to preserve token data
+      const sessionDoc = await getDoc(sessionRef);
+      if (!sessionDoc.exists()) return;
+      
+      const sessionData = sessionDoc.data();
+      const maelleToken = sessionData.tokens?.['token-maelle'];
+      
+      if (!maelleToken) return;
+      
       // Calculate stacks to regain (1 per 2 enemies hit, rounded up)
       const stacksRegained = Math.ceil(enemiesHit / 2);
       
+      // Preserve entire token object and only update specific properties
       await updateDoc(sessionRef, {
-        'tokens.token-maelle.afterimageStacks': stacksRegained,
-        'tokens.token-maelle.phantomStrikeUsed': true,
+        'tokens.token-maelle': {
+          ...maelleToken,
+          afterimageStacks: stacksRegained,
+          phantomStrikeUsed: true
+        },
         updatedAt: serverTimestamp()
       });
     } catch (error) {
@@ -79,7 +116,7 @@ export class MaelleAfterimageService {
 }
 
 // React hook for Maelle's Afterimage system
-export function useMaelleAfterimage(sessionId: string) {
+export function useMaelleAfterimage(sessionId: string): MaelleAfterimageHook {
   const [afterimageState, setAfterimageState] = useState<MaelleCombatState>({
     afterimageStacks: 0,
     maxAfterimageStacks: 5,
@@ -109,6 +146,7 @@ export function useMaelleAfterimage(sessionId: string) {
     return () => unsubscribe();
   }, [sessionId]);
 
+  // Helper methods that wrap the service calls
   const updateStacks = async (newStacks: number) => {
     await MaelleAfterimageService.updateAfterimageStacks(
       sessionId, 
@@ -140,7 +178,7 @@ export function useMaelleAfterimage(sessionId: string) {
   };
 
   return {
-    afterimageState,
+    ...afterimageState,  // Spread the state properties
     updateStacks,
     onBasicAttackHit,
     onAbilityUse,

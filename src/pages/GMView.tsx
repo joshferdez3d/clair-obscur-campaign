@@ -45,6 +45,9 @@ import { mapFirebaseToLocal } from '../utils/npcLevelMapper';
 import { PlayerTokenManager } from '../components/Combat/PlayerTokenManager';
 import { MineManagementPanel } from '../components/Combat/MineManagementPanel';
 import { MineService } from '../services/MineService';
+import { MovementService } from '../services/movementService';
+
+
 export function GMView() {
   const { sessionId } = useParams<{ sessionId: string }>();
   // NEW: Enemy selection state
@@ -198,7 +201,43 @@ export function GMView() {
   }, [session?.combatState?.isActive, session?.combatState?.currentTurn, session?.combatState?.round, session?.tokens, sessionId, turretAttacksTriggered]);
 
 
-// Update this function in GMView.tsx to replace the existing handleSwordAutoAttack
+const handleRepairMaelleToken = async () => {
+  if (!sessionId || !session) {
+    alert('❌ Session not loaded');
+    return;
+  }
+  
+  const maelleToken = session.tokens?.['token-maelle'];
+  
+  // Check if token is corrupted (missing essential properties)
+  if (!maelleToken?.id || !maelleToken?.name || !maelleToken?.position) {
+    console.log('🔧 Repairing corrupted Maelle token...');
+    
+    const repairedToken = {
+      id: 'token-maelle',
+      characterId: 'maelle',
+      name: 'Maelle',
+      position: { x: 2, y: 12 },
+      type: 'player' as const,
+      hp: 28,
+      maxHp: 28,
+      ac: 15,
+      size: 1,
+      color: '#4f46e5',
+      afterimageStacks: 0,
+      maxAfterimageStacks: 5,
+      phantomStrikeUsed: false
+    };
+    
+    await FirestoreService.updateBattleSession(sessionId, {
+      'tokens.token-maelle': repairedToken
+    });
+    
+    alert('✅ Maelle token has been repaired!');
+  } else {
+    alert('✅ Token is fine, no repair needed');
+  }
+};
 
   // Updated handleSwordAutoAttack with better logging
 const handleSwordAutoAttack = useCallback(async () => {
@@ -806,30 +845,16 @@ const handleResetSession = async () => {
 };
 
   const handleTokenMove = async (tokenId: string, newPosition: Position): Promise<boolean> => {
-    if (!session) return false;
+  if (!session) return false;
 
-    // Check if there's a mine at the new position
-    const mine = MineService.hasMineAtPosition(session, newPosition);
-    
-    if (mine && !mine.isDetected) {
-      // Hit a mine - trigger it (existing logic)
-      await MineService.triggerMine(session.id || 'test-session', mine.id, tokenId);
-      return true;
-    }
-
-    // Only reveal squares during combat when mines are present
-    if (!mine && session.combatState?.isActive && session.mines && session.mines.length > 0) {
-      const posKey = `${newPosition.x}-${newPosition.y}`;
-      if (!session.revealedSquares?.[posKey]) {
-        // Reveal this square
-        await MineService.revealSquare(session.id || 'test-session', newPosition);
-      }
-    }
-
-    // Perform the actual token movement
-    await FirestoreService.updateTokenPosition(session.id || 'test-session', tokenId, newPosition);
-    return true;
-  };
+  // Use MovementService which now handles mines correctly
+  // (moves to mine, triggers explosion, moves back)
+  return await MovementService.moveToken(
+    session.id || 'test-session',
+    tokenId,
+    newPosition
+  );
+};
 
 
   const handleAddEnemy = async (pos: Position) => {
@@ -1654,6 +1679,13 @@ const handleResetSession = async () => {
               onReset={handleResetSession}
               disabled={loading}
             />
+
+            <button
+              onClick={handleRepairMaelleToken}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-sm transition-colors"
+            >
+              🔧 Repair Maelle Token
+            </button>
             
             {/* Session Info */}
             <div className="text-xs text-clair-gold-300 bg-clair-shadow-800 rounded p-2">
