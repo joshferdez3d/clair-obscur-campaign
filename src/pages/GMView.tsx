@@ -1221,6 +1221,42 @@ const handleResetSession = async () => {
           [enemyId]: selectedEnemyType 
         };
 
+        // SPECIAL HANDLING FOR LAMPMASTER: Create lamp tokens
+        if (selectedEnemyType.id === 'lampmaster' || selectedEnemyType.name === 'Lampmaster') {
+          console.log('🔮 Creating lamp tokens for Lampmaster...');
+          
+          // Define lamp positions relative to Lampmaster (surrounding it)
+          const lampOffsets = [
+            { x: -2, y: -1 }, // Top-left
+            { x: 2, y: -1 },  // Top-right
+            { x: -2, y: 1 },  // Bottom-left
+            { x: 2, y: 1 }    // Bottom-right
+          ];
+          
+          // Create 4 lamp tokens
+          lampOffsets.forEach((offset, index) => {
+            const lampId = `lamp-${index}-${Date.now()}`;
+            const lampToken: BattleToken = {
+              id: lampId,
+              name: `Lamp ${index + 1}`,
+              position: {
+                x: Math.max(0, Math.min(19, position.x + offset.x)), // Keep within grid bounds
+                y: Math.max(0, Math.min(19, position.y + offset.y))
+              },
+              type: 'enemy', // Lamps are targetable as enemies
+              hp: 25,
+              maxHp: 25,
+              ac: 10,
+              size: 1,
+              color: '#FFD700', // Gold color for lamps
+              statusEffects: {}
+            };
+            
+            updatedTokens[lampId] = lampToken;
+            console.log(`🏮 Created Lamp ${index + 1} at (${lampToken.position.x}, ${lampToken.position.y})`);
+          });
+        }
+
         // Get current initiative order or create new one
         let currentInitiativeOrder = session.combatState?.initiativeOrder || [];
         
@@ -1271,8 +1307,11 @@ const handleResetSession = async () => {
         const enemyGroups = getEnemyGroups(updatedTokens);
         console.log(`📊 Current enemy groups:`, enemyGroups.map(g => `${g.type} (x${g.count})`).join(', '));
         
-        console.log(`✅ Added ${selectedEnemyType.name} at position (${position.x}, ${position.y})`);
-        
+        if (selectedEnemyType.id === 'lampmaster' || selectedEnemyType.name === 'Lampmaster') {
+          console.log(`✅ Lampmaster and 4 lamp tokens placed successfully!`);
+        } else {
+          console.log(`✅ Added ${selectedEnemyType.name} at position (${position.x}, ${position.y})`);
+        }        
       } catch (error) {
         console.error('Failed to add enemy:', error);
         alert('Failed to add enemy to battlefield. Please try again.');

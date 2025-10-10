@@ -23,14 +23,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Claw Swipe',
         toHit: 4,
         reach: 5,
-        damage: '1d6+2 slashing',
+        damage: '5',
         description: 'Melee weapon attack'
       }
     ],
     deathBurst: {
       name: 'Smoke Burst',
       radius: 10,
-      damage: '2d6 poison',
+      damage: '7',
       save: 'Con',
       saveDC: 12,
       description: 'On death, explodes in 10ft radius. Con save DC 12 or take 2d6 poison damage (half on save)'
@@ -59,14 +59,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Crystal Bolt',
         toHit: 6,
         range: '60 ft',
-        damage: '2d8 bludgeoning',
+        damage: '8',
         description: 'Ranged attack, crystalline projectile'
       },
       {
         name: 'Rock Spike',
         toHit: 0,
         range: '20ft line',
-        damage: '3d8 piercing',
+        damage: '12',
         description: 'Dex save DC 14 or take damage; half on save',
         recharge: '5-6'
       },
@@ -101,14 +101,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Glaive Sweep',
         toHit: 6,
         reach: 10,
-        damage: '1d10+4 slashing',
+        damage: '3',
         description: 'Melee weapon attack with 10 ft reach'
       },
       {
         name: 'Stamping Shock',
         toHit: 0,
         range: '15ft cone',
-        damage: '2d6 bludgeoning + slowed',
+        damage: '5',
         description: 'Dex 13 save or take damage and be slowed; half damage on save'
       },
       {
@@ -142,14 +142,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Flame Lash',
         toHit: 5,
         reach: 10,
-        damage: '2d6 fire',
+        damage: '6',
         description: 'Ranged fire attack with 10 ft reach'
       },
       {
         name: 'Cinder Rain',
         toHit: 0,
         range: '10ft radius',
-        damage: '2d6 fire',
+        damage: '6',
         description: 'Creates burning zone, Dex 13 save or take damage; half on save',
         recharge: '5-6'
       }
@@ -179,14 +179,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Spear Lunge',
         toHit: 6,
         reach: 10,
-        damage: '1d8+3 piercing',
+        damage: '5',
         description: 'Melee weapon attack with 10 ft reach'
       },
       {
         name: 'Line Charge',
         toHit: 0,
         range: '20ft line',
-        damage: '2d6+2 piercing + prone',
+        damage: '7',
         description: 'Dex 13 save or take damage and be knocked prone; half damage on save',
         recharge: '5-6'
       }
@@ -213,7 +213,7 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Shield Bash',
         toHit: 5,
         reach: 5,
-        damage: '1d8+3 bludgeoning + push',
+        damage: '5',
         description: 'Melee weapon attack, can push 5 ft'
       },
       {
@@ -250,14 +250,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Dive Bolt',
         toHit: 5,
         range: '80/240 ft',
-        damage: '1d8+2 piercing',
+        damage: '5',
         description: 'Ranged weapon attack'
       },
       {
         name: 'Screech Line',
         toHit: 0,
         range: '30ft line',
-        damage: '2d6 thunder + deafened',
+        damage: '6',
         description: 'Con 13 save or take damage and be deafened; half damage on save'
       }
     ],
@@ -286,14 +286,14 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Shadow Blade',
         toHit: 8,
         reach: 10,
-        damage: '2d8+4 necrotic',
+        damage: '10',
         description: 'Melee weapon attack that drains life'
       },
       {
         name: 'Umbral Wave',
         toHit: 0,
         range: '30ft cone',
-        damage: '3d6 necrotic + blind',
+        damage: '9',
         description: 'Con 15 save or take damage and be blinded for 1 turn',
         recharge: '5-6'
       },
@@ -308,6 +308,64 @@ export const enemies: { [key: string]: EnemyData } = {
     ],
     size: 1,
     color: '#2F003F'
+  },
+  'lampmaster': {
+    id: 'lampmaster',
+    name: 'Lampmaster',
+    ac: 17, // 15 when lamps destroyed
+    hp: 200,
+    maxHp: 200,
+    speed: 30,
+    saves: { dex: 4, wis: 5 },
+    resistances: ['radiant'],
+    vulnerabilities: [],
+    conditionImmunities: [],
+    traits: [
+      'Lamp Array: 4 floating lamps grant Light Shot ability. Destroying lamps reduces attacks.',
+      'Sword of Light: Devastating ultimate if lamp ritual not disrupted.',
+      'Lamp Ritual (Memory Minigame): Lamps glow in sequence. PCs must repeat sequence to cancel Sword of Light.'
+    ],
+    attacks: [
+      {
+        name: 'Light Shot',
+        toHit: 6,
+        range: '60',
+        damage: '2d8 radiant',
+        description: 'Telegraph: lamp glows before firing. Requires active lamps.'
+      },
+      {
+        name: 'Arm Combo',
+        toHit: 6,
+        reach: 5,
+        damage: '1d10+3 slashing',
+        description: '3 melee strikes in succession'
+      },
+      {
+        name: 'Jump Attack',
+        toHit: 0,
+        range: '15ft radius',
+        damage: '3d8+2 bludgeoning',
+        description: 'Dex save DC 14 or take damage & knocked prone',
+        recharge: '5-6'
+      },
+      {
+        name: 'Dark Explosion',
+        toHit: 0,
+        range: '20ft radius',
+        damage: '2d8 necrotic',
+        description: 'AoE blast. Con save DC 13 or blinded until end of next turn',
+        recharge: '4-6'
+      },
+      {
+        name: 'Sword of Light',
+        toHit: 999, // Auto-hit ultimate
+        range: 'battlefield',
+        damage: '4d10+5 radiant',
+        description: 'Ultimate: Wide slash. Damage reduced/canceled if lamp sequence solved.'
+      }
+    ],
+    size: 2, // Boss size
+    color: '#FFD700', // Gold color for the Lampmaster
   }
 };
 
@@ -319,7 +377,7 @@ export const ENEMY_CATEGORIES = {
   'Mini-Boss': ['sentinel_luster'],
   'Support/Tank': ['portier'],
   'Flying/Scout': ['volester'],
-  'Boss/Elite': ['noir_harbinger']
+  'Boss/Elite': ['noir_harbinger', 'lampmaster']
 };
 
 // Helper function to get enemy by ID

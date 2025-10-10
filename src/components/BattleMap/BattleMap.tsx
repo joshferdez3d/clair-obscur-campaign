@@ -726,6 +726,7 @@ export function BattleMap({
                 isValidTarget={!!(targetingMode?.active && isValidTarget(token.id))}
                 isHighlighted={selectedEnemyId === token.id}
                 isStormTarget={isStormTarget} // ADD THIS
+                session={session} // Add this
                 isEnemyGroupActive={isEnemyGroupActive}  // ADD THIS PROP
                 onClick={handleTokenClick}
                 onDragStart={handleTokenDragStart}

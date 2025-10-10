@@ -532,7 +532,19 @@ export interface BattleSession {
   };
 
   mines?: Mine[];
-  revealedSquares?: { [key: string]: number }; // "x-y": adjacentMineCount
+  revealedSquares?: { [key: string]: number };
+
+  lampmasterRitual?: {
+    id: string;
+    isActive: boolean;
+    sequence: number[];
+    playerAttempt: number[];
+    damageReduction: number;
+    createdOnRound: number;
+    willTriggerOnRound: number;
+  };
+  lampGlowState?: Record<number, boolean>;
+  lampFeedback?: Record<number, 'correct' | 'incorrect' | null>;
 
 }
 

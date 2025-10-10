@@ -14,7 +14,7 @@ import { useMaelleAfterimage } from '../services/maelleAfterimageService';
 import { useFirestoreListener } from '../hooks/useFirestoreListener';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
-
+import { handlePlayerLampAttack } from '../services/LampAttackService';
 // Add proper interface for session tokens
 interface SessionToken extends BattleToken {
   characterId?: string;
@@ -105,7 +105,18 @@ export function PlayerView() {
   const tokensArray = Object.values(session?.tokens || {}) as SessionToken[];
   const playerToken = tokensArray.find((token) => token.characterId === characterId);
   const availableEnemies = tokensArray
-    .filter((token) => token.type === 'enemy' && (token.hp || 0) > 0)
+    .filter((token) => {
+      // Check if token has required properties
+      if (!token || !token.id || token.type !== 'enemy') return false;
+      
+      // Check if token is alive
+      if ((token.hp || 0) <= 0) return false;
+      
+      // Exclude lamp tokens (for Lampmaster mechanic)
+      if (token.id.startsWith('lamp-')) return false;
+      
+      return true;
+    })
     .map((token) => ({
       id: token.id,
       name: token.name,
@@ -216,6 +227,22 @@ export function PlayerView() {
   // UPDATED: Fixed parameter type and removed hasActed tracking for Gustave
   const handleTargetSelect = async (targetId: string, acRoll: number, attackType: string = 'melee', abilityId?: string) => {
     if (!playerToken || !characterId) return;
+
+      // Check if target is a lamp - handle specially
+    if (targetId.startsWith('lamp-')) {
+      console.log(`Player attacking lamp: ${targetId}`);
+      
+      // Use your lamp attack service
+      await handlePlayerLampAttack(sessionId, characterId, targetId);
+      
+      // Still track that the player acted this turn (except Gustave)
+      if (character?.name.toLowerCase() !== 'gustave') {
+        await persistentCombatState.setHasActedThisTurn(true);
+      }
+      
+      // Important: return early so it doesn't process as normal attack
+      return;
+    }
 
     try {
       const range = attackType === 'ranged' ? 30 : 5;

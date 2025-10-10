@@ -10,6 +10,7 @@ import type { EnemyData } from '../types';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
 import { ProtectionService } from '../services/ProtectionService';
 import { PassiveEnemyAbilityService } from '../services/passiveEnemyAbilityService';
+import { LampmasterService } from '../services/LampmasterService';
 
 interface EnemyAttack {
   name: string;
@@ -30,6 +31,9 @@ const EnemyView: React.FC = () => {
   const [acRoll, setACRoll] = useState<string>('');
   const [isAttacking, setIsAttacking] = useState(false);
   
+  const [isRitualActive, setIsRitualActive] = useState(false);
+  const [ritualSequence, setRitualSequence] = useState<number[]>([]);
+  const [isPlayingSequence, setIsPlayingSequence] = useState(false);
   // Get current enemy based on turn
   const currentTurnEntry = session?.combatState?.initiativeOrder.find(
     e => e.id === session?.combatState?.currentTurn
@@ -39,6 +43,13 @@ const EnemyView: React.FC = () => {
     enabled: true,
     message: '⚠️ Warning: You are controlling enemies in combat. Leaving will disrupt the battle. Are you sure?'
   });
+
+  // Add helper function to check if enemy is Lampmaster
+  const isLampmaster = (enemy: BattleToken | null): boolean => {
+    if (!enemy) return false;
+    return enemy.name === 'Lampmaster' || enemy.id.includes('lampmaster');
+  };
+
   
   // Get the current enemy token and data
   const getCurrentEnemy = () => {
@@ -77,7 +88,105 @@ const EnemyView: React.FC = () => {
       data: enemyData
     };
   };
-  
+
+  // Add function to handle Sword of Light ultimate
+  const handleSwordOfLightRitual = async () => {
+    if (!activeEnemy || !sessionId) return;
+    
+    setIsRitualActive(true);
+    setIsPlayingSequence(true);
+    
+    try {
+      // Start the ritual and get the sequence
+      const sequence = await LampmasterService.startLampRitual(sessionId, activeEnemy.id);
+      setRitualSequence(sequence);
+      
+      // Create the ritual action
+      const action: GMCombatAction = {
+        id: `ritual-${Date.now()}`,
+        type: 'ability',
+        playerId: activeEnemy.id,
+        playerName: 'Lampmaster',
+        targetId: 'all-players',
+        targetName: 'All Players',
+        sourcePosition: activeEnemy.position,
+        range: 999,
+        timestamp: new Date(),
+        resolved: false,
+        hit: true,
+        abilityName: 'Sword of Light (Ritual Started)',
+        needsDamageInput: false,
+        damageApplied: false,
+        description: 'Lamps glow in sequence. Attack them in order to reduce damage!',
+        ultimateType: 'lampmaster_ritual',
+        needsGMInteraction: false
+      };
+      
+      await FirestoreService.addCombatAction(sessionId, action);
+      
+      // Visual feedback
+      alert('🔮 Lamp Ritual Started! Watch the sequence carefully!');
+      
+      // Wait for sequence to play
+      setTimeout(() => {
+        setIsPlayingSequence(false);
+        alert('⚔️ Quick! Attack the lamps in the same order!');
+      }, 6000); // 4 lamps × 1s each + 3 × 0.5s pauses
+      
+    } catch (error) {
+      console.error('Failed to start lamp ritual:', error);
+      setIsRitualActive(false);
+      setIsPlayingSequence(false);
+    }
+  };
+
+  // Add function to handle ritual damage application
+  const handleApplySwordOfLight = async () => {
+    if (!activeEnemy || !sessionId) return;
+    
+    try {
+      await LampmasterService.applySwordOfLight(sessionId, activeEnemy.id);
+      setIsRitualActive(false);
+      setRitualSequence([]);
+      
+      // End turn after applying ultimate damage
+      await nextTurn();
+    } catch (error) {
+      console.error('Failed to apply Sword of Light:', error);
+    }
+  };
+
+  // Update the ability selection to handle Sword of Light
+  const handleAbilitySelect = (ability: EnemyAttack) => {
+    if (ability.name === 'Sword of Light') {
+      // Sword of Light is special - starts ritual as bonus action
+      handleSwordOfLightRitual();
+      return;
+    }
+    
+    // Normal ability handling
+    setSelectedAbility(ability);
+    setSelectedTarget('');
+    setACRoll('');
+  };
+
+  // Add to the component's useEffect to check for ritual on turn start
+  useEffect(() => {
+    const checkRitualStatus = async () => {
+      if (!session?.lampmasterRitual || !activeEnemy || !isLampmaster(activeEnemy)) return;
+      
+      const ritual = session.lampmasterRitual;
+      const currentRound = session.combatState?.round || 1;
+      
+      // Check if it's time to apply damage
+      if (ritual.willTriggerOnRound === currentRound && !ritual.isActive) {
+        await handleApplySwordOfLight();
+      }
+    };
+    
+    checkRitualStatus();
+  }, [currentTurnEntry?.id, session?.combatState?.round]);
+    
   const currentEnemy = getCurrentEnemy();
   
   // Get all alive enemies of the same type for group turns
@@ -137,22 +246,25 @@ const EnemyView: React.FC = () => {
   };
   
   // Roll damage based on damage string (e.g., "1d8+3")
-  const rollDamage = (damageString: string): number => {
-    // Parse damage string like "1d8+3" or "2d6+2"
-    const match = damageString.match(/(\d+)d(\d+)([+-]\d+)?/);
-    if (!match) return 0;
-    
-    const numDice = parseInt(match[1]);
-    const diceSize = parseInt(match[2]);
-    const modifier = match[3] ? parseInt(match[3]) : 0;
-    
-    let total = modifier;
-    for (let i = 0; i < numDice; i++) {
-      total += Math.floor(Math.random() * diceSize) + 1;
-    }
-    
-    return Math.max(1, total); // Minimum 1 damage
-  };
+const rollDamage = (damageString: string): number => {
+  // First check if it's already a plain number
+  const fixedDamage = parseInt(damageString);
+  if (!isNaN(fixedDamage)) {
+    return fixedDamage;
+  }
+  
+  // If it's still in dice format, use the average
+  const match = damageString.match(/(\d+)d(\d+)([+-]\d+)?/);
+  if (!match) return 5; // Default fallback
+  
+  const numDice = parseInt(match[1]);
+  const diceSize = parseInt(match[2]);
+  const modifier = match[3] ? parseInt(match[3]) : 0;
+  
+  // Calculate average damage instead of rolling
+  const averageRoll = ((diceSize + 1) / 2) * numDice;
+  return Math.floor(averageRoll + modifier);
+};
   
   // Handle attack confirmation
   const handleConfirmAttack = async () => {
@@ -481,6 +593,60 @@ const EnemyView: React.FC = () => {
             </div>
           )}
         </div>
+        {isLampmaster(activeEnemy) && (
+          <div className="mt-4 p-4 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-600">
+            <h3 className="text-yellow-400 font-bold mb-2">Lampmaster Special</h3>
+            
+            {/* Ritual Status */}
+            {isRitualActive && (
+              <div className="mb-3 p-3 bg-purple-900 bg-opacity-50 rounded">
+                <p className="text-purple-300 text-sm">
+                  {isPlayingSequence 
+                    ? '🔮 Memorize the lamp sequence...' 
+                    : '⚔️ Players must attack lamps in order!'}
+                </p>
+                {ritualSequence.length > 0 && !isPlayingSequence && (
+                  <p className="text-xs text-purple-400 mt-1">
+                    Sequence length: {ritualSequence.length} lamps
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Lamp Status */}
+            <div className="grid grid-cols-4 gap-2">
+              {[0, 1, 2, 3].map(index => {
+                const lamp = Object.values(session?.tokens || {}).find(t => 
+                  t.id && t.id.includes(`lamp-${index}`)
+                );
+                return (
+                  <div 
+                    key={index}
+                    className={`p-2 rounded text-center text-xs ${
+                      lamp && lamp.hp && lamp.hp > 0 
+                        ? 'bg-orange-800 text-orange-200' 
+                        : 'bg-gray-800 text-gray-500'
+                    }`}
+                  >
+                    <div>Lamp {index + 1}</div>
+                    <div>{lamp ? (lamp.hp || 0) : 0}/{lamp ? (lamp.maxHp || 25) : 25}</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Ultimate Button - as bonus action after regular ability */}
+            {!isRitualActive && selectedAbility && (
+              <button
+                onClick={handleSwordOfLightRitual}
+                className="mt-3 w-full p-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white rounded-lg font-bold shadow-lg transform hover:scale-105 transition-all"
+              >
+                ⚔️ Activate Sword of Light (Bonus Action)
+              </button>
+            )}
+          </div>
+        )}
+
         
         {/* Target Selection */}
         {selectedAbility && (
@@ -504,7 +670,10 @@ const EnemyView: React.FC = () => {
                   >
                     <div className="flex justify-between items-center">
                       <div>
-                        <div className="font-bold">{target.name}</div>
+                        <div className="font-bold">
+                          {target.id.startsWith('lamp-') && '🏮 '}
+                          {target.name}
+                        </div>
                         <div className="text-sm text-gray-400">
                           Distance: {calculateDistance(activeEnemy, target)}ft
                         </div>
@@ -521,7 +690,7 @@ const EnemyView: React.FC = () => {
               </div>
             ) : (
               <p className="text-yellow-400 text-center py-4">
-                No valid targets in range ({selectedAbility.reach || selectedAbility.range || 5}ft)
+                No valid targets in range ({selectedAbility?.reach || selectedAbility?.range || 5}ft)
               </p>
             )}
             
@@ -541,7 +710,7 @@ const EnemyView: React.FC = () => {
                     min="1"
                     max="20"
                   />
-                  {acRoll && (
+                  {acRoll && selectedAbility && (
                     <p className="text-sm text-gray-400 mt-1">
                       Total: {parseInt(acRoll) + (selectedAbility.toHit || 0)} 
                       (roll + {selectedAbility.toHit} modifier)
