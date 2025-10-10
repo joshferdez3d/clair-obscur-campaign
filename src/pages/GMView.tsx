@@ -114,11 +114,26 @@ export function GMView() {
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
   const tokens = Object.entries(session?.tokens || {})
-    .filter(([key, value]) => value && value.id)
+    .filter(([key, value]) => {
+      // Filter out null/undefined tokens
+      if (!value) {
+        console.warn(`Null token found with key: ${key}`);
+        return false;
+      }
+      // Filter out tokens without essential properties
+      if (!value.name || !value.position) {
+        console.warn(`Invalid token found with key: ${key}`, value);
+        return false;
+      }
+      return true;
+    })
     .map(([key, value]) => ({
       ...value,
-      id: value.id || key // Use key as fallback if id is missing
-    }));  const players = tokens.filter((t) => t.type === 'player')
+      id: value.id || key, // Ensure ID exists (use key as fallback)
+      position: value.position || { x: 0, y: 0 }, // Ensure position exists
+      name: value.name || 'Unknown', // Ensure name exists
+    }));
+    const players = tokens.filter((t) => t.type === 'player');
 
   // Move this hook to the top level
   const gmHPControl = useGMHPControl({ sessionId: sessionId || 'test-session' });

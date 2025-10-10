@@ -72,6 +72,9 @@ export class LampmasterService {
   static async playGlowSequence(sessionId: string, sequence: number[]): Promise<void> {
     const sessionRef = doc(db, 'battleSessions', sessionId);
     
+    await new Promise(resolve => setTimeout(resolve, 6000));
+    console.log('✨ Starting glow sequence...');
+
     for (let i = 0; i < sequence.length; i++) {
       const lampIndex = sequence[i];
       
@@ -82,7 +85,7 @@ export class LampmasterService {
       });
 
       // Wait for glow duration
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise(resolve => setTimeout(resolve, 600));
 
       // Turn off glow
       await updateDoc(sessionRef, {
@@ -92,7 +95,7 @@ export class LampmasterService {
 
       // Brief pause between lamps
       if (i < sequence.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
     
@@ -133,6 +136,8 @@ export class LampmasterService {
     console.log(`   Attacked: Lamp ${lampIndex + 1}`);
     console.log(`   Expected: Lamp ${expectedLamp + 1}`);
     console.log(`   Result: ${isCorrect ? '✅ CORRECT' : '❌ WRONG'}`);
+    console.log(`   Sequence so far: [${ritual.sequence.slice(0, attemptIndex + 1).map(i => i + 1).join(', ')}]`);
+    console.log(`   Player attempt: [${ritual.playerAttempt.map(i => i + 1).join(', ')}]`);
 
     if (!isCorrect) {
       console.log(`❌ WRONG LAMP! Ritual stops here.`);
@@ -154,14 +159,15 @@ export class LampmasterService {
     console.log(`   Remaining damage: ${100 - ritual.damageReduction}%`);
     console.log('========================');
 
-    // Update session
+    // Update session FIRST
     const sessionRef = doc(db, 'battleSessions', sessionId);
     await updateDoc(sessionRef, {
       lampmasterRitual: ritual,
       updatedAt: serverTimestamp()
     });
 
-    // Visual feedback for correct/incorrect
+    // Then show visual feedback
+    console.log(`🎨 About to show feedback for lamp ${lampIndex}`);
     await this.showAttackFeedback(sessionId, lampIndex, isCorrect);
   }
 
@@ -181,18 +187,25 @@ export class LampmasterService {
   static async showAttackFeedback(sessionId: string, lampIndex: number, isCorrect: boolean): Promise<void> {
     const sessionRef = doc(db, 'battleSessions', sessionId);
     
+    console.log(`🎨 Showing lamp feedback: ${lampIndex} - ${isCorrect ? 'correct' : 'incorrect'}`);
+    
     await updateDoc(sessionRef, {
       [`lampFeedback.${lampIndex}`]: isCorrect ? 'correct' : 'incorrect',
       updatedAt: serverTimestamp()
     });
 
-    // Clear feedback after a moment
+    // Clear feedback after animation completes (increased from 1500ms to 2000ms)
     setTimeout(async () => {
-      await updateDoc(sessionRef, {
-        [`lampFeedback.${lampIndex}`]: null,
-        updatedAt: serverTimestamp()
-      });
-    }, 1500);
+      try {
+        await updateDoc(sessionRef, {
+          [`lampFeedback.${lampIndex}`]: null,
+          updatedAt: serverTimestamp()
+        });
+        console.log(`🎨 Cleared lamp feedback for ${lampIndex}`);
+      } catch (error) {
+        console.error('Failed to clear lamp feedback:', error);
+      }
+    }, 2000); // Increased time so animation is more visible
   }
 
   // Finalize the ritual

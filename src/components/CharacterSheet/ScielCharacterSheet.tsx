@@ -18,6 +18,7 @@ import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 import { MovementInput } from '../Combat/MovementInput';
 import { MovementService } from '../../services/movementService';
 import { NPCTabSystem } from './NPCTabSystem';
+import { handlePlayerLampAttack } from '../../services/LampAttackService';
 
 interface ScielCharacterSheetProps {
   character: Character;
@@ -263,12 +264,36 @@ export function ScielCharacterSheet({
         return;
       }
 
+    // ✅ ADD: Check if target is a lamp
+    if (selectedTarget.startsWith('lamp-')) {
+      console.log(`Sciel attacking lamp: ${selectedTarget}`);
+      
+      // Import the lamp attack handler at the top of the file:
+      // import { handlePlayerLampAttack } from '../../services/LampAttackService';
+      
+      await handlePlayerLampAttack(sessionId, character.id, selectedTarget);
+      
+      setSelectedAction(null);
+      setSelectedTarget('');
+      setACRoll('');
+      setShowTargetingModal(false);
+      
+      // Auto-end turn after lamp attack
+      if (onEndTurn) {
+        onEndTurn();
+      }
+      
+      return; // Important: return early so it doesn't process as normal attack
+    }
+
       const enemy = availableEnemies.find(e => e.id === selectedTarget);
       if (!enemy) return;
 
       const distance = calculateDistance(playerPosition, enemy.position);
       const finalAC = applyRangePenalty(parseInt(acRoll), distance);
       const hit = finalAC >= enemy.ac;
+
+      
 
       // Generate ability point only for regular card toss hits
       if (hit && !chargedFateCard) {

@@ -1,5 +1,5 @@
 // src/pages/BattleMapView.tsx - Fixed type conversion issue
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { BattleMap } from '../components/BattleMap/BattleMap';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
@@ -8,18 +8,28 @@ import { useStormSystem } from '../hooks/useStormSystem';
 import { useBattleSession } from '../hooks/useBattleSession';
 import type { BattleToken, BattleMap as BattleMapType } from '../types';
 import { EnemyPanel } from '../components/Combat/EnemyPanel';
-import { AVAILABLE_MAPS, type MapConfig } from '../components/GM/MapSelector';
+import { AVAILABLE_MAPS } from '../components/GM/MapSelector';
 import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
 import { useUltimateVideo } from '../hooks/useUltimateVideo';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
-import { LampRitualIndicator } from '../components/BattleMap/LampRitualIndicator';
+import { BattleMessagePopup } from '../components/BattleMap/BattleMessagePopup';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [autoRefresh, setAutoRefresh] = useState(true);
   const { currentEvent, clearUltimate, hasActiveUltimate } = useUltimateVideo(sessionId || 'test-session');
   const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
+  const [battleMessage, setBattleMessage] = useState<{
+    text: string;
+    type: 'info' | 'success' | 'warning' | 'error';
+    isVisible: boolean;
+  }>({
+    text: '',
+    type: 'info',
+    isVisible: false
+  });
+  const previousRitualRef = useRef<any>(null);
 
   // Use the combat hook to get real-time session data
   const {
@@ -54,6 +64,14 @@ export function BattleMapView() {
     initiativeOrder: [],
   };
 
+  const showBattleMessage = (text: string, type: 'info' | 'success' | 'warning' | 'error' = 'info') => {
+    setBattleMessage({ text, type, isVisible: true });
+  };
+
+  const closeBattleMessage = () => {
+    setBattleMessage(prev => ({ ...prev, isVisible: false }));
+  };
+
   const characterNames: Record<string, string> = {};
   tokens.forEach((t) => {
     if (t.characterId) characterNames[t.characterId] = t.name;
@@ -68,6 +86,36 @@ export function BattleMapView() {
     enabled: true,
     message: '⚠️ Warning: The battle map is currently displayed. Closing this will disrupt the visual experience. Are you sure?'
   });
+
+  // Listen for Lampmaster ritual events
+  useEffect(() => {
+    if (!currentSession?.lampmasterRitual) return;
+    
+    const ritual = currentSession.lampmasterRitual;
+    const previousRitual = previousRitualRef.current;
+
+    // Ritual just started
+    if (ritual.isActive && ritual.playerAttempt.length === 0 && (!previousRitual || !previousRitual.isActive)) {
+      showBattleMessage('⚔️ The Lampmaster is starting the ritual! Memorize the lamp sequence!', 'warning');
+    }
+
+    // Ritual completed successfully (all 4 lamps correct)
+    if (!ritual.isActive && ritual.damageReduction === 100 && previousRitual?.isActive) {
+      showBattleMessage('✅ SUCCESS! The ritual has been disrupted! Sword of Light CANCELED!', 'success');
+    }
+
+    // Ritual failed or partial success
+    if (!ritual.isActive && ritual.damageReduction < 100 && ritual.playerAttempt.length > 0 && previousRitual?.isActive) {
+      const damagePercent = 100 - ritual.damageReduction;
+      if (ritual.damageReduction === 0) {
+        showBattleMessage(`❌ FAILURE! All lamps were wrong! Taking FULL damage (${damagePercent}%)!`, 'error');
+      } else {
+        showBattleMessage(`⚠️ Partial Success! Damage reduced by ${ritual.damageReduction}%! Taking ${damagePercent}% damage!`, 'warning');
+      }
+    }
+
+    previousRitualRef.current = ritual;
+  }, [currentSession?.lampmasterRitual]);
 
   useEffect(() => {
     if (sessionId) {
@@ -137,8 +185,18 @@ export function BattleMapView() {
   }
 
   // Convert session tokens to battle tokens
-  const battleTokens: BattleToken[] = Object.values(currentSession.tokens || {});
-
+  const battleTokens: BattleToken[] = Object.entries(currentSession?.tokens || {})
+    .filter(([key, value]) => {
+      if (!value) return false;
+      if (!value.name || !value.position) return false;
+      return true;
+    })
+    .map(([key, value]) => ({
+      ...value,
+      id: value.id || key,
+      position: value.position || { x: 0, y: 0 },
+      name: value.name || 'Unknown',
+    }));
   // Get current turn information
   const currentTurn = currentSession.combatState?.currentTurn;
 
@@ -192,13 +250,16 @@ export function BattleMapView() {
         />
       )}
 
-      {/* ✅ ADD: Lamp Ritual Indicator */}
-      {currentSession?.lampmasterRitual && (
-        <LampRitualIndicator 
-          ritual={currentSession.lampmasterRitual}
-          currentRound={combatState.round}
-        />
-      )}
+      {/* Battle Message Popup */}
+      <BattleMessagePopup
+        message={battleMessage.text}
+        type={battleMessage.type}
+        isVisible={battleMessage.isVisible}
+        autoClose={true}
+        duration={5000}
+        onClose={closeBattleMessage}
+      />
+
       {/* Left Panel - Enemy Status (for players) */}
       <div className="w-48 bg-clair-shadow-800 border-r border-clair-gold-600 p-2 overflow-y-auto flex-shrink-0">
         <div className="mb-4">

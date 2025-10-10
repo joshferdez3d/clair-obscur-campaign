@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { Shield, Heart, Swords, Target, Move } from 'lucide-react';
 import { useCombat } from '../hooks/useCombat';
@@ -34,7 +34,9 @@ const EnemyView: React.FC = () => {
   const [isRitualActive, setIsRitualActive] = useState(false);
   const [ritualSequence, setRitualSequence] = useState<number[]>([]);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
-  
+  const [hasUsedRegularAction, setHasUsedRegularAction] = useState(false);
+  const isApplyingUltimate = useRef(false);
+
   // Get current enemy based on turn
   const currentTurnEntry = session?.combatState?.initiativeOrder.find(
     e => e.id === session?.combatState?.currentTurn
@@ -102,64 +104,76 @@ const EnemyView: React.FC = () => {
   const [currentEnemyIndex, setCurrentEnemyIndex] = useState(0);
   const activeEnemy = enemyGroup[currentEnemyIndex];
 
-  // Function to handle Sword of Light ultimate
   const handleSwordOfLightRitual = async () => {
-    if (!activeEnemy || !sessionId) return;
+  if (!activeEnemy || !sessionId) return;
+  
+  setIsRitualActive(true);
+  setIsPlayingSequence(true);
+  
+  try {
+    const sequence = await LampmasterService.startLampRitual(sessionId, activeEnemy.id);
+    setRitualSequence(sequence);
     
-    setIsRitualActive(true);
-    setIsPlayingSequence(true);
+    const action: GMCombatAction = {
+      id: `ritual-${Date.now()}`,
+      type: 'ability',
+      playerId: activeEnemy.id,
+      playerName: 'Lampmaster',
+      targetId: 'all-players',
+      targetName: 'All Players',
+      sourcePosition: activeEnemy.position,
+      range: 999,
+      timestamp: new Date(),
+      resolved: false,
+      hit: true,
+      abilityName: 'Sword of Light (Ritual Started)',
+      needsDamageInput: false,
+      damageApplied: false,
+      description: 'Lamps glow in sequence. Attack them in order to reduce damage!',
+      ultimateType: 'lampmaster_ritual',
+      needsGMInteraction: false
+    };
     
-    try {
-      const sequence = await LampmasterService.startLampRitual(sessionId, activeEnemy.id);
-      setRitualSequence(sequence);
-      
-      const action: GMCombatAction = {
-        id: `ritual-${Date.now()}`,
-        type: 'ability',
-        playerId: activeEnemy.id,
-        playerName: 'Lampmaster',
-        targetId: 'all-players',
-        targetName: 'All Players',
-        sourcePosition: activeEnemy.position,
-        range: 999,
-        timestamp: new Date(),
-        resolved: false,
-        hit: true,
-        abilityName: 'Sword of Light (Ritual Started)',
-        needsDamageInput: false,
-        damageApplied: false,
-        description: 'Lamps glow in sequence. Attack them in order to reduce damage!',
-        ultimateType: 'lampmaster_ritual',
-        needsGMInteraction: false
-      };
-      
-      await FirestoreService.addCombatAction(sessionId, action);
-      alert('🔮 Lamp Ritual Started! Watch the sequence carefully!');
-      
-      setTimeout(() => {
-        setIsPlayingSequence(false);
-        alert('⚔️ Quick! Attack the lamps in the same order!');
-      }, 6000);
-      
-    } catch (error) {
-      console.error('Failed to start lamp ritual:', error);
-      setIsRitualActive(false);
+    await FirestoreService.addCombatAction(sessionId, action);
+    
+    setTimeout(() => {
       setIsPlayingSequence(false);
+    }, 7000);
+    
+    // ✅ NEW: If Lampmaster used their bonus action (ritual), end turn immediately
+    if (hasUsedRegularAction) {
+      console.log('⚔️ Lampmaster used bonus action (ritual) - ending turn');
+      await nextTurn();
     }
-  };
+    
+  } catch (error) {
+    console.error('Failed to start lamp ritual:', error);
+    setIsRitualActive(false);
+    setIsPlayingSequence(false);
+  }
+};
 
   // Function to handle ritual damage application
   const handleApplySwordOfLight = async () => {
     if (!activeEnemy || !sessionId) return;
-    
-    try {
-      await LampmasterService.applySwordOfLight(sessionId, activeEnemy.id);
-      setIsRitualActive(false);
-      setRitualSequence([]);
-      await nextTurn();
-    } catch (error) {
-      console.error('Failed to apply Sword of Light:', error);
+     // Prevent multiple calls
+    if (isApplyingUltimate.current) {
+      console.log('⚠️ Already applying Sword of Light, skipping...');
+      return;
     }
+
+    isApplyingUltimate.current = true;
+
+     try {
+        await LampmasterService.applySwordOfLight(sessionId, activeEnemy.id);
+        setIsRitualActive(false);
+        setRitualSequence([]);
+        // Don't call nextTurn here - let the passive ability system handle it
+      } catch (error) {
+        console.error('Failed to apply Sword of Light:', error);
+      } finally {
+        isApplyingUltimate.current = false;
+      }
   };
 
   // Update the ability selection to handle Sword of Light
@@ -174,36 +188,39 @@ const EnemyView: React.FC = () => {
     setACRoll('');
   };
 
+  useEffect(() => {
+    // Reset regular action flag when turn changes
+    setHasUsedRegularAction(false);
+    setCurrentEnemyIndex(0);
+  }, [currentTurnEntry?.id]);
+
+
   // Ritual status check useEffect
   useEffect(() => {
-    const checkRitualStatus = async () => {
-      if (!session?.lampmasterRitual || !activeEnemy || !isLampmaster(activeEnemy)) return;
-      
-      const ritual = session.lampmasterRitual;
-      const currentRound = session.combatState?.round || 1;
-      
-      console.log(`🔮 Ritual check - Current: R${currentRound}, Trigger: R${ritual.willTriggerOnRound}, Active: ${ritual.isActive}`);
-      
-      const isLampmasterTurn = currentTurnEntry?.id && (
-        currentTurnEntry.id.includes('lampmaster') ||
-        currentTurnEntry.name === 'Lampmaster'
-      );
-      
-      if (ritual.willTriggerOnRound === currentRound && isLampmasterTurn) {
-        console.log('⚔️ Time to apply Sword of Light!');
-        
-        if (ritual.isActive) {
-          console.log('⚠️ Ritual expired - players ran out of time!');
-          await LampmasterService.finalizeRitual(sessionId!);
-        }
-        
-        await handleApplySwordOfLight();
-      }
-    };
+    if (!session?.lampmasterRitual || !activeEnemy || !isLampmaster(activeEnemy)) return;
     
-    checkRitualStatus();
-  }, [currentTurnEntry?.id, session?.combatState?.round, session?.lampmasterRitual, activeEnemy, sessionId]);
+    const ritual = session.lampmasterRitual;
+    const currentRound = session.combatState?.round || 1;
     
+    console.log(`🔮 Ritual check - Current: R${currentRound}, Trigger: R${ritual.willTriggerOnRound}, Active: ${ritual.isActive}`);
+    
+    const isLampmasterTurn = currentTurnEntry?.id && (
+      currentTurnEntry.id.includes('lampmaster') ||
+      currentTurnEntry.name === 'Lampmaster'
+    );
+    
+    // ✅ FIXED: Only trigger if ritual hasn't been applied yet
+    // Check if ritual exists AND hasn't been triggered yet
+    if (ritual.willTriggerOnRound === currentRound && isLampmasterTurn && ritual.willTriggerOnRound !== null) {
+      console.log('⚔️ Time to apply Sword of Light!');
+      
+      // Apply the ultimate
+      handleApplySwordOfLight();
+      
+      // The handleApplySwordOfLight function should handle clearing the ritual
+    }
+  }, [session?.lampmasterRitual, currentTurnEntry, activeEnemy, sessionId]);
+
   // Get valid targets (player characters)
   const getValidTargets = () => {
     if (!activeEnemy || !session) return [];
@@ -259,102 +276,112 @@ const EnemyView: React.FC = () => {
     return Math.floor(averageRoll + modifier);
   };
   
-  // Handle attack confirmation
   const handleConfirmAttack = async () => {
-    if (!selectedAbility || !selectedTarget || !acRoll || !activeEnemy || !session) return;
+  if (!selectedAbility || !selectedTarget || !acRoll || !activeEnemy || !session) return;
+  
+  setIsAttacking(true);
+  
+  try {
+    const target = session.tokens[selectedTarget];
+    if (!target) return;
     
-    setIsAttacking(true);
-    
-    try {
-      const target = session.tokens[selectedTarget];
-      if (!target) return;
-      
-      const totalRoll = parseInt(acRoll) + (selectedAbility.toHit || 0);
-      const hit = totalRoll >= (target.ac || 10);
-      let rangeValue = 5;
-      if (selectedAbility.reach) {
-        rangeValue = selectedAbility.reach;
-      } else if (selectedAbility.range) {
-        const parsed = parseInt(selectedAbility.range);
-        if (!isNaN(parsed)) {
-          rangeValue = parsed;
-        }
+    const totalRoll = parseInt(acRoll) + (selectedAbility.toHit || 0);
+    const hit = totalRoll >= (target.ac || 10);
+    let rangeValue = 5;
+    if (selectedAbility.reach) {
+      rangeValue = selectedAbility.reach;
+    } else if (selectedAbility.range) {
+      const parsed = parseInt(selectedAbility.range);
+      if (!isNaN(parsed)) {
+        rangeValue = parsed;
       }
+    }
+  
+    const action: GMCombatAction = {
+      id: `enemy-attack-${Date.now()}`,
+      type: 'attack',
+      playerId: activeEnemy.id,
+      playerName: activeEnemy.name,
+      targetId: selectedTarget,
+      targetName: target.name,
+      sourcePosition: activeEnemy.position,
+      range: rangeValue,
+      timestamp: new Date(),
+      resolved: false,
+      hit,
+      acRoll: totalRoll,
+      abilityName: selectedAbility.name,
+      needsDamageInput: false,
+      damageApplied: false
+    };
     
-      const action: GMCombatAction = {
-        id: `enemy-attack-${Date.now()}`,
-        type: 'attack',
-        playerId: activeEnemy.id,
-        playerName: activeEnemy.name,
-        targetId: selectedTarget,
-        targetName: target.name,
-        sourcePosition: activeEnemy.position,
-        range: rangeValue,
-        timestamp: new Date(),
-        resolved: false,
-        hit,
-        acRoll: totalRoll,
-        abilityName: selectedAbility.name,
-        needsDamageInput: false,
-        damageApplied: false
-      };
+    await FirestoreService.addCombatAction(sessionId || '', action);
+    
+    if (hit) {
+      const damage = rollDamage(selectedAbility.damage);
       
-      await FirestoreService.addCombatAction(sessionId || '', action);
+      const session = await FirestoreService.getBattleSession(sessionId || '');
+      if (!session) return;
       
-      if (hit) {
-        const damage = rollDamage(selectedAbility.damage);
-        
-        const session = await FirestoreService.getBattleSession(sessionId || '');
-        if (!session) return;
-        
-        const redirectResult = await ProtectionService.redirectDamage(
-          sessionId || '',
-          selectedTarget,
-          damage
-        );
-        
-        let actualTargetId = selectedTarget;
-        let actualTargetName = target.name;
-        
-        if (redirectResult?.redirected) {
-          actualTargetId = redirectResult.newTargetId;
-          actualTargetName = redirectResult.protectorName;
-          console.log(`🛡️ PROTECTION: ${actualTargetName} intercepts ${damage} damage for ${target.name}!`);
-        }
-        
-        const actualTarget = session.tokens[actualTargetId];
-        if (actualTarget) {
-          const newHP = Math.max(0, (actualTarget.hp || 0) - damage);
-          
-          await FirestoreService.updateBattleSession(sessionId || '', {
-            [`tokens.${actualTargetId}.hp`]: newHP,
-            updatedAt: new Date()
-          });
-          
-          if (actualTarget.characterId) {
-            await FirestoreService.updateCharacterHP(actualTarget.characterId, newHP);
-          }
-        }
-        
-        console.log(`💥 ${activeEnemy.name} dealt ${damage} damage to ${actualTargetName}`);
+      const redirectResult = await ProtectionService.redirectDamage(
+        sessionId || '',
+        selectedTarget,
+        damage
+      );
+ 
+      let actualTargetId = selectedTarget;
+      let actualTargetName = target.name;
+      
+      if (redirectResult?.redirected) {
+        actualTargetId = redirectResult.newTargetId;
+        actualTargetName = redirectResult.protectorName;
+        console.log(`🛡️ PROTECTION: ${actualTargetName} intercepts ${damage} damage for ${target.name}!`);
       }
       
-      setSelectedAbility(null);
-      setSelectedTarget('');
-      setACRoll('');
+      const actualTarget = session.tokens[actualTargetId];
+      if (actualTarget) {
+        const newHP = Math.max(0, (actualTarget.hp || 0) - damage);
+        
+        await FirestoreService.updateBattleSession(sessionId || '', {
+          [`tokens.${actualTargetId}.hp`]: newHP,
+          updatedAt: new Date()
+        });
+        
+        if (actualTarget.characterId) {
+          await FirestoreService.updateCharacterHP(actualTarget.characterId, newHP);
+        }
+      }
       
+      console.log(`💥 ${activeEnemy.name} dealt ${damage} damage to ${actualTargetName}`);
+    }
+    
+    // Clear selection
+    setSelectedAbility(null);
+    setSelectedTarget('');
+    setACRoll('');
+    
+    // ✅ NEW LOGIC: Check if this is the Lampmaster
+    if (isLampmaster(activeEnemy)) {
+      // Lampmaster used their regular action, but turn doesn't end yet
+      setHasUsedRegularAction(true);
+      console.log('⚔️ Lampmaster used regular action - bonus action still available');
+      // DON'T call nextTurn() - Lampmaster can still use bonus action
+    } else {
+      // For all other enemies, proceed to next enemy or end turn as normal
       if (currentEnemyIndex < enemyGroup.length - 1) {
         setCurrentEnemyIndex(currentEnemyIndex + 1);
       } else {
         await nextTurn();
       }
-      
-    } catch (error) {
-      console.error('Failed to execute attack:', error);
-    } finally {
-      setIsAttacking(false);
     }
-  };
+    
+  } catch (error) {
+    console.error('Failed to execute attack:', error);
+  } finally {
+    setIsAttacking(false);
+  }
+};
+
   
   // Skip current enemy's turn
   const handleSkipEnemy = async () => {
@@ -531,36 +558,56 @@ const EnemyView: React.FC = () => {
             Attacks & Abilities
           </h2>
           
-          {enemyAttacks.length > 0 ? (
+          {enemyAttacks.length > 0 ? ( 
             <div className="grid gap-3">
-              {enemyAttacks.map((attack: EnemyAttack) => (
-                <button
-                  key={attack.name}
-                  onClick={() => handleAbilitySelect(attack)}
-                  disabled={isAttacking}
-                  className={`p-4 rounded-lg border-2 text-left transition-all ${
-                    selectedAbility?.name === attack.name
-                      ? 'border-red-500 bg-red-900 bg-opacity-30'
-                      : 'border-gray-600 bg-gray-700 hover:border-red-600'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="font-bold text-lg">{attack.name}</div>
-                      <div className="text-sm text-gray-400 mt-1">
-                        Range: {attack.reach || attack.range || 5}ft | 
-                        To Hit: +{attack.toHit} | 
-                        Damage: {attack.damage}
-                      </div>
-                      {attack.recharge && (
-                        <div className="text-sm text-yellow-400 mt-1">
-                          Recharge: {attack.recharge}
+              {enemyAttacks.map((attack: EnemyAttack) => {
+                // Check if this is Lampmaster and if Sword of Light should be hidden
+                const isSwordOfLight = attack.name === 'Sword of Light';
+                const shouldHideButton = isLampmaster(activeEnemy) && isSwordOfLight;
+                
+                // Disable regular abilities if Lampmaster has already used their regular action
+                const isRegularAbilityDisabled = isLampmaster(activeEnemy) && 
+                                                  hasUsedRegularAction && 
+                                                  !isSwordOfLight;
+                
+                if (shouldHideButton) return null; // Don't show Sword of Light in regular abilities
+                
+                return (
+                  <button
+                    key={attack.name}
+                    onClick={() => handleAbilitySelect(attack)}
+                    disabled={isAttacking || isRegularAbilityDisabled}
+                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                      selectedAbility?.name === attack.name
+                        ? 'border-red-500 bg-red-900 bg-opacity-30'
+                        : isRegularAbilityDisabled
+                        ? 'border-gray-700 bg-gray-800 opacity-50 cursor-not-allowed'
+                        : 'border-gray-600 bg-gray-700 hover:border-red-600'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-bold text-lg">{attack.name}</div>
+                        <div className="text-sm text-gray-400 mt-1">
+                          Range: {attack.reach || attack.range || 5}ft | 
+                          To Hit: +{attack.toHit} | 
+                          Damage: {attack.damage}
                         </div>
-                      )}
+                        {attack.recharge && (
+                          <div className="text-sm text-yellow-400 mt-1">
+                            Recharge: {attack.recharge}
+                          </div>
+                        )}
+                        {isRegularAbilityDisabled && (
+                          <div className="text-xs text-gray-500 mt-1">
+                            (Regular action already used)
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              ))}
+                  </button>
+                );
+              })}            
             </div>
           ) : (
             <div className="text-center text-gray-400 py-4">
@@ -568,61 +615,87 @@ const EnemyView: React.FC = () => {
             </div>
           )}
         </div>
-
-        {/* Lampmaster Special Section */}
-        {isLampmaster(activeEnemy) && (
-          <div className="mt-4 p-4 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-600">
-            <h3 className="text-yellow-400 font-bold mb-2">Lampmaster Special</h3>
-            
-            {/* Ritual Status */}
-            {isRitualActive && (
-              <div className="mb-3 p-3 bg-purple-900 bg-opacity-50 rounded">
-                <p className="text-purple-300 text-sm">
-                  {isPlayingSequence 
-                    ? '🔮 Memorize the lamp sequence...' 
-                    : '⚔️ Players must attack lamps in order!'}
-                </p>
-                {ritualSequence.length > 0 && !isPlayingSequence && (
-                  <p className="text-xs text-purple-400 mt-1">
-                    Sequence length: {ritualSequence.length} lamps
-                  </p>
-                )}
-              </div>
-            )}
-            
-            {/* Lamp Status */}
-            <div className="grid grid-cols-4 gap-2">
-              {[0, 1, 2, 3].map(index => {
-                const lamp = Object.values(session?.tokens || {}).find(t => 
-                  t.id && t.id.includes(`lamp-${index}`)
-                );
-                return (
-                  <div 
-                    key={index}
-                    className={`p-2 rounded text-center text-xs ${
-                      lamp && lamp.hp && lamp.hp > 0 
-                        ? 'bg-orange-800 text-orange-200' 
-                        : 'bg-gray-800 text-gray-500'
-                    }`}
-                  >
-                    <div>Lamp {index + 1}</div>
-                    <div>{lamp ? (lamp.hp || 0) : 0}/{lamp ? (lamp.maxHp || 25) : 25}</div>
+          {isLampmaster(activeEnemy) && (
+            <div className="mt-4 p-4 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-600">
+              <h3 className="text-yellow-400 font-bold mb-2">Lampmaster Special</h3>
+              
+              {/* Action Economy Display */}
+              <div className="mb-3 p-2 bg-black bg-opacity-30 rounded">
+                <div className="text-xs text-yellow-300">
+                  <div className="flex items-center justify-between">
+                    <span>⚔️ Regular Action:</span>
+                    <span className={hasUsedRegularAction ? 'text-green-400' : 'text-gray-400'}>
+                      {hasUsedRegularAction ? '✓ Used' : 'Available'}
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span>🔮 Bonus Action (Ritual):</span>
+                    <span className={hasUsedRegularAction ? 'text-gray-400' : 'text-yellow-400'}>
+                      {hasUsedRegularAction ? 'Available' : 'Locked (use regular action first)'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Ritual Status */}
+              {isRitualActive && (
+                <div className="mb-3 p-3 bg-purple-900 bg-opacity-50 rounded">
+                  <p className="text-purple-300 text-sm">
+                    {isPlayingSequence 
+                      ? '🔮 Memorize the lamp sequence...' 
+                      : '⚔️ Players must attack lamps in order!'}
+                  </p>
+                  {ritualSequence.length > 0 && !isPlayingSequence && (
+                    <p className="text-xs text-purple-400 mt-1">
+                      Sequence length: {ritualSequence.length} lamps
+                    </p>
+                  )}
+                </div>
+              )}
+              
+              {/* Lamp Status */}
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[0, 1, 2, 3].map(index => {
+                  const lamp = Object.values(session?.tokens || {}).find(t => 
+                    t.id && t.id.includes(`lamp-${index}`)
+                  );
+                  return (
+                    <div 
+                      key={index}
+                      className={`p-2 rounded text-center text-xs ${
+                        lamp && lamp.hp && lamp.hp > 0 
+                          ? 'bg-orange-800 text-orange-200' 
+                          : 'bg-gray-800 text-gray-500'
+                      }`}
+                    >
+                      <div>Lamp {index + 1}</div>
+                      <div>{lamp ? (lamp.hp || 0) : 0}/{lamp ? (lamp.maxHp || 25) : 25}</div>
+                    </div>
+                  );
+                })}
+              </div>
 
-            {/* Ultimate Button */}
-            {!isRitualActive && selectedAbility && (
-              <button
-                onClick={handleSwordOfLightRitual}
-                className="mt-3 w-full p-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white rounded-lg font-bold shadow-lg transform hover:scale-105 transition-all"
-              >
-                ⚔️ Activate Sword of Light (Bonus Action)
-              </button>
-            )}
-          </div>
-        )}
+              {/* Start Ritual Bonus Action Button */}
+              {!isRitualActive && (
+                <button
+                  onClick={handleSwordOfLightRitual}
+                  disabled={!hasUsedRegularAction || isPlayingSequence}
+                  className={`w-full p-3 rounded-lg font-bold shadow-lg transition-all ${
+                    hasUsedRegularAction
+                      ? 'bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 text-white transform hover:scale-105'
+                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                  }`}
+                >
+                  🔮 Start Ritual (Bonus Action)
+                  {!hasUsedRegularAction && (
+                    <div className="text-xs mt-1 opacity-75">
+                      Must use regular action first
+                    </div>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
 
         {/* Target Selection */}
         {selectedAbility && (
