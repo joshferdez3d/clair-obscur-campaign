@@ -13,6 +13,7 @@ import { UltimateVideoPopup } from '../components/Combat/UltimateVideoPopup';
 import { useUltimateVideo } from '../hooks/useUltimateVideo';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
+import { LampRitualIndicator } from '../components/BattleMap/LampRitualIndicator';
 
 export function BattleMapView() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -188,6 +189,14 @@ export function BattleMapView() {
           characterName={currentEvent.characterName}
           onClose={handleVideoClose}
           autoClose={true}
+        />
+      )}
+
+      {/* ✅ ADD: Lamp Ritual Indicator */}
+      {currentSession?.lampmasterRitual && (
+        <LampRitualIndicator 
+          ritual={currentSession.lampmasterRitual}
+          currentRound={combatState.round}
         />
       )}
       {/* Left Panel - Enemy Status (for players) */}

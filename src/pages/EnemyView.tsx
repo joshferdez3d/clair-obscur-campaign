@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Shield, Heart, Swords, Target, Move, ArrowRight } from 'lucide-react';
+import { Shield, Heart, Swords, Target, Move } from 'lucide-react';
 import { useCombat } from '../hooks/useCombat';
 import { FirestoreService } from '../services/firestoreService';
 import { BattleToken, GMCombatAction } from '../types';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
-import { enemies } from '../data/enemies'; // FIXED: Use 'enemies' not 'enemiesData'
+import { enemies } from '../data/enemies';
 import type { EnemyData } from '../types';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
 import { ProtectionService } from '../services/ProtectionService';
@@ -17,7 +17,7 @@ interface EnemyAttack {
   toHit: number;
   damage: string;
   reach?: number;
-  range?: string;  // CHANGED: from number to string
+  range?: string;
   recharge?: string;
   description?: string;
 }
@@ -34,6 +34,7 @@ const EnemyView: React.FC = () => {
   const [isRitualActive, setIsRitualActive] = useState(false);
   const [ritualSequence, setRitualSequence] = useState<number[]>([]);
   const [isPlayingSequence, setIsPlayingSequence] = useState(false);
+  
   // Get current enemy based on turn
   const currentTurnEntry = session?.combatState?.initiativeOrder.find(
     e => e.id === session?.combatState?.currentTurn
@@ -50,12 +51,10 @@ const EnemyView: React.FC = () => {
     return enemy.name === 'Lampmaster' || enemy.id.includes('lampmaster');
   };
 
-  
   // Get the current enemy token and data
   const getCurrentEnemy = () => {
     if (!currentTurnEntry || currentTurnEntry.type !== 'enemy') return null;
     
-    // For enemy groups, get the first alive enemy of that type
     const enemyName = currentTurnEntry.name.replace(/ \(x\d+\)/, '');
     const enemyToken = Object.values(session?.tokens || {}).find(
       token => token.type === 'enemy' && 
@@ -65,19 +64,15 @@ const EnemyView: React.FC = () => {
     
     if (!enemyToken) return null;
     
-    // Get enemy data from session's enemyData or from the enemies object
     let enemyData: EnemyData | undefined;
     
-    // First try to get from session's enemy data
     if (session?.enemyData) {
-      // Find any enemy token with this name and get its data
       const enemyDataEntry = Object.values(session.enemyData).find(
         (data: any) => data.name === enemyName
       ) as EnemyData | undefined;
       enemyData = enemyDataEntry;
     }
     
-    // If not found in session, try the enemies template object
     if (!enemyData && enemies) {
       const enemiesArray = Object.values(enemies) as EnemyData[];
       enemyData = enemiesArray.find(e => e.name === enemyName);
@@ -89,7 +84,25 @@ const EnemyView: React.FC = () => {
     };
   };
 
-  // Add function to handle Sword of Light ultimate
+  const currentEnemy = getCurrentEnemy();
+  
+  // Get all alive enemies of the same type for group turns
+  const getEnemyGroup = () => {
+    if (!currentTurnEntry || currentTurnEntry.type !== 'enemy') return [];
+    
+    const enemyName = currentTurnEntry.name.replace(/ \(x\d+\)/, '');
+    return Object.values(session?.tokens || {}).filter(
+      token => token.type === 'enemy' && 
+               token.name === enemyName && 
+               (token.hp || 0) > 0
+    ) as BattleToken[];
+  };
+  
+  const enemyGroup = getEnemyGroup();
+  const [currentEnemyIndex, setCurrentEnemyIndex] = useState(0);
+  const activeEnemy = enemyGroup[currentEnemyIndex];
+
+  // Function to handle Sword of Light ultimate
   const handleSwordOfLightRitual = async () => {
     if (!activeEnemy || !sessionId) return;
     
@@ -97,11 +110,9 @@ const EnemyView: React.FC = () => {
     setIsPlayingSequence(true);
     
     try {
-      // Start the ritual and get the sequence
       const sequence = await LampmasterService.startLampRitual(sessionId, activeEnemy.id);
       setRitualSequence(sequence);
       
-      // Create the ritual action
       const action: GMCombatAction = {
         id: `ritual-${Date.now()}`,
         type: 'ability',
@@ -123,15 +134,12 @@ const EnemyView: React.FC = () => {
       };
       
       await FirestoreService.addCombatAction(sessionId, action);
-      
-      // Visual feedback
       alert('🔮 Lamp Ritual Started! Watch the sequence carefully!');
       
-      // Wait for sequence to play
       setTimeout(() => {
         setIsPlayingSequence(false);
         alert('⚔️ Quick! Attack the lamps in the same order!');
-      }, 6000); // 4 lamps × 1s each + 3 × 0.5s pauses
+      }, 6000);
       
     } catch (error) {
       console.error('Failed to start lamp ritual:', error);
@@ -140,7 +148,7 @@ const EnemyView: React.FC = () => {
     }
   };
 
-  // Add function to handle ritual damage application
+  // Function to handle ritual damage application
   const handleApplySwordOfLight = async () => {
     if (!activeEnemy || !sessionId) return;
     
@@ -148,8 +156,6 @@ const EnemyView: React.FC = () => {
       await LampmasterService.applySwordOfLight(sessionId, activeEnemy.id);
       setIsRitualActive(false);
       setRitualSequence([]);
-      
-      // End turn after applying ultimate damage
       await nextTurn();
     } catch (error) {
       console.error('Failed to apply Sword of Light:', error);
@@ -159,18 +165,16 @@ const EnemyView: React.FC = () => {
   // Update the ability selection to handle Sword of Light
   const handleAbilitySelect = (ability: EnemyAttack) => {
     if (ability.name === 'Sword of Light') {
-      // Sword of Light is special - starts ritual as bonus action
       handleSwordOfLightRitual();
       return;
     }
     
-    // Normal ability handling
     setSelectedAbility(ability);
     setSelectedTarget('');
     setACRoll('');
   };
 
-  // Add to the component's useEffect to check for ritual on turn start
+  // Ritual status check useEffect
   useEffect(() => {
     const checkRitualStatus = async () => {
       if (!session?.lampmasterRitual || !activeEnemy || !isLampmaster(activeEnemy)) return;
@@ -178,45 +182,37 @@ const EnemyView: React.FC = () => {
       const ritual = session.lampmasterRitual;
       const currentRound = session.combatState?.round || 1;
       
-      // Check if it's time to apply damage
-      if (ritual.willTriggerOnRound === currentRound && !ritual.isActive) {
+      console.log(`🔮 Ritual check - Current: R${currentRound}, Trigger: R${ritual.willTriggerOnRound}, Active: ${ritual.isActive}`);
+      
+      const isLampmasterTurn = currentTurnEntry?.id && (
+        currentTurnEntry.id.includes('lampmaster') ||
+        currentTurnEntry.name === 'Lampmaster'
+      );
+      
+      if (ritual.willTriggerOnRound === currentRound && isLampmasterTurn) {
+        console.log('⚔️ Time to apply Sword of Light!');
+        
+        if (ritual.isActive) {
+          console.log('⚠️ Ritual expired - players ran out of time!');
+          await LampmasterService.finalizeRitual(sessionId!);
+        }
+        
         await handleApplySwordOfLight();
       }
     };
     
     checkRitualStatus();
-  }, [currentTurnEntry?.id, session?.combatState?.round]);
+  }, [currentTurnEntry?.id, session?.combatState?.round, session?.lampmasterRitual, activeEnemy, sessionId]);
     
-  const currentEnemy = getCurrentEnemy();
-  
-  // Get all alive enemies of the same type for group turns
-  const getEnemyGroup = () => {
-    if (!currentTurnEntry || currentTurnEntry.type !== 'enemy') return [];
-    
-    const enemyName = currentTurnEntry.name.replace(/ \(x\d+\)/, '');
-    return Object.values(session?.tokens || {}).filter(
-      token => token.type === 'enemy' && 
-               token.name === enemyName && 
-               (token.hp || 0) > 0
-    ) as BattleToken[];
-  };
-  
-  const enemyGroup = getEnemyGroup();
-  const [currentEnemyIndex, setCurrentEnemyIndex] = useState(0);
-  const activeEnemy = enemyGroup[currentEnemyIndex];
-  
-  // Get valid targets (player characters)
   // Get valid targets (player characters)
   const getValidTargets = () => {
     if (!activeEnemy || !session) return [];
     
-    // Parse range from string if needed (e.g., "50ft" -> 50)
-    let rangeValue = 5; // default
+    let rangeValue = 5;
     if (selectedAbility) {
       if (selectedAbility.reach) {
         rangeValue = selectedAbility.reach;
       } else if (selectedAbility.range) {
-        // Parse string range like "50ft" to number
         const parsed = parseInt(selectedAbility.range);
         if (!isNaN(parsed)) {
           rangeValue = parsed;
@@ -245,26 +241,23 @@ const EnemyView: React.FC = () => {
     ) * 5;
   };
   
-  // Roll damage based on damage string (e.g., "1d8+3")
-const rollDamage = (damageString: string): number => {
-  // First check if it's already a plain number
-  const fixedDamage = parseInt(damageString);
-  if (!isNaN(fixedDamage)) {
-    return fixedDamage;
-  }
-  
-  // If it's still in dice format, use the average
-  const match = damageString.match(/(\d+)d(\d+)([+-]\d+)?/);
-  if (!match) return 5; // Default fallback
-  
-  const numDice = parseInt(match[1]);
-  const diceSize = parseInt(match[2]);
-  const modifier = match[3] ? parseInt(match[3]) : 0;
-  
-  // Calculate average damage instead of rolling
-  const averageRoll = ((diceSize + 1) / 2) * numDice;
-  return Math.floor(averageRoll + modifier);
-};
+  // Roll damage based on damage string
+  const rollDamage = (damageString: string): number => {
+    const fixedDamage = parseInt(damageString);
+    if (!isNaN(fixedDamage)) {
+      return fixedDamage;
+    }
+    
+    const match = damageString.match(/(\d+)d(\d+)([+-]\d+)?/);
+    if (!match) return 5;
+    
+    const numDice = parseInt(match[1]);
+    const diceSize = parseInt(match[2]);
+    const modifier = match[3] ? parseInt(match[3]) : 0;
+    
+    const averageRoll = ((diceSize + 1) / 2) * numDice;
+    return Math.floor(averageRoll + modifier);
+  };
   
   // Handle attack confirmation
   const handleConfirmAttack = async () => {
@@ -288,7 +281,6 @@ const rollDamage = (damageString: string): number => {
         }
       }
     
-      // Create combat action
       const action: GMCombatAction = {
         id: `enemy-attack-${Date.now()}`,
         type: 'attack',
@@ -297,7 +289,7 @@ const rollDamage = (damageString: string): number => {
         targetId: selectedTarget,
         targetName: target.name,
         sourcePosition: activeEnemy.position,
-        range: rangeValue,  // Use parsed range value
+        range: rangeValue,
         timestamp: new Date(),
         resolved: false,
         hit,
@@ -307,61 +299,53 @@ const rollDamage = (damageString: string): number => {
         damageApplied: false
       };
       
-      // Add to pending actions
       await FirestoreService.addCombatAction(sessionId || '', action);
       
-    // If hit, automatically roll and apply damage
-    if (hit) {
-      const damage = rollDamage(selectedAbility.damage);
-      
-      // ⚠️ CRITICAL: Check for protection before applying damage
-      const session = await FirestoreService.getBattleSession(sessionId || '');
-      if (!session) return;
-      
-      const redirectResult = await ProtectionService.redirectDamage(
-        sessionId || '',
-        selectedTarget,
-        damage
-      );
-      
-      let actualTargetId = selectedTarget;
-      let actualTargetName = target.name;
-      
-      if (redirectResult?.redirected) {
-        actualTargetId = redirectResult.newTargetId;
-        actualTargetName = redirectResult.protectorName;
-        console.log(`🛡️ PROTECTION: ${actualTargetName} intercepts ${damage} damage for ${target.name}!`);
-      }
-      
-      // Apply damage to actual target (original or protector)
-      const actualTarget = session.tokens[actualTargetId];
-      if (actualTarget) {
-        const newHP = Math.max(0, (actualTarget.hp || 0) - damage);
+      if (hit) {
+        const damage = rollDamage(selectedAbility.damage);
         
-        await FirestoreService.updateBattleSession(sessionId || '', {
-          [`tokens.${actualTargetId}.hp`]: newHP,
-          updatedAt: new Date()
-        });
+        const session = await FirestoreService.getBattleSession(sessionId || '');
+        if (!session) return;
         
-        // Update character HP if it's a player token
-        if (actualTarget.characterId) {
-          await FirestoreService.updateCharacterHP(actualTarget.characterId, newHP);
+        const redirectResult = await ProtectionService.redirectDamage(
+          sessionId || '',
+          selectedTarget,
+          damage
+        );
+        
+        let actualTargetId = selectedTarget;
+        let actualTargetName = target.name;
+        
+        if (redirectResult?.redirected) {
+          actualTargetId = redirectResult.newTargetId;
+          actualTargetName = redirectResult.protectorName;
+          console.log(`🛡️ PROTECTION: ${actualTargetName} intercepts ${damage} damage for ${target.name}!`);
         }
+        
+        const actualTarget = session.tokens[actualTargetId];
+        if (actualTarget) {
+          const newHP = Math.max(0, (actualTarget.hp || 0) - damage);
+          
+          await FirestoreService.updateBattleSession(sessionId || '', {
+            [`tokens.${actualTargetId}.hp`]: newHP,
+            updatedAt: new Date()
+          });
+          
+          if (actualTarget.characterId) {
+            await FirestoreService.updateCharacterHP(actualTarget.characterId, newHP);
+          }
+        }
+        
+        console.log(`💥 ${activeEnemy.name} dealt ${damage} damage to ${actualTargetName}`);
       }
       
-      console.log(`💥 ${activeEnemy.name} dealt ${damage} damage to ${actualTargetName}`);
-    }
-      
-      // Reset selections
       setSelectedAbility(null);
       setSelectedTarget('');
       setACRoll('');
       
-      // Move to next enemy in group or end turn
       if (currentEnemyIndex < enemyGroup.length - 1) {
         setCurrentEnemyIndex(currentEnemyIndex + 1);
       } else {
-        // All enemies in group have acted, advance turn
         await nextTurn();
       }
       
@@ -375,39 +359,31 @@ const rollDamage = (damageString: string): number => {
   // Skip current enemy's turn
   const handleSkipEnemy = async () => {
     if (currentEnemyIndex < enemyGroup.length - 1) {
-      // Move to next enemy in the group
       setCurrentEnemyIndex(prev => prev + 1);
     } else {
-      // All enemies done, advance turn
-      // Don't increment index, just advance turn
       await nextTurn();
     }
   };
 
+  // Reset enemy index when turn changes
   useEffect(() => {
-    // Reset enemy index when turn changes
     setCurrentEnemyIndex(0);
   }, [currentTurnEntry?.id]);
 
+  // Process passive abilities
   useEffect(() => {
-    // Process passive abilities at the start of each enemy's turn
     const processPassives = async () => {
       if (!activeEnemy || !sessionId || !currentTurnEntry) return;
-      
-      // Only process when it's actually this enemy's turn and combat is active
       if (currentTurnEntry.type !== 'enemy' || !session?.combatState?.isActive) return;
       
-      // Extract enemy type from token ID (format: "enemy-bruler-timestamp")
-      // or fallback to normalized name
       let enemyType = '';
       if (activeEnemy.id.startsWith('enemy-')) {
         const parts = activeEnemy.id.split('-');
         if (parts.length >= 2) {
-          enemyType = parts[1]; // Get the enemy type from ID (e.g., "bruler")
+          enemyType = parts[1];
         }
       }
       
-      // Fallback: normalize the name if ID parsing failed
       if (!enemyType) {
         enemyType = activeEnemy.name.toLowerCase().replace(/\s+/g, '_');
       }
@@ -426,10 +402,9 @@ const rollDamage = (damageString: string): number => {
     };
 
     processPassives();
-  }, [activeEnemy?.id, currentTurnEntry?.id, session?.combatState?.isActive, sessionId]); // Added missing dependencies
+  }, [activeEnemy?.id, currentTurnEntry?.id, session?.combatState?.isActive, sessionId]);
 
-    
-  // Loading and error states
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -438,6 +413,7 @@ const rollDamage = (damageString: string): number => {
     );
   }
   
+  // Error state
   if (error || !session) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
@@ -448,7 +424,7 @@ const rollDamage = (damageString: string): number => {
     );
   }
   
-  // Check if it's actually an enemy's turn
+  // Not enemy turn
   if (!currentEnemy || currentTurnEntry?.type !== 'enemy') {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
@@ -462,7 +438,7 @@ const rollDamage = (damageString: string): number => {
     );
   }
   
-  // No enemies left in group
+  // No enemies left
   if (enemyGroup.length === 0) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
@@ -484,7 +460,6 @@ const rollDamage = (damageString: string): number => {
   const enemyAttacks = currentEnemy.data?.attacks || [];
 
   if (!activeEnemy && enemyGroup.length > 0) {
-    // If we somehow have an invalid index but enemies exist, reset to 0
     setCurrentEnemyIndex(0);
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center">
@@ -493,7 +468,7 @@ const rollDamage = (damageString: string): number => {
     );
   }
 
-  
+  // Main render
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-4xl mx-auto">
@@ -561,7 +536,7 @@ const rollDamage = (damageString: string): number => {
               {enemyAttacks.map((attack: EnemyAttack) => (
                 <button
                   key={attack.name}
-                  onClick={() => setSelectedAbility(attack)}
+                  onClick={() => handleAbilitySelect(attack)}
                   disabled={isAttacking}
                   className={`p-4 rounded-lg border-2 text-left transition-all ${
                     selectedAbility?.name === attack.name
@@ -593,6 +568,8 @@ const rollDamage = (damageString: string): number => {
             </div>
           )}
         </div>
+
+        {/* Lampmaster Special Section */}
         {isLampmaster(activeEnemy) && (
           <div className="mt-4 p-4 bg-yellow-900 bg-opacity-30 rounded-lg border border-yellow-600">
             <h3 className="text-yellow-400 font-bold mb-2">Lampmaster Special</h3>
@@ -635,7 +612,7 @@ const rollDamage = (damageString: string): number => {
               })}
             </div>
 
-            {/* Ultimate Button - as bonus action after regular ability */}
+            {/* Ultimate Button */}
             {!isRitualActive && selectedAbility && (
               <button
                 onClick={handleSwordOfLightRitual}
@@ -647,7 +624,6 @@ const rollDamage = (damageString: string): number => {
           </div>
         )}
 
-        
         {/* Target Selection */}
         {selectedAbility && (
           <div className="bg-gray-800 rounded-lg p-4 mb-6">

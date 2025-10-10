@@ -112,9 +112,12 @@ export function PlayerView() {
       // Check if token is alive
       if ((token.hp || 0) <= 0) return false;
       
-      // Exclude lamp tokens (for Lampmaster mechanic)
-      if (token.id.startsWith('lamp-')) return false;
+      // ✅ FIXED: Only show lamps as targets if ritual is active
+      if (token.id.startsWith('lamp-')) {
+        return session?.lampmasterRitual?.isActive === true;
+      }
       
+      // Regular enemies always targetable
       return true;
     })
     .map((token) => ({

@@ -532,7 +532,6 @@ export function BattleMap({
     }
 
     if (session?.lightBlindEffects) {
-      console.log('🔍 Checking light blind effects:', session.lightBlindEffects);
       
       session.lightBlindEffects.forEach((effect: any, index: number) => {
         console.log(`  Effect ${index + 1}:`, effect);

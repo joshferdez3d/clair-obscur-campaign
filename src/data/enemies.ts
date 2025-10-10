@@ -330,21 +330,21 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Light Shot',
         toHit: 6,
         range: '60',
-        damage: '2d8 radiant',
+        damage: '9',  // ✅ Fixed: was 2d8 (avg 9)
         description: 'Telegraph: lamp glows before firing. Requires active lamps.'
       },
       {
         name: 'Arm Combo',
         toHit: 6,
         reach: 5,
-        damage: '1d10+3 slashing',
+        damage: '8',  // ✅ Fixed: was 1d10+3 (avg 8.5)
         description: '3 melee strikes in succession'
       },
       {
         name: 'Jump Attack',
         toHit: 0,
         range: '15ft radius',
-        damage: '3d8+2 bludgeoning',
+        damage: '15',  // ✅ Fixed: was 3d8+2 (avg 15.5)
         description: 'Dex save DC 14 or take damage & knocked prone',
         recharge: '5-6'
       },
@@ -352,15 +352,15 @@ export const enemies: { [key: string]: EnemyData } = {
         name: 'Dark Explosion',
         toHit: 0,
         range: '20ft radius',
-        damage: '2d8 necrotic',
+        damage: '9',  // ✅ Fixed: was 2d8 (avg 9)
         description: 'AoE blast. Con save DC 13 or blinded until end of next turn',
         recharge: '4-6'
       },
       {
         name: 'Sword of Light',
-        toHit: 999, // Auto-hit ultimate
+        toHit: 999,
         range: 'battlefield',
-        damage: '4d10+5 radiant',
+        damage: '27',  // ✅ Fixed: was 4d10+5 (avg 27)
         description: 'Ultimate: Wide slash. Damage reduced/canceled if lamp sequence solved.'
       }
     ],

@@ -1,4 +1,4 @@
-// Create src/services/LampmasterService.ts
+// src/services/LampmasterService.ts
 import { doc, updateDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { db } from './firebase'; 
 import { BattleSession, BattleToken, GMCombatAction, Position } from '../types';
@@ -13,7 +13,7 @@ export interface LampToken extends BattleToken {
 export interface LampmasterRitual {
   id: string;
   isActive: boolean;
-  sequence: number[]; // Array of lamp indices in order
+  sequence: number[]; // Array of lamp indices in order (e.g., [2, 0, 3, 1])
   playerAttempt: number[]; // Player's attempt at the sequence
   damageReduction: number; // 0%, 25%, 50%, 75%, or 100%
   createdOnRound: number;
@@ -21,47 +21,12 @@ export interface LampmasterRitual {
 }
 
 export class LampmasterService {
-  // Create lamp tokens when Lampmaster is spawned
-  static async createLampTokens(sessionId: string, lampmasterPosition: Position): Promise<void> {
-    const lampPositions = [
-      { x: lampmasterPosition.x - 2, y: lampmasterPosition.y - 2 }, // Top-left
-      { x: lampmasterPosition.x + 2, y: lampmasterPosition.y - 2 }, // Top-right
-      { x: lampmasterPosition.x - 2, y: lampmasterPosition.y + 2 }, // Bottom-left
-      { x: lampmasterPosition.x + 2, y: lampmasterPosition.y + 2 }, // Bottom-right
-    ];
-
-    const sessionRef = doc(db, 'battleSessions', sessionId);
-    const updates: any = {};
-
-    lampPositions.forEach((pos, index) => {
-      const lampId = `lamp-${index}-${Date.now()}`;
-      const lampToken: LampToken = {
-        id: lampId,
-        name: `Lamp ${index + 1}`,
-        position: pos,
-        type: 'enemy',
-        hp: 25,
-        maxHp: 25,
-        ac: 10,
-        size: 1,
-        color: '#FFA500', // Orange color for lamps
-        lampIndex: index,
-        statusEffects: {}
-      };
-      updates[`tokens.${lampId}`] = lampToken;
-    });
-
-    updates.updatedAt = serverTimestamp();
-    await updateDoc(sessionRef, updates);
-    console.log('✨ Created 4 lamp tokens around Lampmaster');
-  }
-
   // Start the ritual sequence
   static async startLampRitual(sessionId: string, lampmasterId: string): Promise<number[]> {
     const session = await FirestoreService.getBattleSession(sessionId);
     if (!session) throw new Error('Session not found');
 
-    // Generate random sequence of 4 lamps
+    // Generate random sequence of 4 lamps (each lamp 0-3)
     const sequence = this.generateRandomSequence();
     const currentRound = session.combatState?.round || 1;
 
@@ -81,10 +46,16 @@ export class LampmasterService {
       updatedAt: serverTimestamp()
     });
 
+    console.log('🔮 ===== LAMP RITUAL STARTED =====');
+    console.log(`   Sequence: [${sequence.map(i => i + 1).join(', ')}]`);
+    console.log(`   Players must attack lamps IN THIS ORDER`);
+    console.log(`   Created: Round ${currentRound}`);
+    console.log(`   Triggers: Round ${currentRound + 1}`);
+    console.log('================================');
+
     // Trigger visual glow sequence
     await this.playGlowSequence(sessionId, sequence);
 
-    console.log('🔮 Lampmaster ritual started with sequence:', sequence);
     return sequence;
   }
 
@@ -131,21 +102,43 @@ export class LampmasterService {
   // Record player's attack on a lamp
   static async recordLampAttack(sessionId: string, lampIndex: number, playerId: string): Promise<void> {
     const session = await FirestoreService.getBattleSession(sessionId);
-    if (!session?.lampmasterRitual || !session.lampmasterRitual.isActive) {
-      console.log('No active ritual to record attack for');
+    if (!session?.lampmasterRitual) {
+      console.log('❌ No ritual exists');
+      return;
+    }
+
+    if (!session.lampmasterRitual.isActive) {
+      console.log('⚠️ Ritual is not active - attacks have no effect');
       return;
     }
 
     const ritual = session.lampmasterRitual as LampmasterRitual;
+    
+    // Check if already attempted all lamps
+    if (ritual.playerAttempt.length >= 4) {
+      console.log('⚠️ Already attempted 4 lamps - ritual complete');
+      return;
+    }
+    
     ritual.playerAttempt.push(lampIndex);
-
-    // Check if attempt is correct so far
     const attemptIndex = ritual.playerAttempt.length - 1;
-    const isCorrect = ritual.sequence[attemptIndex] === lampIndex;
+    
+    // Check if this lamp is correct for this position in sequence
+    const expectedLamp = ritual.sequence[attemptIndex];
+    const isCorrect = expectedLamp === lampIndex;
+
+    console.log(`🎯 ===== LAMP ATTACK =====`);
+    console.log(`   Player: ${playerId}`);
+    console.log(`   Attempt: ${attemptIndex + 1}/4`);
+    console.log(`   Attacked: Lamp ${lampIndex + 1}`);
+    console.log(`   Expected: Lamp ${expectedLamp + 1}`);
+    console.log(`   Result: ${isCorrect ? '✅ CORRECT' : '❌ WRONG'}`);
 
     if (!isCorrect) {
-      console.log(`❌ Wrong lamp! Expected ${ritual.sequence[attemptIndex]}, got ${lampIndex}`);
-      // Stop recording further attempts on wrong selection
+      console.log(`❌ WRONG LAMP! Ritual stops here.`);
+      ritual.isActive = false;
+    } else if (ritual.playerAttempt.length >= 4) {
+      console.log('🎉 ALL 4 LAMPS CORRECT! Ritual complete!');
       ritual.isActive = false;
     }
 
@@ -155,7 +148,13 @@ export class LampmasterService {
     ).length;
 
     ritual.damageReduction = this.calculateDamageReduction(correctCount);
+    
+    console.log(`   Correct so far: ${correctCount}/4`);
+    console.log(`   Damage reduction: ${ritual.damageReduction}%`);
+    console.log(`   Remaining damage: ${100 - ritual.damageReduction}%`);
+    console.log('========================');
 
+    // Update session
     const sessionRef = doc(db, 'battleSessions', sessionId);
     await updateDoc(sessionRef, {
       lampmasterRitual: ritual,
@@ -164,21 +163,16 @@ export class LampmasterService {
 
     // Visual feedback for correct/incorrect
     await this.showAttackFeedback(sessionId, lampIndex, isCorrect);
-
-    // If all 4 lamps attempted or wrong lamp hit, finalize the ritual
-    if (ritual.playerAttempt.length >= 4 || !isCorrect) {
-      await this.finalizeRitual(sessionId);
-    }
   }
 
   // Calculate damage reduction percentage
   static calculateDamageReduction(correctLamps: number): number {
     switch (correctLamps) {
-      case 0: return 0;    // 100% damage
-      case 1: return 25;   // 75% damage
-      case 2: return 50;   // 50% damage
-      case 3: return 75;   // 25% damage
-      case 4: return 100;  // 0% damage (canceled)
+      case 0: return 0;    // 100% damage (27)
+      case 1: return 25;   // 75% damage (20)
+      case 2: return 50;   // 50% damage (13)
+      case 3: return 75;   // 25% damage (6)
+      case 4: return 100;  // 0% damage - CANCELED
       default: return 0;
     }
   }
@@ -201,17 +195,34 @@ export class LampmasterService {
     }, 1500);
   }
 
-  // Finalize the ritual and prepare for damage application
+  // Finalize the ritual
   static async finalizeRitual(sessionId: string): Promise<void> {
     const session = await FirestoreService.getBattleSession(sessionId);
-    if (!session?.lampmasterRitual) return;
+    if (!session?.lampmasterRitual) {
+      console.log('❌ No ritual to finalize');
+      return;
+    }
 
     const ritual = session.lampmasterRitual as LampmasterRitual;
     const correctCount = ritual.playerAttempt.filter((lamp, idx) => 
       lamp === ritual.sequence[idx]
     ).length;
 
-    console.log(`🎯 Ritual complete! ${correctCount}/4 correct. Damage reduction: ${ritual.damageReduction}%`);
+    console.log(`🔮 ===== RITUAL FINALIZED =====`);
+    console.log(`   Attempts made: ${ritual.playerAttempt.length}/4`);
+    console.log(`   Correct lamps: ${correctCount}/4`);
+    console.log(`   Damage reduction: ${ritual.damageReduction}%`);
+    console.log(`   Remaining damage: ${100 - ritual.damageReduction}%`);
+    console.log(`   Will trigger on round: ${ritual.willTriggerOnRound}`);
+    
+    if (correctCount === 4) {
+      console.log(`   ✅ PERFECT! Sword of Light will be CANCELED!`);
+    } else if (correctCount >= 2) {
+      console.log(`   ⚠️ Partial success - significant damage reduction`);
+    } else {
+      console.log(`   💀 Failure - minimal damage reduction`);
+    }
+    console.log(`==============================`);
 
     const sessionRef = doc(db, 'battleSessions', sessionId);
     await updateDoc(sessionRef, {
@@ -221,63 +232,115 @@ export class LampmasterService {
   }
 
   // Apply Sword of Light damage on Lampmaster's next turn
-  static async applySwordOfLight(sessionId: string, lampmasterId: string): Promise<void> {
-    const session = await FirestoreService.getBattleSession(sessionId);
-    if (!session?.lampmasterRitual) {
-      console.log('No ritual data found');
-      return;
-    }
+static async applySwordOfLight(sessionId: string, lampmasterId: string): Promise<void> {
+  const session = await FirestoreService.getBattleSession(sessionId);
+  if (!session?.lampmasterRitual) {
+    console.log('❌ No ritual data found');
+    return;
+  }
 
-    const ritual = session.lampmasterRitual as LampmasterRitual;
-    const baseDamage = 45; // 4d10+5 average
-    const damageMultiplier = (100 - ritual.damageReduction) / 100;
-    const actualDamage = Math.floor(baseDamage * damageMultiplier);
+  const ritual = session.lampmasterRitual as LampmasterRitual;
+  const baseDamage = 27; // 4d10+5 average
+  const damageMultiplier = (100 - ritual.damageReduction) / 100;
+  const actualDamage = Math.floor(baseDamage * damageMultiplier);
 
-    if (ritual.damageReduction === 100) {
-      console.log('⚔️ Sword of Light CANCELED! Lampmaster\'s turn skipped.');
-      
-      // Skip Lampmaster's turn
-      await FirestoreService.nextTurn(sessionId);
-      return;
-    }
+  console.log(`⚔️ ===== SWORD OF LIGHT TRIGGERED =====`);
+  console.log(`   Base damage: ${baseDamage}`);
+  console.log(`   Reduction: ${ritual.damageReduction}%`);
+  console.log(`   Actual damage: ${actualDamage}`);
+  console.log(`   Correct lamps: ${ritual.playerAttempt.filter((l, i) => l === ritual.sequence[i]).length}/4`);
+  console.log('====================================');
 
-    // Get all player tokens
-    const playerTokens = Object.values(session.tokens).filter(t => t.type === 'player');
+  if (ritual.damageReduction === 100) {
+    console.log('✅ SWORD OF LIGHT CANCELED!');
     
-    // Apply damage to all players
-    for (const player of playerTokens) {
-      const action: GMCombatAction = {
-        id: `sword-of-light-${Date.now()}-${player.id}`,
-        type: 'ability',
-        playerId: lampmasterId,
-        playerName: 'Lampmaster',
-        targetId: player.id,
-        targetName: player.name,
-        sourcePosition: session.tokens[lampmasterId]?.position || { x: 0, y: 0 },
-        range: 999,
-        timestamp: new Date(),
-        resolved: false,
-        hit: true,
-        damage: actualDamage,
-        abilityName: `Sword of Light (${ritual.damageReduction}% reduced)`,
-        needsDamageInput: false,
-        damageApplied: false,
-        ultimateType: 'sword_of_light'
-      };
-
-      await FirestoreService.addCombatAction(sessionId, action);
-    }
-
-    console.log(`⚔️ Sword of Light deals ${actualDamage} damage to all players!`);
-
-    // Clear the ritual data
+    // Create ONE informational action (already resolved)
+    const action: GMCombatAction = {
+      id: `sword-canceled-${Date.now()}`,
+      type: 'ability',
+      playerId: lampmasterId,
+      playerName: 'Lampmaster',
+      targetId: 'all-players',
+      targetName: 'All Players',
+      sourcePosition: session.tokens[lampmasterId]?.position || { x: 0, y: 0 },
+      range: 999,
+      timestamp: new Date(),
+      resolved: true, // ✅ CHANGED: Auto-resolved
+      hit: false,
+      abilityName: 'Sword of Light (CANCELED)',
+      needsDamageInput: false,
+      damageApplied: true, // ✅ CHANGED: Already handled
+      description: '✅ Players perfectly disrupted the lamp ritual! Sword of Light was canceled!',
+      ultimateType: 'sword_of_light_canceled'
+    };
+    
+    await FirestoreService.addCombatAction(sessionId, action);
+    
+    // Clear ritual data
     await updateDoc(doc(db, 'battleSessions', sessionId), {
       lampmasterRitual: null,
       lampGlowState: {},
       lampFeedback: {},
       updatedAt: serverTimestamp()
     });
+    
+    return;
   }
+
+  // Get all player tokens
+  const playerTokens = Object.values(session.tokens).filter(t => t.type === 'player');
+  
+  console.log(`💥 Dealing ${actualDamage} damage to ${playerTokens.length} players`);
+  
+  // ✅ APPLY DAMAGE DIRECTLY - NO POPUPS
+  const updates: any = {};
+  for (const player of playerTokens) {
+    const currentHP = player.hp || 0;
+    const newHP = Math.max(0, currentHP - actualDamage);
+    
+    // Update token HP
+    updates[`tokens.${player.id}.hp`] = newHP;
+    
+    // Update character HP if it's a player
+    if (player.characterId) {
+      await FirestoreService.updateCharacterHP(player.characterId, newHP);
+    }
+    
+    console.log(`   ${player.name}: ${currentHP} → ${newHP} HP`);
+  }
+
+  // ✅ CREATE ONE INFORMATIONAL ACTION (already resolved)
+  const summaryAction: GMCombatAction = {
+    id: `sword-of-light-${Date.now()}`,
+    type: 'ability',
+    playerId: lampmasterId,
+    playerName: 'Lampmaster',
+    targetId: 'all-players',
+    targetName: 'All Players',
+    sourcePosition: session.tokens[lampmasterId]?.position || { x: 0, y: 0 },
+    range: 999,
+    timestamp: new Date(),
+    resolved: true, // ✅ CHANGED: Auto-resolved
+    hit: true,
+    damage: actualDamage,
+    abilityName: `Sword of Light (${ritual.damageReduction}% reduced)`,
+    needsDamageInput: false,
+    damageApplied: true, // ✅ CHANGED: Already handled
+    ultimateType: 'sword_of_light',
+    description: `Lampmaster unleashes Sword of Light dealing ${actualDamage} damage to all players! (${ritual.playerAttempt.filter((l, i) => l === ritual.sequence[i]).length}/4 lamps disrupted)`
+  };
+
+  // Apply all updates in one batch
+  updates.pendingActions = arrayUnion(summaryAction);
+  updates.lampmasterRitual = null;
+  updates.lampGlowState = {};
+  updates.lampFeedback = {};
+  updates.updatedAt = serverTimestamp();
+
+  await updateDoc(doc(db, 'battleSessions', sessionId), updates);
+  
+  console.log('✅ Sword of Light damage applied to all players!');
+}
 
   // Check if lamps are destroyed and update Lampmaster's AC
   static async updateLampmasterAC(sessionId: string, lampmasterId: string): Promise<void> {
@@ -304,7 +367,7 @@ export class LampmasterService {
     }
   }
 
-  // Get active lamps for Light Shot ability
+  // Get active lamps
   static async getActiveLamps(sessionId: string): Promise<LampToken[]> {
     const session = await FirestoreService.getBattleSession(sessionId);
     if (!session) return [];
