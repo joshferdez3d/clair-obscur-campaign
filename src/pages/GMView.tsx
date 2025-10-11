@@ -31,7 +31,7 @@ import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 import { BattlePresetManager } from '../components/GM/BattlePresetManager';
 import type { BattleMapPreset } from '../types';
 import { useAudio } from '../hooks/useAudio';
-import { Package } from 'lucide-react'; // Add Package to your existing lucide imports
+import { Package, Settings } from 'lucide-react'; // Add Package to your existing lucide imports
 import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
 import { InventoryService } from '../services/inventoryService'; // Add this import
 import { handleEnemyGroupTurn } from '../utils/enemyHelperUtil';
@@ -46,6 +46,7 @@ import { PlayerTokenManager } from '../components/Combat/PlayerTokenManager';
 import { MineManagementPanel } from '../components/Combat/MineManagementPanel';
 import { MineService } from '../services/MineService';
 import { MovementService } from '../services/movementService';
+import { GMStackControlModal } from '../components/GM/GMStackControlModal';
 
 
 export function GMView() {
@@ -69,6 +70,7 @@ export function GMView() {
   const [isPlacingPlayer, setIsPlacingPlayer] = useState(false);
   const [selectedPlayerCharacter, setSelectedPlayerCharacter] = useState<any>(null);
   const [isPlacingMine, setIsPlacingMine] = useState(false);
+  const [showStackControlModal, setShowStackControlModal] = useState(false);
 
   const PLAYER_CHARACTERS = [
   { id: 'maelle', name: 'Maelle', maxHp: 28, ac: 15, color: '#9333ea' },
@@ -1846,6 +1848,14 @@ const handleResetSession = async () => {
             >
               Back to Home
             </a>
+            <button
+              onClick={() => setShowStackControlModal(true)}
+              className="block w-full text-center px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-sm font-bold flex items-center justify-center"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Stack Control Panel
+            </button>
+
             
             {/* Emergency Storm Controls */}
             {isStormActive && (
@@ -2175,7 +2185,11 @@ const handleResetSession = async () => {
         characters={charactersWithInventory}
         onClose={() => setShowInventoryModal(false)}
       />
-
+      <GMStackControlModal
+        isOpen={showStackControlModal}
+        onClose={() => setShowStackControlModal(false)}
+        sessionId={sessionId || 'test-session'}
+      />
 
     </div>
   );
