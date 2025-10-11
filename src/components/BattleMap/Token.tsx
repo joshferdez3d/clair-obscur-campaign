@@ -11,7 +11,7 @@ interface TokenProps {
   isCurrentTurn?: boolean;
   isValidTarget?: boolean;
   onClick?: (token: BattleToken) => void;
-  onDragStart?: (token: BattleToken, event: React.DragEvent) => void;
+  onDragStart?: (token: BattleToken, event: React.DragEvent | React.TouchEvent) => void;  // ← CHANGE THIS LINE
   onDragEnd?: (token: BattleToken) => void;
   coordinateOffset?: Position;
   isHighlighted?: boolean;
@@ -107,11 +107,18 @@ export function Token({
     event.dataTransfer.setData('text/plain', token.id);
   };
 
+  const handleTouchStart = (event: React.TouchEvent) => {
+    // Prevent default to stop scrolling
+    event.preventDefault();
+    handleDragStart(event);
+  };
+
   const handleClick = () => {
     if (onClick) {
       onClick(token);
     }
   };
+
 
   const getTokenImage = (token: BattleToken): string | null => {
     if (token.type === 'player' && token.characterId) {
@@ -193,6 +200,8 @@ export function Token({
       draggable={!isLampToken}
       onDragStart={handleDragStart}
       onDragEnd={() => onDragEnd?.(token)}
+      onTouchStart={!isLampToken ? handleTouchStart : undefined}  // ← ADD THIS LINE
+      onTouchEnd={() => !isLampToken && onDragEnd?.(token)} 
     >
       {/* Special rendering for lamp tokens */}
       {isLampToken ? (

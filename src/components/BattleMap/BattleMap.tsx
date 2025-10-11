@@ -5,6 +5,7 @@ import { Grid } from './Grid';
 import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types';
 import { MineService, type Mine } from '../../services/MineService';
 import { RevealedSquareOverlay } from './RevealedSquareOverlay';
+const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
 interface FireTerrainOverlayProps {
   gridSize: number;
@@ -353,19 +354,44 @@ export function BattleMap({
     return ok;
   }, [onTokenMove]);
 
-  const handleTokenDragStart = useCallback((token: BattleToken, ev: React.DragEvent) => {
+  const handleTokenDragStart = useCallback((token: BattleToken, ev: React.DragEvent | React.TouchEvent) => {
     if (combatActive && !isGM && token.characterId !== currentTurn) {
       ev.preventDefault();
       return;
     }
 
     const rect = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+    let clientX: number, clientY: number;
+
+    // Handle both touch and mouse events
+    if ('touches' in ev && ev.touches.length > 0) {
+      clientX = ev.touches[0].clientX;
+      clientY = ev.touches[0].clientY;
+    } else if ('clientX' in ev) {
+      clientX = ev.clientX;
+      clientY = ev.clientY;
+    } else {
+      return;
+    }
+
     setDragOffset({
-      x: ev.clientX - rect.left,
-      y: ev.clientY - rect.top,
+      x: clientX - rect.left,
+      y: clientY - rect.top,
     });
     setDraggedToken(token);
+    setTouchStartPos({ x: clientX, y: clientY });
   }, [combatActive, isGM, currentTurn]);
+
+  // ADD this new handler for touch move events:
+  const handleTokenTouchMove = useCallback((ev: React.TouchEvent) => {
+    if (!draggedToken || !ev.touches.length) return;
+    
+    // Prevent scrolling while dragging
+    ev.preventDefault();
+    
+    // Optional: Update visual feedback during drag
+    // You could update hoveredPosition here if you want to show where the token will land
+  }, [draggedToken]);
 
   const handleTokenDragEnd = useCallback(() => {
     setDraggedToken(null);
@@ -376,38 +402,52 @@ export function BattleMap({
     ev.preventDefault();
   }, []);
 
-  const handleDrop = useCallback(async (ev: React.DragEvent) => {
-  ev.preventDefault();
-  if (!draggedToken) return;
+  const handleDrop = useCallback(async (ev: React.DragEvent | React.TouchEvent) => {
+    ev.preventDefault();
+    if (!draggedToken) return;
 
-  const rect = ev.currentTarget.getBoundingClientRect();
-  const x = Math.floor((ev.clientX - rect.left - coordinatePadding) / gridSize);
-  const y = Math.floor((ev.clientY - rect.top - coordinatePadding) / gridSize);
+    let clientX: number, clientY: number;
+    
+    // Handle both touch and mouse events
+    if ('changedTouches' in ev && ev.changedTouches.length > 0) {
+      clientX = ev.changedTouches[0].clientX;
+      clientY = ev.changedTouches[0].clientY;
+    } else if ('clientX' in ev) {
+      clientX = ev.clientX;
+      clientY = ev.clientY;
+    } else {
+      setDraggedToken(null);
+      setTouchStartPos(null);
+      return;
+    }
 
-  // Validate bounds
-  if (x < 0 || x >= safeMap.gridSize.width || y < 0 || y >= safeMap.gridSize.height) {
+    const rect = ev.currentTarget.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left - coordinatePadding) / gridSize);
+    const y = Math.floor((clientY - rect.top - coordinatePadding) / gridSize);
+
+    // Validate bounds
+    if (x < 0 || x >= safeMap.gridSize.width || y < 0 || y >= safeMap.gridSize.height) {
+      setDraggedToken(null);
+      setTouchStartPos(null);
+      return;
+    }
+
+    const dest = { x, y };
+    
+    // Check movement range
+    if (combatActive && !isGM && !isWithinMovementRange(draggedToken, dest)) {
+      console.log('Movement exceeds range limit');
+      setDraggedToken(null);
+      setTouchStartPos(null);
+      return;
+    }
+
+    // Move the token
+    await handleTokenMove(draggedToken.id, dest);
     setDraggedToken(null);
-    return;
-  }
+    setTouchStartPos(null);
+  }, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, isWithinMovementRange, handleTokenMove, coordinatePadding]);
 
-  const dest = { x, y };
-  
-  // Check movement range
-  if (combatActive && !isGM && !isWithinMovementRange(draggedToken, dest)) {
-    console.log('Movement exceeds range limit');
-    setDraggedToken(null);
-    return;
-  }
-
-  // === MINE CHECKING REMOVED ===
-  // MovementService.moveToken now handles all mine logic automatically
-  // (checks for mines, triggers explosion, moves player back)
-  
-  // Move the token - mine handling is done inside handleTokenMove -> MovementService
-  await handleTokenMove(draggedToken.id, dest);
-  setDraggedToken(null);
-}, [draggedToken, gridSize, safeMap.gridSize.width, safeMap.gridSize.height, combatActive, isGM, handleTokenMove, coordinatePadding]);
-  
   const handleGridHover = useCallback((pos: Position | null) => {
     setHoveredPosition(pos);
   }, []);
@@ -643,6 +683,8 @@ export function BattleMap({
           className="relative"
           style={{ width: `${boardWidth}px`, height: `${boardHeight}px` }}
           onDragOver={handleDragOver}
+          onTouchMove={handleTokenTouchMove}  // ADD THIS
+          onTouchEnd={handleDrop}  
           onDrop={handleDrop}
         >
           {/* Background image (map) */}
