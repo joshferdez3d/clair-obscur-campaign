@@ -792,7 +792,7 @@ export function LuneCharacterSheet({
               token={playerToken}
               currentPosition={playerToken.position}
               maxRange={MovementService.getMovementRange(character.name)}
-              gridSize={{ width: 30, height: 20 }} // Or get from current map if available
+              gridSize={session?.currentMap?.gridSize || { width: 30, height: 30 }} // ✅ Use actual map size
               onMove={handleMovement}
               isMyTurn={isMyTurn}
               characterName={character.name}

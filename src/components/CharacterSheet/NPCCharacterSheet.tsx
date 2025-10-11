@@ -11,6 +11,9 @@ import { useUltimateVideo } from '../../hooks/useUltimateVideo';
 import { useCooldowns } from '../../hooks/useCooldowns';
 import { CooldownService } from '../../services/CooldownService';
 import { ProtectionService } from '../../services/ProtectionService';
+import { MovementService } from '../../services/movementService';
+import { MovementInput } from '../Combat/MovementInput';
+import type { Position } from '../../types';
 
 interface NPCCharacterSheetProps {
   npc: any;
@@ -167,7 +170,8 @@ export function NPCCharacterSheet({
   isLoading,
   availableEnemies = [],
   availableAllies = [],
-  npcToken
+  npcToken,
+  session
 }: NPCCharacterSheetProps) {
   const [selectedAction, setSelectedAction] = useState<any>(null);
   const [selectedTarget, setSelectedTarget] = useState<string>('');
@@ -196,6 +200,16 @@ export function NPCCharacterSheet({
   };
 
   const portraitUrl = getNPCPortrait(npc?.id || '');
+
+  const handleMovement = async (newPosition: Position): Promise<boolean> => {
+    if (!sessionId || !npcToken) {
+      console.log('❌ Missing sessionId or npcToken for movement');
+      return false;
+    }
+    
+    console.log('✅ Moving NPC token:', npcToken.id, 'to', newPosition);
+    return await MovementService.moveToken(sessionId, npcToken.id, newPosition);
+  };
 
   // Update the cooldown decrement effect
     useEffect(() => {
@@ -922,6 +936,21 @@ export function NPCCharacterSheet({
             <p className="text-green-200 font-bold text-center">
               {npc?.name || 'NPC'}'s Turn - Take an action!
             </p>
+          </div>
+        )}
+
+        {/* Grid Movement Input */}
+        {isNPCTurn && npcToken && (
+          <div className="mb-4">
+            <MovementInput
+              token={npcToken}
+              currentPosition={npcToken.position}
+              maxRange={MovementService.getMovementRange(npc.name)}
+              gridSize={session?.currentMap?.gridSize || { width: 30, height: 30 }} // Use actual map size
+              onMove={handleMovement}
+              isMyTurn={isNPCTurn}
+              characterName={npc.name}
+            />
           </div>
         )}
 

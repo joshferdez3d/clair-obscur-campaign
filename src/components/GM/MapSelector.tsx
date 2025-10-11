@@ -35,7 +35,7 @@ export const AVAILABLE_MAPS: MapConfig[] = [
     gridSize: { width: 18, height: 10 },
     gridVisible: true
   },
-  // NEW Session 1 Maps
+  // Session 1 Maps
   {
     id: 'flying-waters',
     name: 'Flying Waters',
@@ -48,6 +48,21 @@ export const AVAILABLE_MAPS: MapConfig[] = [
     name: 'Gestral Colosseum',
     backgroundImage: '/maps/GestralColosseum.jpg',
     gridSize: { width: 22, height: 14 },
+    gridVisible: true
+  },
+  // NEW Session 1 Maps - Add these two entries
+  {
+    id: 'mountain-climb',
+    name: 'Mountain Climb',
+    backgroundImage: '/maps/MoutainClimb.jpeg',  // Note: keeps the typo from your filename
+    gridSize: { width: 20, height: 25 },  // Adjust these numbers based on your actual map
+    gridVisible: true
+  },
+  {
+    id: 'mountain-top-altar',
+    name: 'Mountain Top Altar',
+    backgroundImage: '/maps/MountainTopAltar.jpeg',
+    gridSize: { width: 17, height: 22 },  // Adjust these numbers based on your actual map
     gridVisible: true
   }
 ];
@@ -105,6 +120,13 @@ export function MapSelector({ currentMapId, onMapChange, disabled = false }: Map
             </option>
             <option value="gestral-colosseum" className="bg-clair-shadow-700 text-clair-gold-50">
               Gestral Colosseum
+            </option>
+            {/* NEW MAPS - Add these two options */}
+            <option value="mountain-climb" className="bg-clair-shadow-700 text-clair-gold-50">
+              Mountain Climb
+            </option>
+            <option value="mountain-top-altar" className="bg-clair-shadow-700 text-clair-gold-50">
+              Mountain Top Altar
             </option>
           </optgroup>
         </select>

@@ -469,6 +469,26 @@ const handleSwordAutoAttack = useCallback(async () => {
     }
   };
 
+  // Sync currentMap with session data on load
+  useEffect(() => {
+    if (session?.currentMap) {
+      // Session has a saved map, use it
+      setCurrentMap(session.currentMap);
+    } else if (session && !session.currentMap) {
+      // Session exists but has no saved map, initialize with default
+      const defaultMap = AVAILABLE_MAPS[0];
+      setCurrentMap(defaultMap);
+      
+      // Save the default map to the session
+      if (sessionId) {
+        FirestoreService.updateBattleSession(sessionId, {
+          currentMap: defaultMap,
+          updatedAt: new Date()
+        }).catch(err => console.error('Failed to initialize session map:', err));
+      }
+    }
+  }, [session?.currentMap, sessionId]);
+
    useEffect(() => {
     const loadCharactersWithInventory = async () => {
       if (players.length > 0) {
