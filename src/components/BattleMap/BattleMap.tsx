@@ -5,7 +5,6 @@ import { Grid } from './Grid';
 import type { BattleToken, BattleMap as BattleMapType, Position, BattleSession } from '../../types';
 import { MineService, type Mine } from '../../services/MineService';
 import { RevealedSquareOverlay } from './RevealedSquareOverlay';
-const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
 interface FireTerrainOverlayProps {
   gridSize: number;
@@ -105,6 +104,7 @@ export function BattleMap({
   const [draggedToken, setDraggedToken] = useState<BattleToken | null>(null);
   const [dragOffset, setDragOffset] = useState<Position>({ x: 0, y: 0 });
   const [hoveredPosition, setHoveredPosition] = useState<Position | null>(null);
+  const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null); // ← ADD THIS HERE
 
   // DEFENSIVE PROGRAMMING: Ensure map has valid gridSize
   const safeMap = {

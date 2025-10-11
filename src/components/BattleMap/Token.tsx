@@ -110,9 +110,11 @@ export function Token({
   const handleTouchStart = (event: React.TouchEvent) => {
     // Prevent default to stop scrolling
     event.preventDefault();
-    handleDragStart(event);
+    if (onDragStart) {
+      onDragStart(token, event);
+    }
   };
-
+  
   const handleClick = () => {
     if (onClick) {
       onClick(token);
