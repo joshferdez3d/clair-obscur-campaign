@@ -35,6 +35,7 @@ import { CombatStateHelpers } from '../types/character'; // NEW IMPORT
 import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
 import { ProtectionService } from './ProtectionService';
+import { updateEnemyGroupsInInitiative, cleanupDefeatedEnemies } from '../utils/enemyHelperUtil';
 
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
@@ -1141,40 +1142,45 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
     await updateDoc(characterRef, updates);
   }
 
-  // Enhanced updateTokenHP that removes dead enemies (replace existing method)
-  // Update token HP with smart removal for enemies only
-  static async updateTokenHP(sessionId: string, tokenId: string, newHP: number) {
-    const session = await this.getBattleSession(sessionId);
-    if (!session?.tokens[tokenId]) return;
+// Update token HP with smart removal for enemies AND initiative cleanup
+static async updateTokenHP(sessionId: string, tokenId: string, newHP: number) {
+  const session = await this.getBattleSession(sessionId);
+  if (!session?.tokens[tokenId]) return;
 
-    const token = session.tokens[tokenId];
-    const currentHP = Math.max(0, newHP);
+  const token = session.tokens[tokenId];
+  const currentHP = Math.max(0, newHP);
+  
+  if (currentHP <= 0 && token.type === 'enemy') {
+    // Enemy is dead - remove the token entirely AND update initiative
+    const updatedTokens = { ...session.tokens };
+    delete updatedTokens[tokenId];
     
-    if (currentHP <= 0 && token.type === 'enemy') {
-      // Enemy is dead - remove the token entirely
-      const updatedTokens = { ...session.tokens };
-      delete updatedTokens[tokenId];
-      
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, { 
-        tokens: updatedTokens,
-        updatedAt: serverTimestamp() 
-      });
-      
-      console.log(`💀 Enemy ${token.name} was defeated and removed from the battlefield`);
-    } else {
-      // Token survives OR is a player/NPC going unconscious - just update HP
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, {
-        [`tokens.${tokenId}.hp`]: currentHP,
-        updatedAt: serverTimestamp()
-      });
-      
-      if (currentHP <= 0) {
-        console.log(`😵 ${token.name} is unconscious (${token.type})`);
-      }
+    // Clean up initiative tracker using helper function
+    let updatedInitiative = session.combatState?.initiativeOrder || [];
+    updatedInitiative = cleanupDefeatedEnemies(updatedTokens, updatedInitiative);
+    
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, { 
+      tokens: updatedTokens,
+      'combatState.initiativeOrder': updatedInitiative,
+      'combatState.turnOrder': updatedInitiative.map(e => e.id),
+      updatedAt: serverTimestamp() 
+    });
+    
+    console.log(`💀 Enemy ${token.name} was defeated and removed from battlefield AND initiative`);
+  } else {
+    // Token survives OR is a player/NPC going unconscious - just update HP
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, {
+      [`tokens.${tokenId}.hp`]: currentHP,
+      updatedAt: serverTimestamp()
+    });
+    
+    if (currentHP <= 0) {
+      console.log(`😵 ${token.name} is unconscious (${token.type})`);
     }
   }
+}
 
   // ========== ENHANCED TOKEN MANAGEMENT FOR EXPEDITION NPCS ==========
   
@@ -1215,30 +1221,48 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
   /**
    * Enhanced removeToken method with type-aware logging
    */
-  static async removeToken(sessionId: string, tokenId: string): Promise<void> {
-    try {
-      const session = await this.getBattleSession(sessionId);
-      if (!session?.tokens[tokenId]) {
-        console.warn(`Token ${tokenId} not found in session ${sessionId}`);
-        return;
-      }
-
-      const tokenToRemove = session.tokens[tokenId];
-      const updated = { ...session.tokens };
-      delete updated[tokenId];
-      
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, { 
-        tokens: updated, 
-        updatedAt: serverTimestamp() 
-      });
-
-      console.log(`✅ ${tokenToRemove.type?.toUpperCase()} removed:`, tokenToRemove.name);
-    } catch (error) {
-      console.error('❌ Failed to remove token:', error);
-      throw error;
+ static async removeToken(sessionId: string, tokenId: string): Promise<void> {
+  try {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens[tokenId]) {
+      console.warn(`Token ${tokenId} not found in session ${sessionId}`);
+      return;
     }
+
+    const tokenToRemove = session.tokens[tokenId];
+    const updatedTokens = { ...session.tokens };
+    delete updatedTokens[tokenId];
+    
+    // Update initiative based on token type
+    let updatedInitiative = session.combatState?.initiativeOrder || [];
+    
+    if (tokenToRemove.type === 'enemy') {
+      // For enemies, use the cleanup function to update group counts
+      updatedInitiative = cleanupDefeatedEnemies(updatedTokens, updatedInitiative);
+      console.log(`🗑️ Enemy ${tokenToRemove.name} removed from battlefield and initiative`);
+    } else {
+      // For players/NPCs, filter out the specific entry
+      updatedInitiative = updatedInitiative.filter(
+        entry => entry.id !== tokenId && entry.characterId !== tokenId
+      );
+      console.log(`🗑️ ${tokenToRemove.type?.toUpperCase()} ${tokenToRemove.name} removed from battlefield and initiative`);
+    }
+    
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, { 
+      tokens: updatedTokens,
+      'combatState.initiativeOrder': updatedInitiative,
+      'combatState.turnOrder': updatedInitiative.map(e => e.id),
+      updatedAt: serverTimestamp() 
+    });
+
+    console.log(`✅ ${tokenToRemove.type?.toUpperCase()} removed:`, tokenToRemove.name);
+  } catch (error) {
+    console.error('❌ Failed to remove token:', error);
+    throw error;
   }
+}
+
 
   /**
    * Get tokens by type (useful for GM management)
@@ -1259,26 +1283,46 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
    * Bulk remove tokens by type (useful for clearing enemies/NPCs)
    */
   static async removeTokensByType(sessionId: string, tokenType: 'enemy' | 'npc'): Promise<void> {
-    try {
-      const session = await this.getBattleSession(sessionId);
-      if (!session?.tokens) return;
+  try {
+    const session = await this.getBattleSession(sessionId);
+    if (!session?.tokens) return;
 
-      const tokensToKeep = Object.entries(session.tokens)
-        .filter(([_, token]) => token.type !== tokenType)
-        .reduce((acc, [id, token]) => ({ ...acc, [id]: token }), {});
+    const tokensToKeep = Object.entries(session.tokens)
+      .filter(([_, token]) => token.type !== tokenType)
+      .reduce((acc, [id, token]) => ({ ...acc, [id]: token }), {});
 
-      const ref = doc(db, 'battleSessions', sessionId);
-      await updateDoc(ref, { 
-        tokens: tokensToKeep, 
-        updatedAt: serverTimestamp() 
-      });
-
-      console.log(`✅ All ${tokenType} tokens removed from session`);
-    } catch (error) {
-      console.error(`❌ Failed to remove ${tokenType} tokens:`, error);
-      throw error;
+    // Update initiative to remove all tokens of this type
+    let updatedInitiative = session.combatState?.initiativeOrder || [];
+    
+    if (tokenType === 'enemy') {
+      // For enemies, use cleanup function
+      updatedInitiative = cleanupDefeatedEnemies(tokensToKeep, updatedInitiative);
+    } else {
+      // For NPCs, filter out all NPC entries
+      const removedTokenIds = Object.values(session.tokens)
+        .filter(t => t.type === tokenType)
+        .map(t => t.id);
+      
+      updatedInitiative = updatedInitiative.filter(
+        entry => !removedTokenIds.includes(entry.id) && 
+                 !removedTokenIds.includes(entry.characterId || '')
+      );
     }
+
+    const ref = doc(db, 'battleSessions', sessionId);
+    await updateDoc(ref, { 
+      tokens: tokensToKeep,
+      'combatState.initiativeOrder': updatedInitiative,
+      'combatState.turnOrder': updatedInitiative.map(e => e.id),
+      updatedAt: serverTimestamp() 
+    });
+
+    console.log(`✅ All ${tokenType} tokens removed from battlefield and initiative`);
+  } catch (error) {
+    console.error(`❌ Failed to remove ${tokenType} tokens:`, error);
+    throw error;
   }
+}
 
   /**
    * Update token properties (HP, position, etc.)

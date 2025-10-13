@@ -3,6 +3,7 @@ import { FirestoreService } from './firestoreService';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from './firebase';
 import type { BattleToken, Position } from '../types';
+import { cleanupDefeatedEnemies } from '../utils/enemyHelperUtil';
 
 export interface Mine {
   id: string;
@@ -339,34 +340,41 @@ export class MineService {
       updatedAt: new Date()
     };
 
-    if (session.combatState?.isActive && demineurToken) {
+
+    if (session.combatState?.isActive) {
       let currentInitiativeOrder = session.combatState.initiativeOrder || [];
       
-      // Check if this enemy type already has a group
-      const existingGroup = currentInitiativeOrder.find(
-        (entry: any) => entry.type === 'enemy' && 
-                       entry.name === demineurToken.name
-      );
+      // First, clean up defeated enemies
+      currentInitiativeOrder = cleanupDefeatedEnemies(updatedTokens, currentInitiativeOrder);
       
-      if (!existingGroup) {
-        // Create new initiative entry for this enemy type
-        const initiativeRoll = Math.floor(Math.random() * 20) + 1;
+      // Then, add the newly spawned Demineur if it exists
+      if (demineurToken) {
+        const existingGroup = currentInitiativeOrder.find(
+          (entry: any) => entry.type === 'enemy' && 
+                        entry.name === demineurToken.name
+        );
         
-        currentInitiativeOrder = [...currentInitiativeOrder, {
-          id: `${mine.spawnsEnemy}-group-${Date.now()}`,
-          name: demineurToken.name,
-          initiative: initiativeRoll,
-          type: 'enemy'as const,
-          hasActed: false
-        }].sort((a, b) => b.initiative - a.initiative);
-
-        updateData['combatState.initiativeOrder'] = currentInitiativeOrder;
-        updateData['combatState.turnOrder'] = currentInitiativeOrder.map((e: any) => e.id);
+        if (!existingGroup) {
+          // Create new initiative entry for this enemy type
+          const initiativeRoll = Math.floor(Math.random() * 20) + 1;
+          
+          currentInitiativeOrder = [...currentInitiativeOrder, {
+            id: `${mine.spawnsEnemy}-group-${Date.now()}`,
+            name: demineurToken.name,
+            initiative: initiativeRoll,
+            type: 'enemy' as const,
+            hasActed: false
+          }].sort((a, b) => b.initiative - a.initiative);
+        }
       }
+
+      updateData['combatState.initiativeOrder'] = currentInitiativeOrder;
+      updateData['combatState.turnOrder'] = currentInitiativeOrder.map((e: any) => e.id);
     }
 
     // Update session
     await FirestoreService.updateBattleSession(sessionId, updateData);
+    console.log(`✅ Mine triggered - initiative tracker updated`);
   }
 
   /**
