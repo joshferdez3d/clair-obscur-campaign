@@ -577,13 +577,19 @@ static async addSummonedEntity(sessionId: string, entityData: any): Promise<void
       const updatedTokens = { ...session.tokens };
       delete updatedTokens[actualTargetId];
       
+      // ===== NEW: Clean up initiative tracker =====
+      let updatedInitiative = session.combatState?.initiativeOrder || [];
+      updatedInitiative = cleanupDefeatedEnemies(updatedTokens, updatedInitiative);
+      
       await updateDoc(ref, { 
         tokens: updatedTokens,
-        pendingActions: updatedActions, 
+        pendingActions: updatedActions,
+        'combatState.initiativeOrder': updatedInitiative,
+        'combatState.turnOrder': updatedInitiative.map(e => e.id),
         updatedAt: serverTimestamp() 
       });
       
-      console.log(`${targetToken.name} was defeated by Brother's Sword!`);
+      console.log(`💀 ${targetToken.name} was defeated by Brother's Sword and removed from initiative!`);
     } else {
       await updateDoc(ref, {
         [`tokens.${actualTargetId}.hp`]: newHP,
@@ -1536,16 +1542,23 @@ static async updateTokenHP(sessionId: string, tokenId: string, newHP: number) {
       a.id === actionId ? { ...a, resolved: true, damageApplied: true, damage } : a
     );
 
+    // ===== NEW: Clean up initiative tracker =====
+    let updatedInitiative = session.combatState?.initiativeOrder || [];
+    if (deadEnemyIds.length > 0) {
+      updatedInitiative = cleanupDefeatedEnemies(updatedTokens, updatedInitiative);
+    }
+
     const ref = doc(db, 'battleSessions', sessionId);
     await updateDoc(ref, {
       tokens: updatedTokens,
       pendingActions: updatedActions,
+      'combatState.initiativeOrder': updatedInitiative,
+      'combatState.turnOrder': updatedInitiative.map(e => e.id),
       updatedAt: serverTimestamp()
     });
 
-    console.log(`AoE damage applied. ${deadEnemyIds.length} tokens removed.`);
+    console.log(`💀 AoE damage applied. ${deadEnemyIds.length} enemies removed from battlefield and initiative.`);
   }
-
     // NEW: Create buff/debuff action with token status effect
   static async createBuffAction(
     sessionId: string,
@@ -1777,17 +1790,23 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     const ref = doc(db, 'battleSessions', sessionId);
     
     if (newHP <= 0) {
-      // Target died - remove the token
+      // Target died - remove the token AND UPDATE INITIATIVE
       const updatedTokens = { ...session.tokens };
       delete updatedTokens[actualTargetId];
       
+      // ===== NEW: Clean up initiative tracker =====
+      let updatedInitiative = session.combatState?.initiativeOrder || [];
+      updatedInitiative = cleanupDefeatedEnemies(updatedTokens, updatedInitiative);
+      
       await updateDoc(ref, { 
         tokens: updatedTokens,
-        pendingActions: updatedActions, 
+        pendingActions: updatedActions,
+        'combatState.initiativeOrder': updatedInitiative,
+        'combatState.turnOrder': updatedInitiative.map(e => e.id),
         updatedAt: serverTimestamp() 
       });
       
-      console.log(`${targetToken.name} was defeated!`);
+      console.log(`💀 ${targetToken.name} was defeated and removed from initiative!`);
     } else {
       // Target survives - update HP
       await updateDoc(ref, {
@@ -1797,7 +1816,6 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
       });
     }
   }
-
   // ========== NEW: Ultimate Actions for Elemental Genesis ==========
   static async createUltimateAction(
     sessionId: string,
