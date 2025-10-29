@@ -138,7 +138,7 @@ export class VersoCombatService {
   /**
    * Use Harmonic Resonance (consume notes for effect)
    */
-  static async useHarmonicResonance(characterId: string = 'verso'): Promise<{
+  static async executeHarmonicResonance(characterId: string = 'verso'): Promise<{
     harmonyType: string;
     damage: number;
     effect: string;
@@ -219,7 +219,7 @@ export class VersoCombatService {
   /**
    * Activate Song of Alicia (ultimate)
    */
-  static async useSongOfAlicia(characterId: string = 'verso'): Promise<void> {
+  static async activateSongOfAlicia(characterId: string = 'verso'): Promise<void> {
     const state = await this.getVersoState(characterId);
     
     if (state.songOfAliciaUsed) {

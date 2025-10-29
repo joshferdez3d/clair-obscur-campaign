@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 import { GustaveCharacterSheet } from '../components/CharacterSheet/GustaveCharacterSheet';
 import { LuneCharacterSheet } from '../components/CharacterSheet/LuneCharacterSheet';
 import { ScielCharacterSheet } from '../components/CharacterSheet/ScielCharacterSheet';
+import { VersoCharacterSheet } from '../components/CharacterSheet/VersoCharacterSheet';
 import { MaelleCharacterSheet } from '../components/CharacterSheet/MaelleCharacterSheet';
 import { LoadingSpinner } from '../components/shared/LoadingSpinner';
 import { useCharacter } from '../hooks/useCharacter';
@@ -14,6 +15,7 @@ import { useMaelleAfterimage } from '../services/maelleAfterimageService';
 import { useFirestoreListener } from '../hooks/useFirestoreListener';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
+
 import { handlePlayerLampAttack } from '../services/LampAttackService';
 // Add proper interface for session tokens
 interface SessionToken extends BattleToken {
@@ -441,6 +443,32 @@ export function PlayerView() {
       />
     );
   }
+
+  if (character.name.toLowerCase() === 'verso') {
+    return (
+      <VersoCharacterSheet
+        character={character}
+        onHPChange={handleHPChange}
+        onAbilityUse={handleAbilityUse}
+        isMyTurn={myTurn}
+        combatActive={combatActive}
+        availableEnemies={availableEnemies}
+        playerPosition={playerToken?.position || { x: 0, y: 0 }}
+        onTargetSelect={handleTargetSelect}
+        onEndTurn={handleEndTurn}
+        onCancelTargeting={handleCancelTargeting}
+        sessionId={sessionId || 'test-session'}
+        allTokens={tokensArray}
+        session={session}
+        activeNotes={persistentCombatState.combatState?.versoState?.activeNotes || []}
+        perfectPitchCharges={persistentCombatState.combatState?.versoState?.perfectPitchCharges || 3}
+        modulationCooldown={persistentCombatState.combatState?.versoState?.modulationCooldown || 0}
+        songOfAliciaActive={persistentCombatState.combatState?.versoState?.songOfAliciaActive || false}
+        songOfAliciaUsed={persistentCombatState.combatState?.versoState?.songOfAliciaUsed || false}
+      />
+    );
+  }
+
   
   // Fallback
   return (

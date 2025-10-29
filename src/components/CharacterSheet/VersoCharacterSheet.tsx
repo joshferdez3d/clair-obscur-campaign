@@ -255,7 +255,7 @@ export function VersoCharacterSheet({
       return;
     }
 
-    if (confirm(`Use Dissonant Purge to clear ${activeNotes.length} notes and damage all enemies?`)) {
+    if (window.confirm(`Use Dissonant Purge to clear ${activeNotes.length} notes and damage all enemies?`)) {
       try {
         const damage = await VersoCombatService.dissonantPurge(character.id);
         alert(`💣 Dissonant Purge hits ${validTargets.length} enemies for ${damage} total damage! Notes cleared.`);
@@ -268,7 +268,7 @@ export function VersoCharacterSheet({
         alert(error instanceof Error ? error.message : 'Failed to use Dissonant Purge');
       }
     }
-  };
+  }
 
   // Handle Song of Alicia (ultimate using VersoCombatService)
   const handleSongOfAlicia = async () => {
@@ -279,9 +279,9 @@ export function VersoCharacterSheet({
       return;
     }
 
-    if (confirm('Activate Song of Alicia? Your next Harmonic Resonance will deal double damage!')) {
+    if (window.confirm('Activate Song of Alicia? Your next Harmonic Resonance will deal double damage!')) {
       try {
-        await VersoCombatService.useSongOfAlicia(character.id);
+        await VersoCombatService.activateSongOfAlicia(character.id);
         
         // Trigger ultimate video
         await triggerUltimate('verso', 'Song of Alicia');
@@ -347,7 +347,7 @@ export function VersoCharacterSheet({
 
       if (selectedAction?.consumesNotes) {
         // Harmonic Resonance - consume notes using service
-        const result = await VersoCombatService.useHarmonicResonance(character.id);
+        const result = await VersoCombatService.executeHarmonicResonance(character.id);
         console.log(`💥 Harmonic Resonance: ${result.harmonyType} - ${result.damage} damage`);
         console.log(`Effect: ${result.effect}`);
       }
