@@ -35,6 +35,8 @@ import { Package, Settings } from 'lucide-react'; // Add Package to your existin
 import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
 import { InventoryService } from '../services/inventoryService'; // Add this import
 import { handleEnemyGroupTurn } from '../utils/enemyHelperUtil';
+import { LongRestButton } from '../components/GM/LongRestButton';
+
 import { 
   getEnemyGroups, 
   updateEnemyGroupsInInitiative 
@@ -1701,6 +1703,8 @@ const handleResetSession = async () => {
               onReset={handleResetSession}
               disabled={loading}
             />
+
+            <LongRestButton />
 
             <button
               onClick={handleRepairMaelleToken}
