@@ -14,11 +14,10 @@ export class LongRestService {
     
     const character = characterSnap.data();
     
-    // Update character - restore HP and reset states
-    await updateDoc(characterRef, {
+    // Build base update object
+    const updates: any = {
       currentHP: character.maxHP,
       charges: character.maxCharges || 0,
-      stance: characterId === 'maelle' ? 'offensive' : undefined,
       afterimageStacks: 0,
       phantomStrikeUsed: false,
       'combatState.overchargePoints': 0,
@@ -26,7 +25,15 @@ export class LongRestService {
       'combatState.chargedFateCard': null,
       'combatState.afterimageStacks': 0,
       'combatState.bonusActionCooldown': 0,
-    });
+    };
+    
+    // Only add stance for Maelle
+    if (characterId === 'maelle') {
+      updates.stance = 'offensive';
+    }
+    
+    // Update character - restore HP and reset states
+    await updateDoc(characterRef, updates);
     
     console.log(`✅ ${character.name} completed long rest`);
   }
