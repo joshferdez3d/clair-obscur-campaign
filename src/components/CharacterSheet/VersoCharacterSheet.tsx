@@ -1,13 +1,12 @@
 // src/components/CharacterSheet/VersoCharacterSheet.tsx
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Target, Zap, Music, Volume2, Trash2 } from 'lucide-react';
+import { Sparkles, Target, Zap, Music, Volume2, Trash2, User, Package } from 'lucide-react';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
 import type { Character, Position, BattleToken } from '../../types';
 import type { MusicalNote } from '../../types/versoType';
 import { useUltimateVideo } from '../../hooks/useUltimateVideo';
-import { Package } from 'lucide-react';
 import { InventoryModal } from './InventoryModal';
 import { useRealtimeInventory } from '../../hooks/useRealtimeInventory';
 import { MovementInput } from '../Combat/MovementInput';
@@ -268,7 +267,7 @@ export function VersoCharacterSheet({
         alert(error instanceof Error ? error.message : 'Failed to use Dissonant Purge');
       }
     }
-  }
+  };
 
   // Handle Song of Alicia (ultimate using VersoCombatService)
   const handleSongOfAlicia = async () => {
@@ -285,7 +284,6 @@ export function VersoCharacterSheet({
         
         // Trigger ultimate video
         await triggerUltimate('verso', 'Song of Alicia');
-
         
         alert('🎼 Song of Alicia activated! Your next Harmonic Resonance will deal DOUBLE DAMAGE!');
         
@@ -393,33 +391,59 @@ export function VersoCharacterSheet({
   }, [isMyTurn, combatActive, character.id]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-clair-dark via-gray-900 to-purple-900 text-white p-4">
+    <div className="min-h-screen bg-clair-shadow-900">
       <div className="max-w-4xl mx-auto space-y-4">
-        {/* Header */}
-        <div className={`${getCharacterGradient()} rounded-lg shadow-shadow p-6 border border-purple-500`}>
-          <div className="flex items-center space-x-4">
-            {portraitUrl && (
-              <img
-                src={portraitUrl}
-                alt={character.name}
-                className="w-20 h-20 rounded-full border-4 border-purple-400 object-cover"
-              />
-            )}
-            <div className="flex-1">
-              <h1 className="font-display text-3xl font-bold text-white mb-1">
-                {character.name}
-              </h1>
-              <p className="text-purple-200 text-lg">The Musical Guardian</p>
+        {/* Header - Updated to match Gustave's structure */}
+        <div className={`${getCharacterGradient()} rounded-lg shadow-shadow p-4`}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-purple-300 flex items-center justify-center bg-purple-800">
+                {portraitUrl ? (
+                  <img 
+                    src={portraitUrl} 
+                    alt={character.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      console.error(`Failed to load image for ${character.name}`);
+                      const target = e.target as HTMLImageElement;
+                      target.style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <User className="w-8 h-8 text-purple-200" />
+                )}
+              </div>
+              <div>
+                <h1 className="font-serif text-2xl font-bold text-white">{character.name}</h1>
+                <p className="font-serif italic text-purple-200 text-sm">The Musical Guardian</p>
+              </div>
             </div>
-            <button
-              onClick={handleOpenInventory}
-              className="bg-purple-700 hover:bg-purple-600 p-3 rounded-lg transition-colors"
-              title="Open Inventory"
-            >
-              <Package className="w-6 h-6 text-white" />
-            </button>
+            
+            {/* Turn Indicator */}
+            {isMyTurn && combatActive && (
+              <div className="bg-purple-500 text-white px-3 py-2 rounded-full font-sans text-sm font-bold animate-pulse shadow-lg">
+                Your Turn
+              </div>
+            )}
           </div>
         </div>
+
+        {/* Character Portrait */}
+        {portraitUrl && (
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-purple-500">
+            <h3 className="font-display text-lg font-bold text-purple-400 mb-3">Character Portrait</h3>
+            <div className="flex justify-center">
+              <div className="w-32 h-32 rounded-lg overflow-hidden border-2 border-purple-400 shadow-xl">
+                <img 
+                  src={portraitUrl} 
+                  alt={`${character.name} portrait`}
+                  className="w-full h-full object-cover"
+                  style={{ imageRendering: 'crisp-edges' }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* HP Tracker */}
         <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-purple-500">
@@ -428,6 +452,7 @@ export function VersoCharacterSheet({
             maxHP={character.maxHP}
             onHPChange={onHPChange}
             isLoading={false}
+            showControls={false}
           />
         </div>
 
@@ -436,9 +461,25 @@ export function VersoCharacterSheet({
           <StatDisplay stats={character.stats} />
         </div>
 
+        {/* Inventory Button */}
+        <div className="mb-6">
+          <button
+            onClick={handleOpenInventory}
+            className="w-full bg-clair-shadow-600 hover:bg-clair-shadow-500 border border-purple-500 text-purple-200 p-3 rounded-lg transition-colors flex items-center justify-center"
+          >
+            <Package className="w-5 h-5 mr-2" />
+            <span className="font-serif font-bold">Inventory</span>
+            {inventory.length > 0 && (
+              <span className="ml-2 bg-purple-600 text-white px-2 py-1 rounded-full text-xs font-bold">
+                {inventory.length}
+              </span>
+            )}
+          </button>
+        </div>
+
         {/* Movement */}
         {combatActive && isMyTurn && versoToken && (
-        <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-purple-500">
+          <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-purple-500">
             <MovementInput
               token={versoToken}
               currentPosition={versoToken.position}
@@ -462,17 +503,17 @@ export function VersoCharacterSheet({
           <div className="grid grid-cols-3 gap-2 text-xs">
             <div className="bg-gray-800 p-2 rounded text-center">
               <div className="text-purple-400">Perfect Pitch</div>
-              <div className="font-bold">{perfectPitchCharges} / 3</div>
+              <div className="font-bold font-bold text-clair-gold-50">{perfectPitchCharges} / 3</div>
             </div>
             <div className="bg-gray-800 p-2 rounded text-center">
               <div className="text-purple-400">Modulation</div>
-              <div className="font-bold">
+              <div className="font-bold font-bold text-clair-gold-50">
                 {modulationCooldown > 0 ? `${modulationCooldown} turns` : 'Ready'}
               </div>
             </div>
             <div className="bg-gray-800 p-2 rounded text-center">
               <div className="text-purple-400">Song of Alicia</div>
-              <div className="font-bold">{songOfAliciaUsed ? 'Used' : 'Ready'}</div>
+              <div className="font-bold font-bold text-clair-gold-50">{songOfAliciaUsed ? 'Used' : 'Ready'}</div>
             </div>
           </div>
         </div>
@@ -483,148 +524,148 @@ export function VersoCharacterSheet({
 
           {!selectedAction ? (
             <div className="space-y-3">
-              {/* Basic Attack */}
-              <button
-                onClick={handleHarmonicStrike}
-                disabled={!isMyTurn || !combatActive || activeNotes.length >= 3}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || activeNotes.length >= 3
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-purple-600 hover:bg-purple-700'
-                } p-3 rounded-lg transition-colors text-left text-white`}
-              >
-                <div className="flex items-center">
-                  <Music className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Harmonic Strike</div>
-                    <div className="text-sm opacity-90">Basic attack + generate random note (1d7)</div>
-                    <div className="text-xs text-purple-200">1d10 damage • Turn ends</div>
+                {/* Basic Attack */}
+                <button
+                  onClick={handleHarmonicStrike}
+                  disabled={!isMyTurn || !combatActive || activeNotes.length >= 3}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || activeNotes.length >= 3
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-purple-600 hover:bg-purple-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
+                >
+                  <div className="flex items-center">
+                    <Music className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Harmonic Strike</div>
+                      <div className="text-sm opacity-90">Basic attack + generate random note (1d7)</div>
+                      <div className="text-xs text-purple-200">1d10 damage • Turn ends</div>
+                    </div>
+                    {activeNotes.length >= 3 && (
+                      <span className="text-xs bg-red-600 px-2 py-1 rounded">
+                        Notes Full
+                      </span>
+                    )}
                   </div>
-                  {activeNotes.length >= 3 && (
-                    <span className="text-xs bg-red-600 px-2 py-1 rounded">
-                      Notes Full
+                </button>
+
+                {/* Harmonic Resonance */}
+                <button
+                  onClick={handleHarmonicResonance}
+                  disabled={!isMyTurn || !combatActive || activeNotes.length < 2}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || activeNotes.length < 2
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-blue-600 hover:bg-blue-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
+                >
+                  <div className="flex items-center">
+                    <Zap className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Harmonic Resonance</div>
+                      <div className="text-sm opacity-90">
+                        Consume notes for {harmonyEffect?.name || 'harmony effect'}
+                      </div>
+                      <div className="text-xs text-blue-200">
+                        {harmonyEffect?.baseDamage || 'Need 2+ notes'} • Turn ends
+                      </div>
+                    </div>
+                    {activeNotes.length < 2 && (
+                      <span className="text-xs bg-red-600 px-2 py-1 rounded">
+                        Need 2+ notes
+                      </span>
+                    )}
+                  </div>
+                </button>
+
+                {/* Perfect Pitch */}
+                <button
+                  onClick={handlePerfectPitch}
+                  disabled={!isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-green-600 hover:bg-green-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
+                >
+                  <div className="flex items-center">
+                    <Target className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Perfect Pitch</div>
+                      <div className="text-sm opacity-90">Choose a specific note</div>
+                      <div className="text-xs text-green-200">{perfectPitchCharges} charges remaining</div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Modulation */}
+                <button
+                  onClick={handleModulation}
+                  disabled={!isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
+                >
+                  <div className="flex items-center">
+                    <Sparkles className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Modulation</div>
+                      <div className="text-sm opacity-90">Change a note to an adjacent one</div>
+                      <div className="text-xs text-indigo-200">
+                        {modulationCooldown > 0 ? `Cooldown: ${modulationCooldown} turns` : 'No cooldown'}
+                      </div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Dissonant Purge */}
+                <button
+                  onClick={handleDissonantPurge}
+                  disabled={!isMyTurn || !combatActive || activeNotes.length === 0}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || activeNotes.length === 0
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-red-600 hover:bg-red-700'
+                  } p-3 rounded-lg transition-colors text-left text-white`}
+                >
+                  <div className="flex items-center">
+                    <Trash2 className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Dissonant Purge</div>
+                      <div className="text-sm opacity-90">Clear notes + AOE damage</div>
+                      <div className="text-xs text-red-200">1d6 per enemy • Turn ends</div>
+                    </div>
+                  </div>
+                </button>
+
+                {/* Ultimate - Song of Alicia */}
+                <button
+                  onClick={handleSongOfAlicia}
+                  disabled={!isMyTurn || !combatActive || songOfAliciaUsed}
+                  className={`w-full ${
+                    !isMyTurn || !combatActive || songOfAliciaUsed
+                      ? 'bg-gray-600 opacity-50 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-yellow-600 to-pink-600 hover:from-yellow-700 hover:to-pink-700'
+                  } p-3 rounded-lg transition-colors text-left text-white border-2 border-yellow-400`}
+                >
+                  <div className="flex items-center">
+                    <Volume2 className="w-5 h-5 mr-2" />
+                    <div className="flex-1">
+                      <div className="font-bold">Song of Alicia</div>
+                      <div className="text-sm opacity-90">Next Harmonic Resonance deals DOUBLE damage</div>
+                      <div className="text-xs text-yellow-200">
+                        {songOfAliciaUsed ? 'Already used' : 'Once per battle'} • Turn ends
+                      </div>
+                    </div>
+                    <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
+                      ULTIMATE
                     </span>
-                  )}
-                </div>
-              </button>
-
-              {/* Harmonic Resonance */}
-              <button
-                onClick={handleHarmonicResonance}
-                disabled={!isMyTurn || !combatActive || activeNotes.length < 2}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || activeNotes.length < 2
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                } p-3 rounded-lg transition-colors text-left text-white`}
-              >
-                <div className="flex items-center">
-                  <Zap className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Harmonic Resonance</div>
-                    <div className="text-sm opacity-90">
-                      Consume notes for {harmonyEffect?.name || 'harmony effect'}
-                    </div>
-                    <div className="text-xs text-blue-200">
-                      {harmonyEffect?.baseDamage || 'Need 2+ notes'} • Turn ends
-                    </div>
                   </div>
-                  {activeNotes.length < 2 && (
-                    <span className="text-xs bg-red-600 px-2 py-1 rounded">
-                      Need 2+ notes
-                    </span>
-                  )}
-                </div>
-              </button>
-
-              {/* Perfect Pitch */}
-              <button
-                onClick={handlePerfectPitch}
-                disabled={!isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-green-600 hover:bg-green-700'
-                } p-3 rounded-lg transition-colors text-left text-white`}
-              >
-                <div className="flex items-center">
-                  <Target className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Perfect Pitch</div>
-                    <div className="text-sm opacity-90">Choose a specific note</div>
-                    <div className="text-xs text-green-200">{perfectPitchCharges} charges remaining</div>
-                  </div>
-                </div>
-              </button>
-
-              {/* Modulation */}
-              <button
-                onClick={handleModulation}
-                disabled={!isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-indigo-600 hover:bg-indigo-700'
-                } p-3 rounded-lg transition-colors text-left text-white`}
-              >
-                <div className="flex items-center">
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Modulation</div>
-                    <div className="text-sm opacity-90">Change a note to an adjacent one</div>
-                    <div className="text-xs text-indigo-200">
-                      {modulationCooldown > 0 ? `Cooldown: ${modulationCooldown} turns` : 'No cooldown'}
-                    </div>
-                  </div>
-                </div>
-              </button>
-
-              {/* Dissonant Purge */}
-              <button
-                onClick={handleDissonantPurge}
-                disabled={!isMyTurn || !combatActive || activeNotes.length === 0}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || activeNotes.length === 0
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-red-600 hover:bg-red-700'
-                } p-3 rounded-lg transition-colors text-left text-white`}
-              >
-                <div className="flex items-center">
-                  <Trash2 className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Dissonant Purge</div>
-                    <div className="text-sm opacity-90">Clear notes + AOE damage</div>
-                    <div className="text-xs text-red-200">1d6 per enemy • Turn ends</div>
-                  </div>
-                </div>
-              </button>
-
-              {/* Ultimate - Song of Alicia */}
-              <button
-                onClick={handleSongOfAlicia}
-                disabled={!isMyTurn || !combatActive || songOfAliciaUsed}
-                className={`w-full ${
-                  !isMyTurn || !combatActive || songOfAliciaUsed
-                    ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-yellow-600 to-pink-600 hover:from-yellow-700 hover:to-pink-700'
-                } p-3 rounded-lg transition-colors text-left text-white border-2 border-yellow-400`}
-              >
-                <div className="flex items-center">
-                  <Volume2 className="w-5 h-5 mr-2" />
-                  <div className="flex-1">
-                    <div className="font-bold">Song of Alicia</div>
-                    <div className="text-sm opacity-90">Next Harmonic Resonance deals DOUBLE damage</div>
-                    <div className="text-xs text-yellow-200">
-                      {songOfAliciaUsed ? 'Already used' : 'Once per battle'} • Turn ends
-                    </div>
-                  </div>
-                  <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                    ULTIMATE
-                  </span>
-                </div>
-              </button>
-            </div>
-          ) : null}
+                </button>
+              </div>
+            ) : null}
         </div>
 
         {/* Turn Management */}
@@ -648,6 +689,18 @@ export function VersoCharacterSheet({
           }`}>
             {isMyTurn ? '🎵 YOUR TURN! 🎵' : 'Waiting for your turn...'}
           </div>
+        )}
+
+        {/* Inventory Modal */}
+        {showInventoryModal && (
+          <InventoryModal
+            isOpen={showInventoryModal}
+            onClose={() => setShowInventoryModal(false)}
+            characterName={character.name}
+            inventory={inventory}
+            goldAmount={goldAmount}
+            isLoading={inventoryLoading}
+          />
         )}
       </div>
 
@@ -709,18 +762,6 @@ export function VersoCharacterSheet({
             </button>
           </div>
         </div>
-      )}
-
-      {/* Inventory Modal */}
-      {showInventoryModal && (
-        <InventoryModal
-          isOpen={showInventoryModal}
-          onClose={() => setShowInventoryModal(false)}
-          characterName={character.name}  // Also need to add this required prop
-          inventory={inventory}
-          goldAmount={goldAmount}  // Changed from 'gold' to 'goldAmount'
-          isLoading={inventoryLoading}
-        />
       )}
     </div>
   );
