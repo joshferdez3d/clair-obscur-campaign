@@ -1,7 +1,7 @@
 // src/components/Verso/HarmonicDisplay.tsx
 import React from 'react';
 import { Music, Sparkles } from 'lucide-react';
-import type { MusicalNote } from '../../types/verso';
+import type { MusicalNote } from '../../types/versoType';
 import { NOTE_INFO, getHarmonyEffect } from '../../utils/harmonyDetection';
 
 interface HarmonicDisplayProps {

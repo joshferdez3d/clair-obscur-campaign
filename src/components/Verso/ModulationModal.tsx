@@ -1,7 +1,7 @@
 // src/components/Verso/ModulationModal.tsx
 import React, { useState } from 'react';
 import { X, RefreshCw } from 'lucide-react';
-import type { MusicalNote } from '../../types/verso';
+import type { MusicalNote } from '../../types/versoType';
 import { NOTE_INFO, getAdjacentNotes } from '../../utils/harmonyDetection';
 
 interface ModulationModalProps {

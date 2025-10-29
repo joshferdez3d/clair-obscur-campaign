@@ -1,7 +1,7 @@
 // src/services/VersoCombatService.ts
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
-import type { MusicalNote, VersoState } from '../types/verso';
+import type { MusicalNote, VersoState } from '../types/versoType';
 import { generateRandomNote, detectHarmonyType, getHarmonyEffect, HARMONY_EFFECTS } from '../utils/harmonyDetection';
 
 export class VersoCombatService {

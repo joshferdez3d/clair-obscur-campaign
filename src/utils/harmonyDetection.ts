@@ -1,5 +1,5 @@
 // src/utils/harmonyDetection.ts
-import type { MusicalNote, HarmonyType, HarmonyEffect, NoteInfo } from '../types/verso';
+import type { MusicalNote, HarmonyType, HarmonyEffect, NoteInfo } from '../types/versoType';
 
 // Note information mapping
 export const NOTE_INFO: Record<MusicalNote, NoteInfo> = {

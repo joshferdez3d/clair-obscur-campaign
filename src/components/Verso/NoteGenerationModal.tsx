@@ -1,7 +1,7 @@
 // src/components/Verso/NoteGenerationModal.tsx
 import React, { useState } from 'react';
 import { X, Music, Sparkles, Zap } from 'lucide-react';
-import type { MusicalNote } from '../../types/verso';
+import type { MusicalNote } from '../../types/versoType';
 import { NOTE_INFO, getAllNotes } from '../../utils/harmonyDetection';
 
 interface NoteGenerationModalProps {
