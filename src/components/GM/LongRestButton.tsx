@@ -1,16 +1,16 @@
 // src/components/GM/LongRestButton.tsx
 import React, { useState } from 'react';
-import { Moon, Check, X } from 'lucide-react';
+import { Moon } from 'lucide-react';
 import { LongRestService } from '../../services/LongRestService';
 
-export function LongRestButton() {
+export function LongRestButton({ sessionId = 'test-session' }: { sessionId?: string }) {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isResting, setIsResting] = useState(false);
   
   const handleLongRest = async () => {
     setIsResting(true);
     try {
-      await LongRestService.longRestParty();
+      await LongRestService.longRestParty(sessionId); // Pass sessionId
       alert('✅ Long rest completed! All characters restored.');
       setShowConfirm(false);
     } catch (error) {
@@ -32,14 +32,14 @@ export function LongRestButton() {
           <button
             onClick={handleLongRest}
             disabled={isResting}
-            className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
+            className="flex-1 bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
           >
             {isResting ? 'Resting...' : 'Confirm'}
           </button>
           <button
             onClick={() => setShowConfirm(false)}
             disabled={isResting}
-            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded"
+            className="flex-1 bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded disabled:opacity-50"
           >
             Cancel
           </button>

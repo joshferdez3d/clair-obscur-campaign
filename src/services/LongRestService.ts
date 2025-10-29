@@ -1,6 +1,7 @@
 // src/services/LongRestService.ts
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { HPSyncService } from './HPSyncService'; // ADD THIS IMPORT
 
 export class LongRestService {
   
@@ -27,7 +28,7 @@ export class LongRestService {
       'combatState.bonusActionCooldown': 0,
     };
     
-    // Only add stance for Maelle
+    // Only add stance for Maelle (fixing the undefined issue)
     if (characterId === 'maelle') {
       updates.stance = 'offensive';
     }
@@ -38,10 +39,14 @@ export class LongRestService {
     console.log(`✅ ${character.name} completed long rest`);
   }
   
-  static async longRestParty(): Promise<void> {
+  static async longRestParty(sessionId: string = 'test-session'): Promise<void> {
     const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
     const promises = characterIds.map(id => this.longRestCharacter(id));
     await Promise.all(promises);
+    
+    // ✅ FIX: Sync all character HP back to their tokens in the session
+    await HPSyncService.syncAllCharacterHPToTokens(sessionId);
+    
     console.log(`✅ All characters completed long rest`);
   }
 }

@@ -1704,7 +1704,8 @@ const handleResetSession = async () => {
               disabled={loading}
             />
 
-            <LongRestButton />
+            <LongRestButton sessionId={sessionId || 'test-session'} />
+
 
             <button
               onClick={handleRepairMaelleToken}
