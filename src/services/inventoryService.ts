@@ -245,7 +245,7 @@ export class InventoryService {
 
     static async initializeGoldForAllCharacters(defaultGold: number = 0): Promise<void> {
       try {
-        const characterIds = ['maelle', 'gustave', 'lune', 'sciel']; // Your character IDs
+        const characterIds = ['maelle', 'gustave', 'lune', 'sciel', 'verso']; // Your character IDs
         
         for (const characterId of characterIds) {
           const characterRef = doc(db, 'characters', characterId);

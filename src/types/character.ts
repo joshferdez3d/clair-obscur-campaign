@@ -2,6 +2,7 @@
 
 // Import InventoryItem from index to fix the missing type error
 import type { InventoryItem } from './index';
+import type { VersoState } from './versoType';
 
 export interface Stats {
   str: number;
@@ -41,6 +42,9 @@ export interface CharacterCombatState {
   // Maelle state
   afterimageStacks: number;
   phantomStrikeAvailable: boolean;
+
+  versoState?: VersoState;
+
   
   // Universal state
   bonusActionCooldown: number;
@@ -129,6 +133,13 @@ export interface CharacterDoc {
     chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
     afterimageStacks: number;
     phantomStrikeAvailable: boolean;
+    versoState?: {                           
+      activeNotes: Array<'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'>;
+      perfectPitchCharges: number;
+      modulationCooldown: number;
+      songOfAliciaActive: boolean;
+      songOfAliciaUsed: boolean;
+    };         
     bonusActionCooldown: number;
     hasActedThisTurn: boolean;
     lastCombatRound: number;
@@ -164,6 +175,14 @@ export class CombatStateHelpers {
       // Maelle defaults
       afterimageStacks: 0,
       phantomStrikeAvailable: true,
+
+      versoState: {
+        activeNotes: [],
+        perfectPitchCharges: 3,
+        modulationCooldown: 0,
+        songOfAliciaActive: false,
+        songOfAliciaUsed: false
+      },
       
       // Universal defaults
       bonusActionCooldown: 0,
@@ -186,6 +205,15 @@ export class CombatStateHelpers {
       chargedFateCard: null, // UPDATED: Reset fate card instead of foretell
       afterimageStacks: 0,
       phantomStrikeAvailable: true,
+
+      versoState: {
+        activeNotes: [],
+        perfectPitchCharges: 3,
+        modulationCooldown: 0,
+        songOfAliciaActive: false,
+        songOfAliciaUsed: false
+      },
+
       bonusActionCooldown: 0,
       hasActedThisTurn: false,
       lastCombatRound: 0,

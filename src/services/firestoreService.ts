@@ -75,8 +75,16 @@ export class FirestoreService {
         initiative: 10, // Engineer goes last typically
         type: 'player',
         hasActed: false
-      }
-    ];
+      },
+      {
+      id: 'verso',
+      characterId: 'verso',
+      name: 'Verso',
+      initiative: 14, // Good initiative for a performer/musician
+      type: 'player',
+      hasActed: false
+    }
+  ];
 
     try {
       const ref = doc(db, 'battleSessions', sessionId);
@@ -147,7 +155,7 @@ export class FirestoreService {
   }
 
 
- static async resetBattleSession(sessionId: string) {
+static async resetBattleSession(sessionId: string) {
   console.log('🔄 Starting complete battle session reset with tokens and initiative...');
   
   try {
@@ -159,7 +167,10 @@ export class FirestoreService {
     console.log('💰 Preserving inventory and gold data...');
     
     // 1. Save current inventory and gold for all characters BEFORE reset
-    const characterIds = ['maelle', 'gustave', 'lune', 'sciel'];
+    // ========== UPDATED: ADDED 'verso' TO CHARACTER IDS ==========
+    const characterIds = ['maelle', 'gustave', 'lune', 'sciel', 'verso'];
+    // ===========================================================
+    
     const preservedData: Record<string, { 
       inventory: any[], 
       gold: number,
@@ -3132,8 +3143,20 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
         ac: 14,
         size: 1,
         color: '#059669' // Green
-      }
-    };
+      },
+      'player-verso': {
+      id: 'player-verso',
+      characterId: 'verso',
+      name: 'Verso',
+      position: { x: 10, y: 12 }, // Position to the right of Sciel
+      type: 'player' as const,
+      hp: 24,
+      maxHp: 24,
+      ac: 14,
+      size: 1,
+      color: '#a855f7' // Purple/Pink for musical theme
+    }
+  };
 
     try {
       const ref = doc(db, 'battleSessions', sessionId);
@@ -3293,7 +3316,7 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     }
   }
 
-  // ========== Sample Data ==========
+// ========== Sample Data ==========
   static async initializeSampleData(): Promise<void> {
     console.log('📊 Initializing sample character data with combat state...');
 
@@ -3499,11 +3522,93 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
         ],
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
+      },
+      // ========== NEW: VERSO CHARACTER ==========
+      {
+        name: 'Verso',
+        role: 'Harmonic Combatant',
+        stats: { str: 10, dex: 14, con: 12, int: 16, wis: 13, cha: 18 },
+        currentHP: 24,
+        maxHP: 24,
+        charges: 0,
+        maxCharges: 0, // Verso doesn't use standard charges
+        level: 3,
+        portraitUrl: '/portraits/verso.jpg',
+        backgroundColor: '#a855f7',
+        inventory: [],
+        gold: 150,
+        combatState: {
+          ...CombatStateHelpers.createDefaultCombatState(),
+          // Verso-specific combat state
+          versoState: {
+            activeNotes: [],
+            perfectPitchCharges: 3,
+            modulationCooldown: 0,
+            songOfAliciaActive: false,
+            songOfAliciaUsed: false
+          },
+          lastUpdated: serverTimestamp(),
+          lastSyncedAt: serverTimestamp()
+        },
+        abilities: [
+          {
+            id: 'harmonic-strike',
+            name: 'Harmonic Strike',
+            description: 'Basic attack that generates a musical note.',
+            type: 'action',
+            damage: '1d10 + CHA',
+            range: 'Unlimited',
+            effect: 'Generates 1 random note (C, D, E, F, G, A, or B)'
+          },
+          {
+            id: 'harmonic-resonance',
+            name: 'Harmonic Resonance',
+            description: 'Consume 2+ notes to trigger harmony effects.',
+            type: 'bonus_action',
+            effect: 'Major Third: +2d6 damage | Perfect Fifth: Heal 2d8 | Tritone: Apply disadvantage',
+            range: 'Varies by harmony'
+          },
+          {
+            id: 'dissonant-purge',
+            name: 'Dissonant Purge',
+            description: 'Clear all notes and deal damage.',
+            type: 'action',
+            damage: '1d6 per note cleared',
+            range: '30 feet'
+          },
+          {
+            id: 'perfect-pitch',
+            name: 'Perfect Pitch',
+            description: 'Choose the note you generate (3 charges per battle).',
+            type: 'reaction',
+            effect: 'Select specific note instead of random',
+            range: 'Self'
+          },
+          {
+            id: 'modulation',
+            name: 'Modulation',
+            description: 'Change one note to another (2 turn cooldown).',
+            type: 'bonus_action',
+            effect: 'Transform one existing note',
+            range: 'Self'
+          },
+          {
+            id: 'song-of-alicia',
+            name: "Song of Alicia (Ultimate)",
+            description: 'Ultimate ability: Full party heal and buff.',
+            type: 'action',
+            effect: 'Heal all allies 4d8+CHA, advantage on attacks for 1 round',
+            range: 'All allies'
+          }
+        ],
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       }
+      // ========================================
     ];
 
     const promises = sampleCharacters.map(async (characterData, index) => {
-      const characterId = ['maelle', 'gustave', 'lune', 'sciel'][index];
+      const characterId = ['maelle', 'gustave', 'lune', 'sciel', 'verso'][index];
       const characterRef = doc(db, 'characters', characterId);
       
       try {
@@ -3515,6 +3620,6 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
     });
 
     await Promise.all(promises);
-    console.log('✅ All sample characters initialized with combat state support');
+    console.log('✅ All sample characters initialized with combat state support (including Verso)');
   }
 }
