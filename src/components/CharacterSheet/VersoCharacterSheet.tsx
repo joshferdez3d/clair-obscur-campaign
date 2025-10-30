@@ -45,6 +45,14 @@ interface VersoCharacterSheetProps {
   modulationCooldown: number;
   songOfAliciaActive: boolean;
   songOfAliciaUsed: boolean;
+
+  onVersoStateChange?: (updates: {
+    activeNotes?: MusicalNote[];
+    perfectPitchCharges?: number;
+    modulationCooldown?: number;
+    songOfAliciaActive?: boolean;
+    songOfAliciaUsed?: boolean;
+  }) => void;
 }
 
 export function VersoCharacterSheet({
@@ -66,6 +74,7 @@ export function VersoCharacterSheet({
   modulationCooldown,
   songOfAliciaActive,
   songOfAliciaUsed,
+  onVersoStateChange,
 }: VersoCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
@@ -282,6 +291,14 @@ export function VersoCharacterSheet({
       try {
         await VersoCombatService.activateSongOfAlicia(character.id);
         
+        // ✅ ADD: Update state
+        if (onVersoStateChange) {
+          onVersoStateChange({
+            songOfAliciaActive: true,
+            songOfAliciaUsed: true
+          });
+        }
+        
         // Trigger ultimate video
         await triggerUltimate('verso', 'Song of Alicia');
         
@@ -299,28 +316,48 @@ export function VersoCharacterSheet({
 
   // Handle note selection from Perfect Pitch using VersoCombatService
   const handleSelectNote = async (note: MusicalNote) => {
-    try {
-      await VersoCombatService.choosePerfectPitchNote(character.id, note);
-      setShowNoteSelectionModal(false);
-      alert(`🎵 Added ${note} to your collection!`);
-    } catch (error) {
-      console.error('Failed to choose note:', error);
-      alert(error instanceof Error ? error.message : 'Failed to choose note');
+  try {
+    await VersoCombatService.choosePerfectPitchNote(character.id, note);
+    
+    // ✅ ADD: Update parent state
+    if (onVersoStateChange) {
+      onVersoStateChange({
+        activeNotes: [...activeNotes, note],
+        perfectPitchCharges: perfectPitchCharges - 1
+      });
     }
-  };
+    
+    setShowNoteSelectionModal(false);
+    alert(`🎵 Added ${note} to your collection!`);
+  } catch (error) {
+    console.error('Failed to choose note:', error);
+    alert(error instanceof Error ? error.message : 'Failed to choose note');
+  }
+};
 
-  // Handle modulation using VersoCombatService (delegated to ModulationModal)
-  const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
-    try {
-      await VersoCombatService.modulateNote(character.id, noteIndex, newNote);
-      setShowModulationModal(false);
-      alert(`🔄 Modulated note to ${newNote}!`);
-    } catch (error) {
-      console.error('Failed to modulate note:', error);
-      alert(error instanceof Error ? error.message : 'Failed to modulate note');
-      throw error; // Re-throw so ModulationModal can handle it
+const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
+  try {
+    await VersoCombatService.modulateNote(character.id, noteIndex, newNote);
+    
+    // ✅ ADD: Update parent state
+    if (onVersoStateChange) {
+      const updatedNotes = [...activeNotes];
+      updatedNotes[noteIndex] = newNote;
+      onVersoStateChange({
+        activeNotes: updatedNotes,
+        modulationCooldown: 2  // Set cooldown
+      });
     }
-  };
+    
+    setShowModulationModal(false);
+    alert(`🔄 Modulated note to ${newNote}!`);
+  } catch (error) {
+    console.error('Failed to modulate note:', error);
+    alert(error instanceof Error ? error.message : 'Failed to modulate note');
+    throw error;
+  }
+};
+
 
   // Handle targeting modal confirmation
   const handleConfirmTarget = async () => {
@@ -341,6 +378,12 @@ export function VersoCharacterSheet({
         // Harmonic Strike - generate note after attack
         const newNote = await VersoCombatService.generateNote(character.id);
         console.log(`🎵 Generated note: ${newNote}`);
+        
+        // ✅ ADD: Update parent state with new note
+        if (onVersoStateChange && newNote) {
+          const updatedNotes = [...activeNotes, newNote];
+          onVersoStateChange({ activeNotes: updatedNotes });
+        }
       }
 
       if (selectedAction?.consumesNotes) {
@@ -348,6 +391,14 @@ export function VersoCharacterSheet({
         const result = await VersoCombatService.executeHarmonicResonance(character.id);
         console.log(`💥 Harmonic Resonance: ${result.harmonyType} - ${result.damage} damage`);
         console.log(`Effect: ${result.effect}`);
+        
+        // ✅ ADD: Clear notes and update Song of Alicia state
+        if (onVersoStateChange) {
+          onVersoStateChange({ 
+            activeNotes: [],
+            songOfAliciaActive: false  // Consumed after use
+          });
+        }
       }
 
       // Call parent's target select handler
@@ -382,13 +433,22 @@ export function VersoCharacterSheet({
   };
 
   // Decrease cooldowns at start of turn using VersoCombatService
-  useEffect(() => {
-    if (isMyTurn && combatActive) {
-      VersoCombatService.decreaseCooldowns(character.id).catch(err => {
+useEffect(() => {
+  if (isMyTurn && combatActive && modulationCooldown > 0) {
+    VersoCombatService.decreaseCooldowns(character.id)
+      .then(() => {
+        // ✅ ADD: Update parent state
+        if (onVersoStateChange) {
+          onVersoStateChange({
+            modulationCooldown: Math.max(0, modulationCooldown - 1)
+          });
+        }
+      })
+      .catch(err => {
         console.error('Failed to decrease cooldowns:', err);
       });
-    }
-  }, [isMyTurn, combatActive, character.id]);
+  }
+}, [isMyTurn, combatActive, character.id, modulationCooldown, onVersoStateChange]);
 
   return (
     <div className="min-h-screen bg-clair-shadow-900">
@@ -665,7 +725,76 @@ export function VersoCharacterSheet({
                   </div>
                 </button>
               </div>
-            ) : null}
+            ) : (
+                // ✅ NEW SECTION ADDED
+                <div className="space-y-3">
+                  {/* Step 1: Button to open target selection modal */}
+                  <button
+                    onClick={() => setShowTargetingModal(true)}
+                    className="w-full p-4 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-bold transition-colors flex items-center justify-center"
+                  >
+                    <Target className="w-5 h-5 mr-2" />
+                    Select Target
+                    {selectedTarget && (
+                      <span className="ml-2 text-sm">
+                        ({availableEnemies.find(e => e.id === selectedTarget)?.name})
+                      </span>
+                    )}
+                  </button>
+
+                  {/* Step 2: AC Roll Input - appears AFTER target is selected */}
+                  {selectedTarget && (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-purple-900 bg-opacity-30 rounded-lg border border-purple-500">
+                        <p className="text-purple-200 text-sm mb-3">
+                          🎯 Target: <strong>{availableEnemies.find(e => e.id === selectedTarget)?.name}</strong>
+                        </p>
+                        <label className="block text-sm font-bold text-purple-300 mb-2">
+                          Attack Roll (d20 + modifiers):
+                        </label>
+                        <input
+                          type="number"
+                          value={acRoll}
+                          onChange={(e) => setACRoll(e.target.value)}
+                          placeholder="Enter your total attack roll"
+                          className="w-full p-3 bg-gray-800 border border-purple-500 rounded-lg text-white focus:outline-none focus:border-purple-400"
+                          min="1"
+                          max="30"
+                          autoFocus
+                        />
+                      </div>
+                      
+                      {/* Step 3: Confirm button */}
+                      <button
+                        onClick={handleConfirmTarget}
+                        disabled={!acRoll}
+                        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-600 disabled:opacity-50 text-white p-3 rounded-lg font-bold transition-colors flex items-center justify-center"
+                      >
+                        ✅ Confirm {selectedAction.name}
+                      </button>
+                      
+                      {/* Cancel button (optional but helpful) */}
+                      <button
+                        onClick={() => {
+                          setSelectedTarget('');
+                          setACRoll('');
+                        }}
+                        className="w-full bg-red-600 hover:bg-red-700 text-white p-2 rounded-lg text-sm transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
+                  {/* No enemies message */}
+                  {getValidTargets().length === 0 && (
+                    <div className="text-center text-purple-300 py-4">
+                      No enemies in range
+                    </div>
+                  )}
+                </div>
+              )
+              }
         </div>
 
         {/* Turn Management */}

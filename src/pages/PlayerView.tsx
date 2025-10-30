@@ -15,8 +15,11 @@ import { useMaelleAfterimage } from '../services/maelleAfterimageService';
 import { useFirestoreListener } from '../hooks/useFirestoreListener';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
-
+import type { MusicalNote } from '../types/versoType'; 
 import { handlePlayerLampAttack } from '../services/LampAttackService';
+import { db } from '../services/firebase'; 
+import { doc, updateDoc } from 'firebase/firestore';
+
 // Add proper interface for session tokens
 interface SessionToken extends BattleToken {
   characterId?: string;
@@ -176,6 +179,42 @@ export function PlayerView() {
     }
   };
 
+  const handleVersoStateChange = async (updates: {
+    activeNotes?: MusicalNote[];
+    perfectPitchCharges?: number;
+    modulationCooldown?: number;
+    songOfAliciaActive?: boolean;
+    songOfAliciaUsed?: boolean;
+  }) => {
+    if (!characterId || !sessionId) return;
+    
+    try {
+      // Get current state
+      const currentVersoState = persistentCombatState.combatState?.versoState || {
+        activeNotes: [],
+        perfectPitchCharges: 3,
+        modulationCooldown: 0,
+        songOfAliciaActive: false,
+        songOfAliciaUsed: false,
+      };
+      
+      // Merge updates with current state
+      const newVersoState = {
+        ...currentVersoState,
+        ...updates,
+      };
+      
+      // Save to Firebase - update the character's combat state document
+      const stateRef = doc(db, 'sessions', sessionId, 'characterStates', characterId);
+      await updateDoc(stateRef, {
+        versoState: newVersoState,
+      });
+      
+      console.log('🎵 Verso state updated:', newVersoState);
+    } catch (error) {
+      console.error('Failed to update Verso state:', error);
+    }
+  };
   const handleAbilityUse = async (ability: any) => {
     const abilityId = typeof ability === 'string' ? ability : ability.id;
     console.log(`${characterId} used ability: ${abilityId}`);
@@ -465,6 +504,7 @@ export function PlayerView() {
         modulationCooldown={persistentCombatState.combatState?.versoState?.modulationCooldown || 0}
         songOfAliciaActive={persistentCombatState.combatState?.versoState?.songOfAliciaActive || false}
         songOfAliciaUsed={persistentCombatState.combatState?.versoState?.songOfAliciaUsed || false}
+        onVersoStateChange={handleVersoStateChange} 
       />
     );
   }

@@ -1,4 +1,7 @@
-// src/components/Combat/InitiativeTracker.tsx - Enhanced with Player Dropdown
+// FIXED: InitiativeTracker.tsx - With visible minus buttons
+// The issue: The minus buttons were being cut off due to layout constraints
+// The fix: Adjusted flex layout and made inputs more compact
+
 import React, { useState } from 'react';
 import { Play, Square, SkipForward, Plus, Minus, Edit3, Users } from 'lucide-react';
 import type { InitiativeEntry, CombatState } from '../../types';
@@ -10,9 +13,7 @@ interface InitiativeTrackerProps {
   onNextTurn: () => void;
   onUpdateInitiative: (initiativeOrder: InitiativeEntry[]) => void;
   characterNames: { [id: string]: string };
-  sessionId?: string; // ADD THIS LINE
-
-  // NEW: Add available player characters
+  sessionId?: string;
   availableCharacters?: Array<{
     id: string;
     name: string;
@@ -34,7 +35,6 @@ export function InitiativeTracker({
   const [tempInitiative, setTempInitiative] = useState<InitiativeEntry[]>([]);
   const [selectedCharacter, setSelectedCharacter] = useState<string>('');
 
-  // Default player characters if none provided
   const defaultCharacters = [
     { id: 'maelle', name: 'Maelle', type: 'player' as const },
     { id: 'gustave', name: 'Gustave', type: 'player' as const },
@@ -60,18 +60,15 @@ export function InitiativeTracker({
     setEditingInitiative(false);
   };
 
-  // NEW: Get characters already in initiative
   const getCharactersInInitiative = () => {
     return new Set(tempInitiative.map(entry => entry.characterId || entry.id));
   };
 
-  // NEW: Get available characters not yet in initiative
   const getAvailableCharacters = () => {
     const inInitiative = getCharactersInInitiative();
     return playerCharacters.filter(char => !inInitiative.has(char.id));
   };
 
-  // NEW: Add selected player character
   const addPlayerCharacter = () => {
     if (!selectedCharacter) return;
     
@@ -88,10 +85,9 @@ export function InitiativeTracker({
     };
 
     setTempInitiative([...tempInitiative, newEntry]);
-    setSelectedCharacter(''); // Reset selection
+    setSelectedCharacter('');
   };
 
-  // Enhanced: Add generic combatant
   const addGenericCombatant = () => {
     const newEntry: InitiativeEntry = {
       id: `temp-${Date.now()}`,
@@ -220,19 +216,18 @@ export function InitiativeTracker({
                   )}
                 </div>
 
-                 {/* ADD THIS SECTION - Enemy Controller Link */}
-                  {isCurrentTurn(entry.id) && combatState.isActive && entry.type === 'enemy' && (
-                    <div className="mt-2 pt-2 border-t border-black border-opacity-20">
-                      <a 
-                        href={`/enemy/${sessionId}`} 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center text-sm text-blue-900 hover:text-blue-800 font-bold"
-                      >
-                        Open Enemy Controller →
-                      </a>
-                    </div>
-                  )}
+                {isCurrentTurn(entry.id) && combatState.isActive && entry.type === 'enemy' && (
+                  <div className="mt-2 pt-2 border-t border-black border-opacity-20">
+                    <a 
+                      href={`/enemy/${sessionId}`} 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center text-sm text-blue-900 hover:text-blue-800 font-bold"
+                    >
+                      Open Enemy Controller →
+                    </a>
+                  </div>
+                )}
               </div>
             ))}
             
@@ -259,7 +254,7 @@ export function InitiativeTracker({
           </>
         ) : (
           <>
-            {/* NEW: Player Character Dropdown Section */}
+            {/* Player Character Dropdown Section */}
             {getAvailableCharacters().length > 0 && (
               <div className="mb-4 p-3 bg-blue-900/20 rounded-lg border border-blue-500">
                 <h4 className="font-serif font-bold text-blue-200 text-sm mb-2 flex items-center">
@@ -298,49 +293,60 @@ export function InitiativeTracker({
               </div>
             )}
 
-            {/* Initiative Order Editing */}
+            {/* Initiative Order Editing - FIXED LAYOUT */}
             {tempInitiative.map((entry, index) => (
-              <div key={entry.id} className="flex items-center space-x-2 p-3 bg-clair-shadow-600 border border-clair-shadow-400 rounded-lg">
-                <input
-                  type="number"
-                  value={entry.initiative}
-                  onChange={(e) => updateInitiativeEntry(entry.id, 'initiative', parseInt(e.target.value) || 0)}
-                  className="w-16 px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded text-center"
-                  min="1"
-                  max="30"
-                />
-                
-                <input
-                  type="text"
-                  value={entry.name}
-                  onChange={(e) => updateInitiativeEntry(entry.id, 'name', e.target.value)}
-                  className="flex-1 px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded"
-                  placeholder="Combatant name"
-                  readOnly={!!entry.characterId} // Prevent editing player names
-                />
-                
-                <select
-                  value={entry.type}
-                  onChange={(e) => updateInitiativeEntry(entry.id, 'type', e.target.value as 'player' | 'enemy')}
-                  className="px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded"
-                  disabled={!!entry.characterId} // Prevent changing player types
-                >
-                  <option value="player">Player</option>
-                  <option value="enemy">Enemy</option>
-                </select>
-                
-                {entry.characterId && (
-                  <span className="text-xs bg-blue-700 text-blue-100 px-2 py-1 rounded">
-                    PC
-                  </span>
-                )}
-                
-                <button
-                  onClick={() => removeInitiativeEntry(entry.id)}
-                  className="p-1 text-red-400 hover:text-red-300 transition-colors"
-                >
-                  <Minus className="w-4 h-4" />
-                </button>
+              <div 
+                key={entry.id} 
+                className="flex flex-col gap-2 p-3 bg-clair-shadow-600 border border-clair-shadow-400 rounded-lg"
+              >
+                {/* First row: Initiative and Name */}
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={entry.initiative}
+                    onChange={(e) => updateInitiativeEntry(entry.id, 'initiative', parseInt(e.target.value) || 0)}
+                    className="w-14 px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded text-center text-sm"
+                    min="1"
+                    max="30"
+                  />
+                  
+                  <input
+                    type="text"
+                    value={entry.name}
+                    onChange={(e) => updateInitiativeEntry(entry.id, 'name', e.target.value)}
+                    className="flex-1 px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded text-sm"
+                    placeholder="Combatant name"
+                    readOnly={!!entry.characterId}
+                  />
+                </div>
+
+                {/* Second row: Type selector, PC badge, and Remove button */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={entry.type}
+                    onChange={(e) => updateInitiativeEntry(entry.id, 'type', e.target.value as 'player' | 'enemy')}
+                    className="flex-1 px-2 py-1 bg-clair-shadow-800 text-clair-gold-200 border border-clair-shadow-400 rounded text-sm"
+                    disabled={!!entry.characterId}
+                  >
+                    <option value="player">Player</option>
+                    <option value="enemy">Enemy</option>
+                  </select>
+                  
+                  {entry.characterId && (
+                    <span className="text-xs bg-blue-700 text-blue-100 px-2 py-1 rounded font-bold">
+                      PC
+                    </span>
+                  )}
+                  
+                  {/* FIXED: Remove button is now always visible */}
+                  <button
+                    onClick={() => removeInitiativeEntry(entry.id)}
+                    className="p-2 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors flex-shrink-0"
+                    title="Remove from initiative"
+                  >
+                    <Minus className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
             ))}
             
@@ -387,6 +393,7 @@ export function InitiativeTracker({
             <li>• Set initiative values (higher goes first)</li>
             <li>• Click "Save Order" then "Start Combat"</li>
             <li>• Use "Next Turn" to advance between combatants</li>
+            <li>• <strong>Click the red minus button to remove any combatant</strong></li>
           </ul>
         </div>
       )}
