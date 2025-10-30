@@ -15,10 +15,11 @@ import { useMaelleAfterimage } from '../services/maelleAfterimageService';
 import { useFirestoreListener } from '../hooks/useFirestoreListener';
 import { FirestoreService } from '../services/firestoreService';
 import { useBrowserWarning } from '../hooks/useBrowserWarning';
-import type { MusicalNote } from '../types/versoType'; 
+import type { MusicalNote, VersoState } from '../types/versoType'; 
 import { handlePlayerLampAttack } from '../services/LampAttackService';
 import { db } from '../services/firebase'; 
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { VersoCombatService } from '../services/VersoCombatService';
 
 // Add proper interface for session tokens
 interface SessionToken extends BattleToken {
@@ -50,6 +51,14 @@ export function PlayerView() {
   const { session: firestoreSession } = useFirestoreListener(sessionId);
   const maelleAfterimage = useMaelleAfterimage(sessionId);
 
+  const [versoState, setVersoState] = useState<VersoState>({
+    activeNotes: [],
+    perfectPitchCharges: 3,
+    modulationCooldown: 0,
+    songOfAliciaActive: false,
+    songOfAliciaUsed: false,
+  });
+
   const {
     character,
     loading: characterLoading,
@@ -70,6 +79,24 @@ export function PlayerView() {
 
   // FIXED: Use the appropriate session (maelleAfterimage doesn't have session property)
   const session = firestoreSession || combatSession;
+
+  useEffect(() => {
+  if (character?.name.toLowerCase() === 'verso' && characterId) {
+    // Set up listener for Verso state changes
+    const characterRef = doc(db, 'characters', characterId);
+    const unsubscribe = onSnapshot(characterRef, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.combatState?.versoState) {
+          setVersoState(data.combatState.versoState);
+          console.log('📖 Verso state synced from Firebase:', data.combatState.versoState);
+        }
+      }
+    });
+    
+    return () => unsubscribe();
+  }
+}, [character?.name, characterId]);
 
   // NEW: Sync combat state with current battle round/turn
   useEffect(() => {
@@ -186,17 +213,11 @@ export function PlayerView() {
     songOfAliciaActive?: boolean;
     songOfAliciaUsed?: boolean;
   }) => {
-    if (!characterId || !sessionId) return;
+    if (!characterId) return;
     
     try {
-      // Get current state
-      const currentVersoState = persistentCombatState.combatState?.versoState || {
-        activeNotes: [],
-        perfectPitchCharges: 3,
-        modulationCooldown: 0,
-        songOfAliciaActive: false,
-        songOfAliciaUsed: false,
-      };
+      // Get current state from VersoCombatService
+      const currentVersoState = await VersoCombatService.getVersoState(characterId);
       
       // Merge updates with current state
       const newVersoState = {
@@ -204,10 +225,11 @@ export function PlayerView() {
         ...updates,
       };
       
-      // Save to Firebase - update the character's combat state document
-      const stateRef = doc(db, 'sessions', sessionId, 'characterStates', characterId);
-      await updateDoc(stateRef, {
-        versoState: newVersoState,
+      // Update in the same location as VersoCombatService (characters collection)
+      const characterRef = doc(db, 'characters', characterId);
+      await updateDoc(characterRef, {
+        'combatState.versoState': newVersoState,
+        updatedAt: serverTimestamp()
       });
       
       console.log('🎵 Verso state updated:', newVersoState);
@@ -215,6 +237,7 @@ export function PlayerView() {
       console.error('Failed to update Verso state:', error);
     }
   };
+
   const handleAbilityUse = async (ability: any) => {
     const abilityId = typeof ability === 'string' ? ability : ability.id;
     console.log(`${characterId} used ability: ${abilityId}`);
@@ -499,12 +522,12 @@ export function PlayerView() {
         sessionId={sessionId || 'test-session'}
         allTokens={tokensArray}
         session={session}
-        activeNotes={persistentCombatState.combatState?.versoState?.activeNotes || []}
-        perfectPitchCharges={persistentCombatState.combatState?.versoState?.perfectPitchCharges || 3}
-        modulationCooldown={persistentCombatState.combatState?.versoState?.modulationCooldown || 0}
-        songOfAliciaActive={persistentCombatState.combatState?.versoState?.songOfAliciaActive || false}
-        songOfAliciaUsed={persistentCombatState.combatState?.versoState?.songOfAliciaUsed || false}
-        onVersoStateChange={handleVersoStateChange} 
+        activeNotes={versoState.activeNotes}
+        perfectPitchCharges={versoState.perfectPitchCharges}
+        modulationCooldown={versoState.modulationCooldown}
+        songOfAliciaActive={versoState.songOfAliciaActive}
+        songOfAliciaUsed={versoState.songOfAliciaUsed}
+        onVersoStateChange={handleVersoStateChange}
       />
     );
   }

@@ -291,14 +291,6 @@ export function VersoCharacterSheet({
       try {
         await VersoCombatService.activateSongOfAlicia(character.id);
         
-        // ✅ ADD: Update state
-        if (onVersoStateChange) {
-          onVersoStateChange({
-            songOfAliciaActive: true,
-            songOfAliciaUsed: true
-          });
-        }
-        
         // Trigger ultimate video
         await triggerUltimate('verso', 'Song of Alicia');
         
@@ -316,38 +308,20 @@ export function VersoCharacterSheet({
 
   // Handle note selection from Perfect Pitch using VersoCombatService
   const handleSelectNote = async (note: MusicalNote) => {
-  try {
-    await VersoCombatService.choosePerfectPitchNote(character.id, note);
-    
-    // ✅ ADD: Update parent state
-    if (onVersoStateChange) {
-      onVersoStateChange({
-        activeNotes: [...activeNotes, note],
-        perfectPitchCharges: perfectPitchCharges - 1
-      });
+    try {
+      await VersoCombatService.choosePerfectPitchNote(character.id, note);
+      
+      setShowNoteSelectionModal(false);
+      alert(`🎵 Added ${note} to your collection!`);
+    } catch (error) {
+      console.error('Failed to choose note:', error);
+      alert(error instanceof Error ? error.message : 'Failed to choose note');
     }
-    
-    setShowNoteSelectionModal(false);
-    alert(`🎵 Added ${note} to your collection!`);
-  } catch (error) {
-    console.error('Failed to choose note:', error);
-    alert(error instanceof Error ? error.message : 'Failed to choose note');
-  }
-};
+  };
 
 const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
   try {
     await VersoCombatService.modulateNote(character.id, noteIndex, newNote);
-    
-    // ✅ ADD: Update parent state
-    if (onVersoStateChange) {
-      const updatedNotes = [...activeNotes];
-      updatedNotes[noteIndex] = newNote;
-      onVersoStateChange({
-        activeNotes: updatedNotes,
-        modulationCooldown: 2  // Set cooldown
-      });
-    }
     
     setShowModulationModal(false);
     alert(`🔄 Modulated note to ${newNote}!`);
@@ -379,11 +353,6 @@ const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
         const newNote = await VersoCombatService.generateNote(character.id);
         console.log(`🎵 Generated note: ${newNote}`);
         
-        // ✅ ADD: Update parent state with new note
-        if (onVersoStateChange && newNote) {
-          const updatedNotes = [...activeNotes, newNote];
-          onVersoStateChange({ activeNotes: updatedNotes });
-        }
       }
 
       if (selectedAction?.consumesNotes) {
@@ -392,13 +361,6 @@ const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
         console.log(`💥 Harmonic Resonance: ${result.harmonyType} - ${result.damage} damage`);
         console.log(`Effect: ${result.effect}`);
         
-        // ✅ ADD: Clear notes and update Song of Alicia state
-        if (onVersoStateChange) {
-          onVersoStateChange({ 
-            activeNotes: [],
-            songOfAliciaActive: false  // Consumed after use
-          });
-        }
       }
 
       // Call parent's target select handler
@@ -437,12 +399,7 @@ useEffect(() => {
   if (isMyTurn && combatActive && modulationCooldown > 0) {
     VersoCombatService.decreaseCooldowns(character.id)
       .then(() => {
-        // ✅ ADD: Update parent state
-        if (onVersoStateChange) {
-          onVersoStateChange({
-            modulationCooldown: Math.max(0, modulationCooldown - 1)
-          });
-        }
+        modulationCooldown: Math.max(0, modulationCooldown - 1)
       })
       .catch(err => {
         console.error('Failed to decrease cooldowns:', err);
