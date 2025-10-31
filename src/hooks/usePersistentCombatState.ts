@@ -1,7 +1,7 @@
 // src/hooks/usePersistentCombatState.ts - Updated for new character systems
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, setDoc, updateDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import type { CharacterCombatState } from '../types/character';
 import { CombatStateHelpers } from '../types/character';
@@ -82,10 +82,16 @@ export function usePersistentCombatState(
       updatingRef.current = true;
       
       const characterRef = doc(db, 'characters', characterId);
+      const docSnap = await getDoc(characterRef);
+    const currentData = docSnap.data();
+    const currentVersoState = currentData?.combatState?.versoState;
+     
       await updateDoc(characterRef, {
         combatState: {
           ...combatState,
           ...updates,
+          ...(currentVersoState ? { versoState: currentVersoState } : {}),
+
           lastUpdated: serverTimestamp(),
           lastSyncedAt: serverTimestamp()
         }

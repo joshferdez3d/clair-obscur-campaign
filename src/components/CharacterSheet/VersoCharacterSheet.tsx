@@ -89,12 +89,12 @@ export function VersoCharacterSheet({
   // Find Verso's token in the session
   const versoToken = session?.tokens 
     ? Object.entries(session.tokens).find(([key, t]: [string, any]) => {
-        console.log(`Checking token ${key}:`, {
-          tokenCharacterId: t.characterId,
-          tokenId: t.id,
-          tokenName: t.name,
-          tokenType: t.type,
-        });
+        // console.log(`Checking token ${key}:`, {
+        //   tokenCharacterId: t.characterId,
+        //   tokenId: t.id,
+        //   tokenName: t.name,
+        //   tokenType: t.type,
+        // });
         
         // Try multiple matching strategies
         return t.characterId === character.id || 

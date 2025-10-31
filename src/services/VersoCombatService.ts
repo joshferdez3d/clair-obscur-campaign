@@ -52,29 +52,30 @@ export class VersoCombatService {
   /**
    * Generate a random note (Harmonic Strike)
    */
-  static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
-    const state = await this.getVersoState(characterId);
-    
-    // Check if we have space for a new note
-    if (state.activeNotes.length >= 3) {
-      throw new Error('Already have 3 notes! Use Harmonic Resonance or Dissonant Purge first.');
-    }
-    
-    // Generate random note
-    const newNote = generateRandomNote();
-    const updatedNotes = [...state.activeNotes, newNote];
-    
-    // Update Firebase
-    const characterRef = doc(db, 'characters', characterId);
-    await updateDoc(characterRef, {
-      'combatState.versoState.activeNotes': updatedNotes,
-      updatedAt: serverTimestamp()
-    });
-    
-    console.log(`🎵 Generated note: ${newNote}. Active notes:`, updatedNotes);
-    return newNote;
+static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
+  const state = await this.getVersoState(characterId);
+  
+  if (state.activeNotes.length >= 3) {
+    throw new Error('Already have 3 notes! Use Harmonic Resonance or Dissonant Purge first.');
   }
   
+  const newNote = generateRandomNote();
+  const updatedNotes = [...state.activeNotes, newNote];
+  
+  // Update Firebase - use dot notation to preserve other versoState fields
+  const characterRef = doc(db, 'characters', characterId);
+  await updateDoc(characterRef, {
+    'combatState.versoState.activeNotes': updatedNotes,
+    'combatState.versoState.perfectPitchCharges': state.perfectPitchCharges,
+    'combatState.versoState.modulationCooldown': state.modulationCooldown,
+    'combatState.versoState.songOfAliciaUsed': state.songOfAliciaUsed,
+    'combatState.versoState.songOfAliciaActive': state.songOfAliciaActive,
+    updatedAt: serverTimestamp()
+  });
+  
+  console.log(`🎵 Generated note: ${newNote}. Active notes:`, updatedNotes);
+  return newNote;
+}
   /**
    * Choose a specific note (Perfect Pitch ability)
    */
