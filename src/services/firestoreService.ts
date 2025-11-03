@@ -1046,6 +1046,7 @@ static async processBuffsAndVanishedEnemies(sessionId: string): Promise<void> {
         ...CombatStateHelpers.createDefaultCombatState(),
         // Override with saved values
         ...data.combatState,
+        versoState: ensureCompleteVersoState(data.combatState.versoState),
         lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
         lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
       } : CombatStateHelpers.createDefaultCombatState(),
@@ -3251,6 +3252,7 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
           ...CombatStateHelpers.createDefaultCombatState(),
           // Override with saved values
           ...data.combatState,
+          versoState: ensureCompleteVersoState(data.combatState.versoState),
           lastUpdated: data.combatState.lastUpdated?.toDate() || new Date(),
           lastSyncedAt: data.combatState.lastSyncedAt?.toDate() || new Date()
         } : CombatStateHelpers.createDefaultCombatState(),

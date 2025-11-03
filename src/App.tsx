@@ -6,13 +6,9 @@ import { PlayerView } from './pages/PlayerView';
 import { GMView } from './pages/GMView';
 import { BattleMapView } from './pages/BattleMapView';
 import EnemyView from './pages/EnemyView'; // FIXED: Default import
-import { runMigrationIfNeeded } from './migrations/addVersoTurnTracking';
-import { useEffect } from 'react';
 
 function App() {
-    useEffect(() => {
-        runMigrationIfNeeded();
-      }, []);
+
   return (
     <ErrorBoundary>
       <Router>
