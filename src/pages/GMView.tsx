@@ -31,7 +31,7 @@ import { ExpeditionNPCModal } from '../components/Combat/ExpeditionNPCModal';
 import { BattlePresetManager } from '../components/GM/BattlePresetManager';
 import type { BattleMapPreset } from '../types';
 import { useAudio } from '../hooks/useAudio';
-import { Package, Settings } from 'lucide-react'; // Add Package to your existing lucide imports
+import { Package, Settings, Volume2, VolumeX, Loader } from 'lucide-react'; // Add Package to your existing lucide imports
 import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add this import
 import { InventoryService } from '../services/inventoryService'; // Add this import
 import { handleEnemyGroupTurn } from '../utils/enemyHelperUtil';
@@ -110,13 +110,17 @@ export function GMView() {
     playBattleMusic, 
     stopBattleMusic, 
     isBattleMusicPlaying,
-    isLoading: audioLoading 
+    isLoading: audioLoading,
+    pauseMusic, 
+    resumeMusic 
   } = useAudio();
 
   useBrowserWarning({
     enabled: true,
     message: '⚠️ Warning: You are the Game Master. Leaving will pause the game for all players. Are you sure?'
   });
+
+
 
   // Storm system integration
   const { stormState, pendingRoll, isStormActive } = useStormSystem(sessionId || '');
@@ -144,6 +148,22 @@ export function GMView() {
 
   // Move this hook to the top level
   const gmHPControl = useGMHPControl({ sessionId: sessionId || 'test-session' });
+
+    const combatActive = isCombatActive();
+
+  const toggleBattleMusic = useCallback(async () => {
+    if (isBattleMusicPlaying) {
+      pauseMusic();
+    } else {
+      // Check if we're in combat and should resume
+      if (combatActive) {
+        resumeMusic();
+      } else {
+        // If not in combat but user wants music, start it
+        await playBattleMusic();
+      }
+    }
+  }, [isBattleMusicPlaying, pauseMusic, resumeMusic, playBattleMusic, combatActive]);
 
   const calcDist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
     Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y)) * 5;
@@ -1579,7 +1599,7 @@ const handleResetSession = async () => {
   }
 
   const map = { id: session.mapId, name: 'Battle Arena', gridSize: { width: 20, height: 15 }, backgroundImage: undefined, gridVisible: true };
-  const combatActive = isCombatActive();
+
 
   // Provide fully-typed mutable fallback for InitiativeTracker
   const combatState: CombatState = session.combatState ?? {
@@ -1859,6 +1879,36 @@ const handleResetSession = async () => {
             >
               <Settings className="w-4 h-4 mr-2" />
               Stack Control Panel
+            </button>
+
+             {/* Add Audio Control Button */}
+            <button
+              onClick={toggleBattleMusic}
+              disabled={!combatActive || audioLoading}
+              className={`w-full px-4 py-2 rounded-lg font-display font-bold transition-all flex items-center justify-center gap-2
+                ${combatActive && !audioLoading
+                  ? isBattleMusicPlaying
+                    ? 'bg-green-600 hover:bg-green-700 text-white border-2 border-green-500'
+                    : 'bg-red-600 hover:bg-red-700 text-white border-2 border-red-500'
+                  : 'bg-clair-shadow-700 text-clair-gold-400 border-2 border-clair-gold-600 opacity-50 cursor-not-allowed'
+                }`}
+            >
+              {audioLoading ? (
+                <>
+                  <Loader className="w-5 h-5 animate-spin" />
+                  <span>Loading...</span>
+                </>
+              ) : isBattleMusicPlaying ? (
+                <>
+                  <Volume2 className="w-5 h-5" />
+                  <span>Mute Battle Music</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-5 h-5" />
+                  <span>Unmute Battle Music</span>
+                </>
+              )}
             </button>
 
             
