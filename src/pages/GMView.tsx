@@ -1911,13 +1911,6 @@ const handleResetSession = async () => {
                 </>
               )}
             </button>
-
-            <button 
-              onClick={() => runMigrationIfNeeded()}
-              className="bg-red-500 text-white p-2"
-            >
-              Run Verso Migration (One Time Only)
-            </button>
             {/* Emergency Storm Controls */}
             {isStormActive && (
               <button
