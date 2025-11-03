@@ -15,6 +15,8 @@ import { VersoCombatService } from '../../services/VersoCombatService';
 import { NOTE_INFO, HARMONY_EFFECTS, detectHarmonyType } from '../../utils/harmonyDetection';
 import { HarmonicDisplay } from '../Verso/HarmonicDisplay';
 import { ModulationModal } from '../Verso/ModulationModal';
+import { useVersoAudio } from '../../hooks/useVersoAudio';
+import { ResonanceAudioControls } from '../Verso/ResonanceAudioControls';
 
 interface VersoCharacterSheetProps {
   character: Character;
@@ -85,6 +87,7 @@ export function VersoCharacterSheet({
   const [selectedAction, setSelectedAction] = useState<any | null>(null);
   const [showNoteSelectionModal, setShowNoteSelectionModal] = useState(false);
   const [showModulationModal, setShowModulationModal] = useState(false);
+  const { setVolume, toggleAudio, getVolume, getIsEnabled } = useVersoAudio(activeNotes);
 
   // Find Verso's token in the session
   const versoToken = session?.tokens 
@@ -494,6 +497,8 @@ useEffect(() => {
           </button>
         </div>
 
+        
+
         {/* Movement */}
         {combatActive && isMyTurn && versoToken && (
           <div className="bg-clair-shadow-600 rounded-lg shadow-shadow p-4 border border-purple-500">
@@ -508,6 +513,15 @@ useEffect(() => {
             />
           </div>
         )}
+
+        <div className="mb-4">
+          <ResonanceAudioControls
+            volume={getVolume()}
+            isEnabled={getIsEnabled()}
+            onVolumeChange={setVolume}
+            onToggle={toggleAudio}
+          />
+        </div>
 
         {/* Harmonic Notes Display */}
         <HarmonicDisplay 
