@@ -36,6 +36,22 @@ import { StatusEffectService } from './statusEffectService';
 import type { BattleMapPreset, PresetSaveData } from '../types';
 import { ProtectionService } from './ProtectionService';
 import { updateEnemyGroupsInInitiative, cleanupDefeatedEnemies } from '../utils/enemyHelperUtil';
+import type { VersoState } from '../types/versoType';
+
+function ensureCompleteVersoState(versoState: any): VersoState | undefined {
+  if (!versoState) return undefined;
+  
+  return {
+    activeNotes: [],
+    perfectPitchCharges: 3,
+    modulationCooldown: 0,
+    songOfAliciaActive: false,
+    songOfAliciaUsed: false,
+    hasUsedModulationThisTurn: false,    // NEW property with default
+    hasUsedPerfectPitchThisTurn: false,  // NEW property with default
+    ...versoState, // Override defaults with any existing data
+  };
+}
 
 export class FirestoreService {
   // ========== ENHANCED RESET METHOD WITH SAMPLE DATA INITIALIZATION ==========
@@ -3545,7 +3561,7 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
             perfectPitchCharges: 3,
             modulationCooldown: 0,
             songOfAliciaActive: false,
-            songOfAliciaUsed: false
+            songOfAliciaUsed: false,
           },
           lastUpdated: serverTimestamp(),
           lastSyncedAt: serverTimestamp()

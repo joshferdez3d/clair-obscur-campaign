@@ -36,6 +36,7 @@ import { GMInventoryModal } from '../components/GM/GMInventoryModal'; // Add thi
 import { InventoryService } from '../services/inventoryService'; // Add this import
 import { handleEnemyGroupTurn } from '../utils/enemyHelperUtil';
 import { LongRestButton } from '../components/GM/LongRestButton';
+import { runMigrationIfNeeded } from '../migrations/addVersoTurnTracking';
 
 import { 
   getEnemyGroups, 
@@ -1911,7 +1912,12 @@ const handleResetSession = async () => {
               )}
             </button>
 
-            
+            <button 
+              onClick={() => runMigrationIfNeeded()}
+              className="bg-red-500 text-white p-2"
+            >
+              Run Verso Migration (One Time Only)
+            </button>
             {/* Emergency Storm Controls */}
             {isStormActive && (
               <button

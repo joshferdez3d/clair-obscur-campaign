@@ -181,7 +181,9 @@ export class CombatStateHelpers {
         perfectPitchCharges: 3,
         modulationCooldown: 0,
         songOfAliciaActive: false,
-        songOfAliciaUsed: false
+        songOfAliciaUsed: false,
+        hasUsedModulationThisTurn: false,
+        hasUsedPerfectPitchThisTurn: false
       },
       
       // Universal defaults
@@ -211,7 +213,9 @@ export class CombatStateHelpers {
         perfectPitchCharges: 3,
         modulationCooldown: 0,
         songOfAliciaActive: false,
-        songOfAliciaUsed: false
+        songOfAliciaUsed: false,
+        hasUsedModulationThisTurn: false,
+        hasUsedPerfectPitchThisTurn: false,
       },
 
       bonusActionCooldown: 0,

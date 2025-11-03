@@ -57,6 +57,8 @@ export function PlayerView() {
     modulationCooldown: 0,
     songOfAliciaActive: false,
     songOfAliciaUsed: false,
+    hasUsedModulationThisTurn: false,     // NEW
+    hasUsedPerfectPitchThisTurn: false,
   });
 
   const {
@@ -81,22 +83,42 @@ export function PlayerView() {
   const session = firestoreSession || combatSession;
 
   useEffect(() => {
-  if (character?.name.toLowerCase() === 'verso' && characterId) {
-    // Set up listener for Verso state changes
-    const characterRef = doc(db, 'characters', characterId);
-    const unsubscribe = onSnapshot(characterRef, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.combatState?.versoState) {
-          setVersoState(data.combatState.versoState);
+    if (character?.name.toLowerCase() === 'verso' && characterId) {
+      const characterRef = doc(db, 'characters', characterId);
+      
+      const unsubscribe = onSnapshot(characterRef, (doc) => {
+        const data = doc.data();
+        if (data?.combatState?.versoState) {
+          setVersoState({
+            ...data.combatState.versoState,
+            // Ensure new properties exist with defaults
+            hasUsedModulationThisTurn: data.combatState.versoState.hasUsedModulationThisTurn || false,
+            hasUsedPerfectPitchThisTurn: data.combatState.versoState.hasUsedPerfectPitchThisTurn || false,
+          });
           console.log('📖 Verso state synced from Firebase:', data.combatState.versoState);
         }
-      }
-    });
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [character?.name, characterId]);
+
+  // 3. Add a new effect to handle turn start for Verso:
+  useEffect(() => {
+    const isVersosTurn = session?.combatState?.currentTurn === characterId && 
+                        character?.name.toLowerCase() === 'verso';
     
-    return () => unsubscribe();
-  }
-}, [character?.name, characterId]);
+    if (isVersosTurn && !previousTurnWasVerso) {
+      // It's the start of Verso's turn - call the service to reset turn flags
+      console.log('🎵 Starting Verso\'s turn - resetting ability usage flags');
+      VersoCombatService.startNewTurn(characterId);
+    }
+    
+    setPreviousTurnWasVerso(isVersosTurn);
+  }, [session?.combatState?.currentTurn, characterId, character?.name]);
+
+  // 4. Add the state variable for tracking previous turn:
+  const [previousTurnWasVerso, setPreviousTurnWasVerso] = useState(false);
 
   // NEW: Sync combat state with current battle round/turn
   useEffect(() => {
@@ -212,6 +234,8 @@ export function PlayerView() {
     modulationCooldown?: number;
     songOfAliciaActive?: boolean;
     songOfAliciaUsed?: boolean;
+    hasUsedModulationThisTurn?: boolean;     // NEW: Add this
+    hasUsedPerfectPitchThisTurn?: boolean;   // NEW: Add this
   }) => {
     if (!characterId) return;
     
@@ -527,6 +551,8 @@ export function PlayerView() {
         modulationCooldown={versoState.modulationCooldown}
         songOfAliciaActive={versoState.songOfAliciaActive}
         songOfAliciaUsed={versoState.songOfAliciaUsed}
+        hasUsedModulationThisTurn={versoState.hasUsedModulationThisTurn}        
+        hasUsedPerfectPitchThisTurn={versoState.hasUsedPerfectPitchThisTurn} 
         onVersoStateChange={handleVersoStateChange}
       />
     );

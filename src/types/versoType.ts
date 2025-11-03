@@ -16,6 +16,8 @@ export interface VersoState {
   modulationCooldown: number;          // Turns remaining
   songOfAliciaUsed: boolean;           // Once per battle
   songOfAliciaActive: boolean;         // Active until next resonance
+  hasUsedModulationThisTurn: boolean;  // Reset at start of Verso's turn
+  hasUsedPerfectPitchThisTurn: boolean;
 }
 
 export interface HarmonyEffect {

@@ -1,56 +1,39 @@
 // src/services/VersoCombatService.ts
+// Updated to enforce once-per-turn usage for Modulation and Perfect Pitch
+
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { MusicalNote, VersoState } from '../types/versoType';
-import { generateRandomNote, detectHarmonyType, getHarmonyEffect, HARMONY_EFFECTS } from '../utils/harmonyDetection';
+import { detectHarmonyType, HARMONY_EFFECTS } from '../utils/harmonyDetection';
 
 export class VersoCombatService {
-  
   /**
-   * Initialize Verso's state in Firebase (called once when character is created)
-   */
-  static async initializeVersoState(characterId: string = 'verso'): Promise<void> {
-    const characterRef = doc(db, 'characters', characterId);
-    
-    const initialState: VersoState = {
-      activeNotes: [],
-      perfectPitchCharges: 3,
-      modulationCooldown: 0,
-      songOfAliciaUsed: false,
-      songOfAliciaActive: false
-    };
-    
-    await updateDoc(characterRef, {
-      'combatState.versoState': initialState,
-      updatedAt: serverTimestamp()
-    });
-    
-    console.log('✅ Verso state initialized');
-  }
-  
-  /**
-   * Get current Verso state
+   * Get current Verso state from Firebase
    */
   static async getVersoState(characterId: string = 'verso'): Promise<VersoState> {
     const characterRef = doc(db, 'characters', characterId);
-    const snap = await getDoc(characterRef);
+    const characterDoc = await getDoc(characterRef);
     
-    if (!snap.exists()) {
-      throw new Error('Verso character not found');
+    if (!characterDoc.exists()) {
+      throw new Error('Character not found');
     }
     
-    const data = snap.data();
-    return data.combatState?.versoState || {
+    const data = characterDoc.data();
+    const versoState = data?.combatState?.versoState || {
       activeNotes: [],
       perfectPitchCharges: 3,
       modulationCooldown: 0,
       songOfAliciaUsed: false,
-      songOfAliciaActive: false
+      songOfAliciaActive: false,
+      hasUsedModulationThisTurn: false,
+      hasUsedPerfectPitchThisTurn: false
     };
+    
+    return versoState;
   }
-  
+
   /**
-   * Generate a random note that hasn't been used yet (Harmonic Strike)
+   * Generate a random note (Harmonic Strike ability)
    */
   static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
     const state = await this.getVersoState(characterId);
@@ -59,24 +42,17 @@ export class VersoCombatService {
       throw new Error('Already have 3 notes! Use Harmonic Resonance or Dissonant Purge first.');
     }
     
-    // Define all possible notes
     const ALL_NOTES: MusicalNote[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-    
-    // Filter out notes that are already active to get available notes
     const availableNotes = ALL_NOTES.filter(note => !state.activeNotes.includes(note));
     
-    // Safety check - should never happen with max 3 notes, but good to have
     if (availableNotes.length === 0) {
       throw new Error('All notes have been generated! No duplicates allowed.');
     }
     
-    // Pick a random note from ONLY the available ones
     const randomIndex = Math.floor(Math.random() * availableNotes.length);
     const newNote = availableNotes[randomIndex];
-    
     const updatedNotes = [...state.activeNotes, newNote];
     
-    // Update Firebase - use dot notation to preserve other versoState fields
     const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       'combatState.versoState.activeNotes': updatedNotes,
@@ -84,19 +60,25 @@ export class VersoCombatService {
       'combatState.versoState.modulationCooldown': state.modulationCooldown,
       'combatState.versoState.songOfAliciaUsed': state.songOfAliciaUsed,
       'combatState.versoState.songOfAliciaActive': state.songOfAliciaActive,
+      'combatState.versoState.hasUsedModulationThisTurn': state.hasUsedModulationThisTurn,
+      'combatState.versoState.hasUsedPerfectPitchThisTurn': state.hasUsedPerfectPitchThisTurn,
       updatedAt: serverTimestamp()
     });
     
     console.log(`🎵 Generated unique note: ${newNote}. Active notes:`, updatedNotes);
-    console.log(`📊 ${availableNotes.length - 1} unique notes still available`);
     return newNote;
   }
 
   /**
-   * Choose a specific note (Perfect Pitch ability)
+   * Choose a specific note (Perfect Pitch ability) - NOW WITH ONCE-PER-TURN RESTRICTION
    */
   static async choosePerfectPitchNote(characterId: string = 'verso', chosenNote: MusicalNote): Promise<void> {
     const state = await this.getVersoState(characterId);
+    
+    // NEW: Check if already used this turn
+    if (state.hasUsedPerfectPitchThisTurn) {
+      throw new Error('Perfect Pitch can only be used once per turn!');
+    }
     
     // Check charges
     if (state.perfectPitchCharges <= 0) {
@@ -108,7 +90,7 @@ export class VersoCombatService {
       throw new Error('Already have 3 notes!');
     }
     
-    // NEW: Check for duplicate
+    // Check for duplicate
     if (state.activeNotes.includes(chosenNote)) {
       throw new Error(`${chosenNote} is already in your collection! Choose a different note.`);
     }
@@ -116,22 +98,29 @@ export class VersoCombatService {
     const updatedNotes = [...state.activeNotes, chosenNote];
     const newCharges = state.perfectPitchCharges - 1;
     
-    // Update Firebase
+    // Update Firebase - mark as used this turn
     const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       'combatState.versoState.activeNotes': updatedNotes,
       'combatState.versoState.perfectPitchCharges': newCharges,
+      'combatState.versoState.hasUsedPerfectPitchThisTurn': true, // NEW: Mark as used
       updatedAt: serverTimestamp()
     });
     
     console.log(`🎯 Perfect Pitch: Added ${chosenNote}. Charges remaining: ${newCharges}`);
+    console.log('Perfect Pitch is now disabled for this turn.');
   }
   
   /**
-   * Change a note to an adjacent one (Modulation ability)
+   * Change a note to an adjacent one (Modulation ability) - NOW WITH ONCE-PER-TURN RESTRICTION
    */
   static async modulateNote(characterId: string = 'verso', noteIndex: number, newNote: MusicalNote): Promise<void> {
     const state = await this.getVersoState(characterId);
+    
+    // NEW: Check if already used this turn
+    if (state.hasUsedModulationThisTurn) {
+      throw new Error('Modulation can only be used once per turn!');
+    }
     
     // Check cooldown
     if (state.modulationCooldown > 0) {
@@ -146,15 +135,17 @@ export class VersoCombatService {
     const updatedNotes = [...state.activeNotes];
     updatedNotes[noteIndex] = newNote;
     
-    // Update Firebase with 3-turn cooldown
+    // Update Firebase with 3-turn cooldown AND mark as used this turn
     const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       'combatState.versoState.activeNotes': updatedNotes,
       'combatState.versoState.modulationCooldown': 3,
+      'combatState.versoState.hasUsedModulationThisTurn': true, // NEW: Mark as used
       updatedAt: serverTimestamp()
     });
     
     console.log(`🔄 Modulated note ${noteIndex} to ${newNote}`);
+    console.log('Modulation is now disabled for this turn and on cooldown for 3 turns.');
   }
   
   /**
@@ -171,7 +162,6 @@ export class VersoCombatService {
       throw new Error('No notes to resonate!');
     }
     
-    // Detect harmony
     const harmonyType = detectHarmonyType(state.activeNotes);
     const harmonyEffect = HARMONY_EFFECTS[harmonyType];
     
@@ -179,21 +169,22 @@ export class VersoCombatService {
     let baseDamageRoll = 0;
     switch (harmonyType) {
       case 'consonant':
-        baseDamageRoll = Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1; // 3d8
+        baseDamageRoll = Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1;
         break;
       case 'dissonant':
       case 'supportive':
-        baseDamageRoll = Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1; // 2d8 or 2d6
+        baseDamageRoll = Math.floor(Math.random() * 8) + 1 + Math.floor(Math.random() * 8) + 1;
         break;
       case 'chaotic':
-        baseDamageRoll = Math.floor(Math.random() * 8) + 1; // 1d8 per target
+        baseDamageRoll = Math.floor(Math.random() * 8) + 1;
         break;
     }
     
     const charisma = 4; // +4 CHA modifier
-    const totalDamage = state.songOfAliciaActive ? (baseDamageRoll + charisma) * 2 : baseDamageRoll + charisma;
+    const totalDamage = state.songOfAliciaActive ? 
+      (baseDamageRoll + charisma) * 2 : baseDamageRoll + charisma;
     
-    // Clear notes and Song of Alicia active status
+    // Clear notes and deactivate Song of Alicia if used
     const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       'combatState.versoState.activeNotes': [],
@@ -201,7 +192,7 @@ export class VersoCombatService {
       updatedAt: serverTimestamp()
     });
     
-    console.log(`💥 Harmonic Resonance (${harmonyType}): ${totalDamage} damage`);
+    console.log(`💥 Harmonic Resonance executed: ${harmonyType} harmony`);
     
     return {
       harmonyType: harmonyEffect.name,
@@ -211,7 +202,7 @@ export class VersoCombatService {
   }
   
   /**
-   * Clear all notes (Dissonant Purge)
+   * Use Dissonant Purge (clear notes and deal AOE damage)
    */
   static async dissonantPurge(characterId: string = 'verso'): Promise<number> {
     const state = await this.getVersoState(characterId);
@@ -220,21 +211,17 @@ export class VersoCombatService {
       throw new Error('No notes to purge!');
     }
     
-    // Damage = 1d6 per note
     const noteCount = state.activeNotes.length;
-    let totalDamage = 0;
-    for (let i = 0; i < noteCount; i++) {
-      totalDamage += Math.floor(Math.random() * 6) + 1;
-    }
+    const totalDamage = noteCount * (Math.floor(Math.random() * 6) + 1);
     
-    // Clear notes
+    // Clear all notes
     const characterRef = doc(db, 'characters', characterId);
     await updateDoc(characterRef, {
       'combatState.versoState.activeNotes': [],
       updatedAt: serverTimestamp()
     });
     
-    console.log(`💣 Dissonant Purge: Cleared ${noteCount} notes for ${totalDamage} AOE damage`);
+    console.log(`💣 Dissonant Purge: Cleared ${noteCount} notes for ${totalDamage} damage`);
     return totalDamage;
   }
   
@@ -245,7 +232,7 @@ export class VersoCombatService {
     const state = await this.getVersoState(characterId);
     
     if (state.songOfAliciaUsed) {
-      throw new Error('Song of Alicia already used this battle!');
+      throw new Error('Song of Alicia has already been used this battle!');
     }
     
     // Activate Song of Alicia
@@ -260,22 +247,33 @@ export class VersoCombatService {
   }
   
   /**
-   * Decrease cooldowns at turn start
+   * UPDATED: Reset turn-based flags AND decrease cooldowns at turn start
    */
-  static async decreaseCooldowns(characterId: string = 'verso'): Promise<void> {
+  static async startNewTurn(characterId: string = 'verso'): Promise<void> {
     const state = await this.getVersoState(characterId);
     
-    if (state.modulationCooldown > 0) {
-      const newCooldown = state.modulationCooldown - 1;
-      
-      const characterRef = doc(db, 'characters', characterId);
-      await updateDoc(characterRef, {
-        'combatState.versoState.modulationCooldown': newCooldown,
-        updatedAt: serverTimestamp()
-      });
-      
-      console.log(`⏳ Modulation cooldown: ${newCooldown} turns remaining`);
-    }
+    const newCooldown = Math.max(0, state.modulationCooldown - 1);
+    
+    const characterRef = doc(db, 'characters', characterId);
+    await updateDoc(characterRef, {
+      'combatState.versoState.modulationCooldown': newCooldown,
+      'combatState.versoState.hasUsedModulationThisTurn': false,  // NEW: Reset for new turn
+      'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset for new turn
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log(`⏳ New turn started for Verso`);
+    console.log(`   - Modulation cooldown: ${newCooldown} turns remaining`);
+    console.log(`   - Modulation and Perfect Pitch usage reset`);
+  }
+  
+  /**
+   * DEPRECATED: Use startNewTurn instead
+   * @deprecated
+   */
+  static async decreaseCooldowns(characterId: string = 'verso'): Promise<void> {
+    console.warn('decreaseCooldowns is deprecated. Use startNewTurn instead.');
+    await this.startNewTurn(characterId);
   }
   
   /**
@@ -288,6 +286,8 @@ export class VersoCombatService {
       'combatState.versoState.modulationCooldown': 0,
       'combatState.versoState.songOfAliciaUsed': false,
       'combatState.versoState.songOfAliciaActive': false,
+      'combatState.versoState.hasUsedModulationThisTurn': false,  // NEW: Reset
+      'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset
       // Don't reset Perfect Pitch charges - only long rest does that
       updatedAt: serverTimestamp()
     });
@@ -306,6 +306,8 @@ export class VersoCombatService {
       'combatState.versoState.modulationCooldown': 0,
       'combatState.versoState.songOfAliciaUsed': false,
       'combatState.versoState.songOfAliciaActive': false,
+      'combatState.versoState.hasUsedModulationThisTurn': false,  // NEW: Reset
+      'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset
       updatedAt: serverTimestamp()
     });
     

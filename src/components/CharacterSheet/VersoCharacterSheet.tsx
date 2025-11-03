@@ -1,6 +1,6 @@
 // src/components/CharacterSheet/VersoCharacterSheet.tsx
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Target, Zap, Music, Volume2, Trash2, User, Package } from 'lucide-react';
+import { Sparkles, Target, Zap, Music, Volume2, Trash2, User, Package, RefreshCw } from 'lucide-react';
 import { HPTracker } from './HPTracker';
 import { StatDisplay } from './StatDisplay';
 import { EnemyTargetingModal } from '../Combat/EnemyTargetingModal';
@@ -55,6 +55,9 @@ interface VersoCharacterSheetProps {
     songOfAliciaActive?: boolean;
     songOfAliciaUsed?: boolean;
   }) => void;
+
+  hasUsedModulationThisTurn?: boolean;
+  hasUsedPerfectPitchThisTurn?: boolean;
 }
 
 export function VersoCharacterSheet({
@@ -77,6 +80,8 @@ export function VersoCharacterSheet({
   songOfAliciaActive,
   songOfAliciaUsed,
   onVersoStateChange,
+  hasUsedModulationThisTurn = false,
+  hasUsedPerfectPitchThisTurn = false,
 }: VersoCharacterSheetProps) {
   const [selectedTarget, setSelectedTarget] = useState<string>('');
   const [acRoll, setACRoll] = useState<string>('');
@@ -609,12 +614,17 @@ useEffect(() => {
                   </div>
                 </button>
 
-                {/* Perfect Pitch */}
                 <button
                   onClick={handlePerfectPitch}
-                  disabled={!isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3}
+                  disabled={
+                    !isMyTurn || 
+                    !combatActive || 
+                    perfectPitchCharges <= 0 || 
+                    activeNotes.length >= 3 ||
+                    hasUsedPerfectPitchThisTurn  // NEW: Check if already used this turn
+                  }
                   className={`w-full ${
-                    !isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3
+                    !isMyTurn || !combatActive || perfectPitchCharges <= 0 || activeNotes.length >= 3 || hasUsedPerfectPitchThisTurn
                       ? 'bg-gray-600 opacity-50 cursor-not-allowed'
                       : 'bg-green-600 hover:bg-green-700'
                   } p-3 rounded-lg transition-colors text-left text-white`}
@@ -623,31 +633,61 @@ useEffect(() => {
                     <Target className="w-5 h-5 mr-2" />
                     <div className="flex-1">
                       <div className="font-bold">Perfect Pitch</div>
-                      <div className="text-sm opacity-90">Choose a specific note</div>
-                      <div className="text-xs text-green-200">{perfectPitchCharges} charges remaining</div>
+                      <div className="text-sm opacity-90">
+                        {hasUsedPerfectPitchThisTurn 
+                          ? 'Already used this turn' 
+                          : 'Choose a specific note'}
+                      </div>
+                      <div className="text-xs text-green-200">
+                        {perfectPitchCharges} charges remaining
+                        {hasUsedPerfectPitchThisTurn && ' • Used this turn'}
+                      </div>
                     </div>
+                    {hasUsedPerfectPitchThisTurn && (
+                      <span className="text-xs bg-yellow-600 px-2 py-1 rounded">
+                        Used
+                      </span>
+                    )}
                   </div>
                 </button>
 
-                {/* Modulation */}
                 <button
                   onClick={handleModulation}
-                  disabled={!isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0}
+                  disabled={
+                    !isMyTurn || 
+                    !combatActive || 
+                    modulationCooldown > 0 || 
+                    activeNotes.length === 0 ||
+                    hasUsedModulationThisTurn  // NEW: Check if already used this turn
+                  }
                   className={`w-full ${
-                    !isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0
+                    !isMyTurn || !combatActive || modulationCooldown > 0 || activeNotes.length === 0 || hasUsedModulationThisTurn
                       ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
+                      : 'bg-purple-600 hover:bg-purple-700'
                   } p-3 rounded-lg transition-colors text-left text-white`}
                 >
                   <div className="flex items-center">
-                    <Sparkles className="w-5 h-5 mr-2" />
+                    <RefreshCw className="w-5 h-5 mr-2" />
                     <div className="flex-1">
                       <div className="font-bold">Modulation</div>
-                      <div className="text-sm opacity-90">Change a note to an adjacent one</div>
-                      <div className="text-xs text-indigo-200">
-                        {modulationCooldown > 0 ? `Cooldown: ${modulationCooldown} turns` : 'No cooldown'}
+                      <div className="text-sm opacity-90">
+                        {hasUsedModulationThisTurn 
+                          ? 'Already used this turn'
+                          : modulationCooldown > 0 
+                            ? `On cooldown (${modulationCooldown} turns)`
+                            : 'Change note to adjacent'}
                       </div>
+                      {modulationCooldown > 0 && (
+                        <div className="text-xs text-purple-200">
+                          Cooldown: {modulationCooldown} turns
+                        </div>
+                      )}
                     </div>
+                    {hasUsedModulationThisTurn && (
+                      <span className="text-xs bg-yellow-600 px-2 py-1 rounded">
+                        Used
+                      </span>
+                    )}
                   </div>
                 </button>
 
