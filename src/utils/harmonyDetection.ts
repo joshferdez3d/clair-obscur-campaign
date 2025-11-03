@@ -12,8 +12,33 @@ export const NOTE_INFO: Record<MusicalNote, NoteInfo> = {
   'B': { note: 'B', color: '#78350f', emoji: '🟤', number: 7 },
 };
 
-// Harmony effect definitions
+// Three-note chord patterns (order doesn't matter)
+const CHORD_PATTERNS = {
+  // Major triads
+  major_triads: [
+    ['C', 'E', 'G'], // C Major
+    ['F', 'A', 'C'], // F Major
+    ['G', 'B', 'D']  // G Major
+  ],
+  // Minor triads
+  minor_triads: [
+    ['A', 'C', 'E'], // A Minor
+    ['D', 'F', 'A'], // D Minor
+    ['E', 'G', 'B']  // E Minor
+  ],
+  // Diminished
+  diminished_triad: [['B', 'D', 'F']], // B Diminished
+  // Suspended chords
+  suspended_chords: [
+    ['C', 'D', 'G'], // Csus2
+    ['C', 'F', 'G'], // Csus4
+    ['D', 'E', 'A']  // Dsus2
+  ]
+};
+
+// Updated harmony effects including three-note chords
 export const HARMONY_EFFECTS: Record<HarmonyType, HarmonyEffect> = {
+  // Two-note harmonies (existing)
   consonant: {
     type: 'consonant',
     name: 'Consonant Harmony',
@@ -49,8 +74,128 @@ export const HARMONY_EFFECTS: Record<HarmonyType, HarmonyEffect> = {
     effect: 'Hits up to 3 enemies in 20ft',
     color: '#ef4444',
     emoji: '🎭'
+  },
+  
+  // THREE-NOTE CHORD HARMONIES (NEW)
+  major_triad: {
+    type: 'major_triad',
+    name: '🌟 Triumphant Crescendo',
+    description: 'Heroic chord of victory',
+    baseDamage: '4d8 + CHA',
+    effect: 'Radiant damage + all allies gain Inspiration (advantage on next roll)',
+    color: '#ffd700',
+    emoji: '🌟'
+  },
+  minor_triad: {
+    type: 'minor_triad',
+    name: '🌙 Melancholic Echo',
+    description: 'Sorrowful chord of introspection',
+    baseDamage: '3d8 + CHA',
+    effect: 'Psychic damage + Sorrow (disadvantage on attacks for 2 turns, damage heals Versò 50%)',
+    color: '#9370db',
+    emoji: '🌙'
+  },
+  diminished_triad: {
+    type: 'diminished_triad',
+    name: '💀 Dissonant Collapse',
+    description: 'Unstable chord of destruction',
+    baseDamage: '3d10 + CHA',
+    effect: 'Necrotic damage + Harmonic Breakdown (1d8 damage when using abilities for 3 turns)',
+    color: '#8b0000',
+    emoji: '💀'
+  },
+  suspended_chord: {
+    type: 'suspended_chord',
+    name: '⚡ Temporal Suspension',
+    description: 'Unresolved chord of anticipation',
+    baseDamage: '2d8 + CHA',
+    effect: 'Force damage + Suspended Animation (skip turn but immune to damage)',
+    color: '#00ced1',
+    emoji: '⚡'
+  },
+  clustered_harmony: {
+    type: 'clustered_harmony',
+    name: '💫 Cascading Resonance',
+    description: 'Flowing chord of connection',
+    baseDamage: '3d6 + CHA',
+    effect: 'Chain lightning: jumps to nearest enemy for 2d6, then 1d6',
+    color: '#ff1493',
+    emoji: '💫'
+  },
+  modal_mixture: {
+    type: 'modal_mixture',
+    name: '🎭 Emotional Whiplash',
+    description: 'Conflicted chord of chaos',
+    baseDamage: '3d8 + CHA',
+    effect: 'Psychic damage + random: Joy/Rage/Fear/Despair',
+    color: '#ff00ff',
+    emoji: '🎭'
   }
 };
+
+/**
+ * Check if notes match a chord pattern (order doesn't matter)
+ */
+function matchesChordPattern(notes: MusicalNote[], pattern: string[]): boolean {
+  if (notes.length !== pattern.length) return false;
+  const sortedNotes = [...notes].sort();
+  const sortedPattern = [...pattern].sort();
+  return sortedNotes.every((note, i) => note === sortedPattern[i]);
+}
+
+/**
+ * Check if notes form a consecutive cluster (C-D-E, E-F-G, etc.)
+ */
+function isConsecutiveCluster(notes: MusicalNote[]): boolean {
+  if (notes.length !== 3) return false;
+  
+  const noteOrder = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+  const indices = notes.map(n => noteOrder.indexOf(n)).sort((a, b) => a - b);
+  
+  // Check if indices are consecutive
+  return indices[1] === indices[0] + 1 && indices[2] === indices[1] + 1;
+}
+
+/**
+ * Detect specific three-note chord type
+ */
+function detectThreeNoteChordType(notes: MusicalNote[]): HarmonyType | null {
+  if (notes.length !== 3) return null;
+  
+  // Check Major Triads
+  for (const pattern of CHORD_PATTERNS.major_triads) {
+    if (matchesChordPattern(notes, pattern)) {
+      return 'major_triad';
+    }
+  }
+  
+  // Check Minor Triads
+  for (const pattern of CHORD_PATTERNS.minor_triads) {
+    if (matchesChordPattern(notes, pattern)) {
+      return 'minor_triad';
+    }
+  }
+  
+  // Check Diminished
+  if (matchesChordPattern(notes, CHORD_PATTERNS.diminished_triad[0])) {
+    return 'diminished_triad';
+  }
+  
+  // Check Suspended
+  for (const pattern of CHORD_PATTERNS.suspended_chords) {
+    if (matchesChordPattern(notes, pattern)) {
+      return 'suspended_chord';
+    }
+  }
+  
+  // Check if it's a consecutive cluster
+  if (isConsecutiveCluster(notes)) {
+    return 'clustered_harmony';
+  }
+  
+  // If no specific pattern matches, it's a modal mixture
+  return 'modal_mixture';
+}
 
 /**
  * Detects the harmony type from a set of notes using music theory rules
@@ -65,7 +210,15 @@ export function detectHarmonyType(notes: MusicalNote[]): HarmonyType {
   // All same note = pure consonant
   if (uniqueNotes.length === 1) return 'consonant';
   
-  // Convert notes to semitones for interval calculation
+  // THREE-NOTE CHORD DETECTION (NEW)
+  if (uniqueNotes.length === 3) {
+    const chordType = detectThreeNoteChordType(uniqueNotes);
+    if (chordType) {
+      return chordType;
+    }
+  }
+  
+  // TWO-NOTE HARMONY DETECTION (existing logic)
   const noteToSemitone: Record<MusicalNote, number> = {
     'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11
   };
@@ -79,7 +232,6 @@ export function detectHarmonyType(notes: MusicalNote[]): HarmonyType {
   }
   
   // CONSONANT: Perfect intervals (Perfect 5th, Major 3rd, Perfect 4th)
-  // Examples: C-G (7 semitones), C-E (4 semitones), C-F (5 semitones)
   if (uniqueNotes.length === 2) {
     const interval = semitones[1] - semitones[0];
     if (interval === 7 || interval === 4 || interval === 5) {
@@ -87,37 +239,31 @@ export function detectHarmonyType(notes: MusicalNote[]): HarmonyType {
     }
   }
   
-  // Check for major/minor triads (consonant)
-  if (uniqueNotes.length === 3) {
-    const interval1 = semitones[1] - semitones[0];
-    const interval2 = semitones[2] - semitones[1];
-    
-    // Major triad: 4 + 3 semitones (e.g., C-E-G)
-    // Minor triad: 3 + 4 semitones (e.g., A-C-E)
-    if ((interval1 === 4 && interval2 === 3) || (interval1 === 3 && interval2 === 4)) {
-      return 'consonant';
-    }
-  }
-  
-  // DISSONANT: Minor 2nd (1 semitone) or Major 7th (11 semitones) - creates tension
+  // DISSONANT: Minor 2nd (1 semitone) or Major 7th (11 semitones)
   const hasCloseInterval = intervals.some(i => i === 1 || i === 11);
   if (hasCloseInterval) return 'dissonant';
   
-  // SUPPORTIVE: Major 2nd (2 semitones) or Major 6th (9 semitones) - gentle, flowing
+  // SUPPORTIVE: Major 2nd (2 semitones) or Major 6th (9 semitones)
   const hasSupportiveInterval = intervals.some(i => i === 2 || i === 9);
   if (hasSupportiveInterval) return 'supportive';
   
-  // CHAOTIC: Everything else (augmented/diminished intervals, complex patterns)
+  // CHAOTIC: Everything else
   return 'chaotic';
 }
 
 /**
- * Generate a random note (1d7 roll)
+ * Generate a random note (1d7 roll) - Updated to prevent duplicates
  */
-export function generateRandomNote(): MusicalNote {
+export function generateRandomNote(excludeNotes: MusicalNote[] = []): MusicalNote {
   const notes: MusicalNote[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
-  const roll = Math.floor(Math.random() * 7);
-  return notes[roll];
+  const availableNotes = notes.filter(n => !excludeNotes.includes(n));
+  
+  if (availableNotes.length === 0) {
+    throw new Error('No available notes to generate');
+  }
+  
+  const roll = Math.floor(Math.random() * availableNotes.length);
+  return availableNotes[roll];
 }
 
 /**

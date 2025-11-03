@@ -3,7 +3,12 @@
 
 export type MusicalNote = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B';
 
-export type HarmonyType = 'consonant' | 'dissonant' | 'supportive' | 'chaotic';
+export type HarmonyType = 'consonant' | 'dissonant' | 'supportive' | 'chaotic' | 'major_triad'
+  | 'minor_triad'
+  | 'diminished_triad'
+  | 'suspended_chord'
+  | 'clustered_harmony'
+  | 'modal_mixture';
 
 export interface VersoState {
   activeNotes: MusicalNote[];          // Up to 3 notes

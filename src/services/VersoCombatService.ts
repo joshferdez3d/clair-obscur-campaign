@@ -50,32 +50,48 @@ export class VersoCombatService {
   }
   
   /**
-   * Generate a random note (Harmonic Strike)
+   * Generate a random note that hasn't been used yet (Harmonic Strike)
    */
-static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
-  const state = await this.getVersoState(characterId);
-  
-  if (state.activeNotes.length >= 3) {
-    throw new Error('Already have 3 notes! Use Harmonic Resonance or Dissonant Purge first.');
+  static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
+    const state = await this.getVersoState(characterId);
+    
+    if (state.activeNotes.length >= 3) {
+      throw new Error('Already have 3 notes! Use Harmonic Resonance or Dissonant Purge first.');
+    }
+    
+    // Define all possible notes
+    const ALL_NOTES: MusicalNote[] = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+    
+    // Filter out notes that are already active to get available notes
+    const availableNotes = ALL_NOTES.filter(note => !state.activeNotes.includes(note));
+    
+    // Safety check - should never happen with max 3 notes, but good to have
+    if (availableNotes.length === 0) {
+      throw new Error('All notes have been generated! No duplicates allowed.');
+    }
+    
+    // Pick a random note from ONLY the available ones
+    const randomIndex = Math.floor(Math.random() * availableNotes.length);
+    const newNote = availableNotes[randomIndex];
+    
+    const updatedNotes = [...state.activeNotes, newNote];
+    
+    // Update Firebase - use dot notation to preserve other versoState fields
+    const characterRef = doc(db, 'characters', characterId);
+    await updateDoc(characterRef, {
+      'combatState.versoState.activeNotes': updatedNotes,
+      'combatState.versoState.perfectPitchCharges': state.perfectPitchCharges,
+      'combatState.versoState.modulationCooldown': state.modulationCooldown,
+      'combatState.versoState.songOfAliciaUsed': state.songOfAliciaUsed,
+      'combatState.versoState.songOfAliciaActive': state.songOfAliciaActive,
+      updatedAt: serverTimestamp()
+    });
+    
+    console.log(`🎵 Generated unique note: ${newNote}. Active notes:`, updatedNotes);
+    console.log(`📊 ${availableNotes.length - 1} unique notes still available`);
+    return newNote;
   }
-  
-  const newNote = generateRandomNote();
-  const updatedNotes = [...state.activeNotes, newNote];
-  
-  // Update Firebase - use dot notation to preserve other versoState fields
-  const characterRef = doc(db, 'characters', characterId);
-  await updateDoc(characterRef, {
-    'combatState.versoState.activeNotes': updatedNotes,
-    'combatState.versoState.perfectPitchCharges': state.perfectPitchCharges,
-    'combatState.versoState.modulationCooldown': state.modulationCooldown,
-    'combatState.versoState.songOfAliciaUsed': state.songOfAliciaUsed,
-    'combatState.versoState.songOfAliciaActive': state.songOfAliciaActive,
-    updatedAt: serverTimestamp()
-  });
-  
-  console.log(`🎵 Generated note: ${newNote}. Active notes:`, updatedNotes);
-  return newNote;
-}
+
   /**
    * Choose a specific note (Perfect Pitch ability)
    */
@@ -90,6 +106,11 @@ static async generateNote(characterId: string = 'verso'): Promise<MusicalNote> {
     // Check space
     if (state.activeNotes.length >= 3) {
       throw new Error('Already have 3 notes!');
+    }
+    
+    // NEW: Check for duplicate
+    if (state.activeNotes.includes(chosenNote)) {
+      throw new Error(`${chosenNote} is already in your collection! Choose a different note.`);
     }
     
     const updatedNotes = [...state.activeNotes, chosenNote];
