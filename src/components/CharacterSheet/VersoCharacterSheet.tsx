@@ -54,6 +54,8 @@ interface VersoCharacterSheetProps {
     modulationCooldown?: number;
     songOfAliciaActive?: boolean;
     songOfAliciaUsed?: boolean;
+    hasUsedModulationThisTurn?: boolean;      // ADD THIS
+    hasUsedPerfectPitchThisTurn?: boolean;   
   }) => void;
 
   hasUsedModulationThisTurn?: boolean;
@@ -318,6 +320,13 @@ export function VersoCharacterSheet({
   const handleSelectNote = async (note: MusicalNote) => {
     try {
       await VersoCombatService.choosePerfectPitchNote(character.id, note);
+
+      // UPDATE: Immediately update the state to reflect the usage
+      if (onVersoStateChange) {
+        onVersoStateChange({
+          hasUsedPerfectPitchThisTurn: true  // Mark as used immediately
+        });
+      }
       
       setShowNoteSelectionModal(false);
       alert(`🎵 Added ${note} to your collection!`);
@@ -330,6 +339,11 @@ export function VersoCharacterSheet({
 const handleModulateNote = async (noteIndex: number, newNote: MusicalNote) => {
   try {
     await VersoCombatService.modulateNote(character.id, noteIndex, newNote);
+     if (onVersoStateChange) {
+        onVersoStateChange({
+          hasUsedModulationThisTurn: true  // Mark as used immediately
+        });
+      }
     
     setShowModulationModal(false);
     alert(`🔄 Modulated note to ${newNote}!`);
