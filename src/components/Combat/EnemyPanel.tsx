@@ -168,6 +168,11 @@ export function EnemyPanel({ enemies, isGMView = false, onRemoveEnemy, onEditHP 
                       👁️ Blinded ({enemy.statusEffects.blind.turnsRemaining})
                     </span>
                   )}
+                  {enemy.statusEffects.mad && (
+                    <span className="text-xs bg-purple-800 text-purple-200 px-2 py-0.5 rounded flex items-center gap-1 animate-pulse">
+                      😵‍💫 MAD - Attacks Allies!
+                    </span>
+                  )}
                 </div>
               )}
             </div>

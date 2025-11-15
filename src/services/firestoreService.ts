@@ -47,6 +47,7 @@ function ensureCompleteVersoState(versoState: any): VersoState | undefined {
     modulationCooldown: 0,
     songOfAliciaActive: false,
     songOfAliciaUsed: false,
+    soundOfSilenceLastUsedRound: 0,
     hasUsedModulationThisTurn: false,    // NEW property with default
     hasUsedPerfectPitchThisTurn: false,  // NEW property with default
     ...versoState, // Override defaults with any existing data
@@ -3564,6 +3565,9 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
             modulationCooldown: 0,
             songOfAliciaActive: false,
             songOfAliciaUsed: false,
+            soundOfSilenceLastUsedRound: 0,  // ADD THIS LINE
+            hasUsedModulationThisTurn: false,
+            hasUsedPerfectPitchThisTurn: false,
           },
           lastUpdated: serverTimestamp(),
           lastSyncedAt: serverTimestamp()
@@ -3617,6 +3621,15 @@ static async advanceTurnWithBuffs(sessionId: string, nextPlayerId: string) {
             type: 'action',
             effect: 'Heal all allies 4d8+CHA, advantage on attacks for 1 round',
             range: 'All allies'
+          },
+          {
+            id: 'sound-of-silence',
+            name: "Sound of Silence (Ultimate)",
+            description: 'All enemies become mad and attack each other for one turn.',
+            type: 'action',
+            effect: 'All enemies gain MAD status - attack closest enemy. Clears at start of your next turn.',
+            range: 'All enemies',
+            cooldown: 5
           }
         ],
         createdAt: serverTimestamp(),

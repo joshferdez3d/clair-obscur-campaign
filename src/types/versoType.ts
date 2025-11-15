@@ -1,5 +1,5 @@
-// src/types/verso.ts
-// Add these types to your existing types/index.ts or keep as separate file
+// src/types/versoType.ts
+// COMPLETE FILE - Replace your entire versoType.ts with this
 
 export type MusicalNote = 'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B';
 
@@ -18,6 +18,7 @@ export interface VersoState {
   songOfAliciaActive: boolean;         // Active until next resonance
   hasUsedModulationThisTurn: boolean;  // Reset at start of Verso's turn
   hasUsedPerfectPitchThisTurn: boolean;
+  soundOfSilenceLastUsedRound: number; // NEW: Track which round Sound of Silence was last used (0 = never used)
 }
 
 export interface HarmonyEffect {

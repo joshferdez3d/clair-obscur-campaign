@@ -108,6 +108,13 @@ export interface BattleToken {
       activatedOnRound: number;
       description: string;
     };
+    mad?: {
+      turnsRemaining: number;
+      appliedBy: string;
+      appliedOnRound: number;
+      source: string;
+      clearsOnVersoTurn: boolean;
+    };
   };
 
   controlledBy?: 'maelle' | 'sciel' | 'gm';

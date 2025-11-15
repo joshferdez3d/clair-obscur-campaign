@@ -295,7 +295,14 @@ export function Token({
       {/* Status Effect Indicators - simplified for brevity */}
       {token.statusEffects && (
         <div className="absolute -top-2 -left-2 flex gap-1">
-          {/* Add your status effect indicators here */}
+          {token.statusEffects.mad && (
+            <span 
+              className="text-lg animate-bounce" 
+              title="MAD - Will attack allies (Clears at Verso's turn)"
+            >
+              😵‍💫
+            </span>
+          )}
         </div>
       )}
     </div>

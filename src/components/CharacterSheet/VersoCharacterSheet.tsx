@@ -47,7 +47,7 @@ interface VersoCharacterSheetProps {
   modulationCooldown: number;
   songOfAliciaActive: boolean;
   songOfAliciaUsed: boolean;
-
+  soundOfSilenceLastUsedRound?: number;
   onVersoStateChange?: (updates: {
     activeNotes?: MusicalNote[];
     perfectPitchCharges?: number;
@@ -55,7 +55,8 @@ interface VersoCharacterSheetProps {
     songOfAliciaActive?: boolean;
     songOfAliciaUsed?: boolean;
     hasUsedModulationThisTurn?: boolean;      // ADD THIS
-    hasUsedPerfectPitchThisTurn?: boolean;   
+    hasUsedPerfectPitchThisTurn?: boolean; 
+    soundOfSilenceLastUsedRound?: number;  // ADD THIS LINE TOO
   }) => void;
 
   hasUsedModulationThisTurn?: boolean;
@@ -81,6 +82,7 @@ export function VersoCharacterSheet({
   modulationCooldown,
   songOfAliciaActive,
   songOfAliciaUsed,
+  soundOfSilenceLastUsedRound = 0,
   onVersoStateChange,
   hasUsedModulationThisTurn = false,
   hasUsedPerfectPitchThisTurn = false,
@@ -288,30 +290,49 @@ export function VersoCharacterSheet({
     }
   };
 
-  // Handle Song of Alicia (ultimate using VersoCombatService)
-  const handleSongOfAlicia = async () => {
+  const handleSoundOfSilence = async () => {
     if (!isMyTurn || !combatActive) return;
-
-    if (songOfAliciaUsed) {
-      alert('Song of Alicia has already been used this battle!');
+    if (!sessionId) {
+      alert('Session ID not available!');
       return;
     }
 
-    if (window.confirm('Activate Song of Alicia? Your next Harmonic Resonance will deal double damage!')) {
+    // Calculate cooldown
+    const currentRound = session?.combatState?.round || 1;
+    const lastUsedRound = soundOfSilenceLastUsedRound || 0;
+    const roundsSinceLastUse = currentRound - lastUsedRound;
+    const cooldownRemaining = lastUsedRound > 0 ? Math.max(0, 5 - roundsSinceLastUse) : 0;
+
+    if (cooldownRemaining > 0) {
+      alert(`Sound of Silence is on cooldown! ${cooldownRemaining} rounds remaining.`);
+      return;
+    }
+
+    const aliveEnemies = availableEnemies?.filter(e => (e.hp ?? 0) > 0) || [];
+    if (aliveEnemies.length === 0) {
+      alert('No enemies to affect!');
+      return;
+    }
+
+    if (window.confirm(
+      `Activate Sound of Silence?\n\n` +
+      `All ${aliveEnemies.length} enemies will become MAD and attack each other!\n\n` +
+      `⚠️ Turn ends immediately • ⏳ 5 round cooldown`
+    )) {
       try {
-        await VersoCombatService.activateSongOfAlicia(character.id);
+        await VersoCombatService.activateSoundOfSilence(character.id, sessionId);
+        await triggerUltimate('verso', 'Sound of Silence');
         
-        // Trigger ultimate video
-        await triggerUltimate('verso', 'Song of Alicia');
+        alert(
+          `🔇 Sound of Silence activated!\n\n` +
+          `${aliveEnemies.length} enemies are MAD! DM handles their attacks.\n` +
+          `Mad effect clears at start of your next turn.`
+        );
         
-        alert('🎼 Song of Alicia activated! Your next Harmonic Resonance will deal DOUBLE DAMAGE!');
-        
-        if (onEndTurn) {
-          setTimeout(() => onEndTurn(), 500);
-        }
+        if (onEndTurn) setTimeout(() => onEndTurn(), 500);
       } catch (error) {
-        console.error('Failed to activate Song of Alicia:', error);
-        alert(error instanceof Error ? error.message : 'Failed to activate Song of Alicia');
+        console.error('Failed to activate Sound of Silence:', error);
+        alert(error instanceof Error ? error.message : 'Failed to activate Sound of Silence');
       }
     }
   };
@@ -727,26 +748,41 @@ useEffect(() => {
 
                 {/* Ultimate - Song of Alicia */}
                 <button
-                  onClick={handleSongOfAlicia}
-                  disabled={!isMyTurn || !combatActive || songOfAliciaUsed}
+                  onClick={handleSoundOfSilence}
+                  disabled={!isMyTurn || !combatActive || 
+                    (soundOfSilenceLastUsedRound && 
+                     (session?.combatState?.round || 1) - soundOfSilenceLastUsedRound < 5)}
                   className={`w-full ${
-                    !isMyTurn || !combatActive || songOfAliciaUsed
+                    !isMyTurn || !combatActive || 
+                    (soundOfSilenceLastUsedRound && 
+                     (session?.combatState?.round || 1) - soundOfSilenceLastUsedRound < 5)
                       ? 'bg-gray-600 opacity-50 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-yellow-600 to-pink-600 hover:from-yellow-700 hover:to-pink-700'
-                  } p-3 rounded-lg transition-colors text-left text-white border-2 border-yellow-400`}
+                      : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-700'
+                  } p-3 rounded-lg transition-colors text-left text-white border-2 border-purple-400`}
                 >
                   <div className="flex items-center">
                     <Volume2 className="w-5 h-5 mr-2" />
                     <div className="flex-1">
-                      <div className="font-bold">Song of Alicia</div>
-                      <div className="text-sm opacity-90">Next Harmonic Resonance deals DOUBLE damage</div>
-                      <div className="text-xs text-yellow-200">
-                        {songOfAliciaUsed ? 'Already used' : 'Once per battle'} • Turn ends
+                      <div className="font-bold">Sound of Silence (Ultimate)</div>
+                      <div className="text-sm opacity-90">
+                        All enemies become MAD and attack each other for 1 turn
+                      </div>
+                      <div className="text-xs text-purple-200">
+                        {(() => {
+                          const currentRound = session?.combatState?.round || 1;
+                          const lastUsed = soundOfSilenceLastUsedRound || 0;
+                          const cooldown = lastUsed > 0 ? Math.max(0, 5 - (currentRound - lastUsed)) : 0;
+                          
+                          if (cooldown > 0) {
+                            return `⏳ Cooldown: ${cooldown} rounds`;
+                          } else if (lastUsed > 0) {
+                            return `✅ Ready! (Last used: Round ${lastUsed})`;
+                          } else {
+                            return `✅ Ready! • Turn ends • 5 round cooldown`;
+                          }
+                        })()}
                       </div>
                     </div>
-                    <span className="text-xs bg-black bg-opacity-30 px-2 py-1 rounded">
-                      ULTIMATE
-                    </span>
                   </div>
                 </button>
               </div>

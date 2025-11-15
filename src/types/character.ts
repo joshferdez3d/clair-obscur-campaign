@@ -183,7 +183,8 @@ export class CombatStateHelpers {
         songOfAliciaActive: false,
         songOfAliciaUsed: false,
         hasUsedModulationThisTurn: false,
-        hasUsedPerfectPitchThisTurn: false
+        hasUsedPerfectPitchThisTurn: false,
+        soundOfSilenceLastUsedRound: 0,
       },
       
       // Universal defaults

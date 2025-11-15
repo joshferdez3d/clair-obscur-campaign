@@ -5,6 +5,7 @@ import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import type { MusicalNote, VersoState } from '../types/versoType';
 import { detectHarmonyType, HARMONY_EFFECTS } from '../utils/harmonyDetection';
+import { FirestoreService } from './firestoreService';
 
 export class VersoCombatService {
   /**
@@ -30,6 +31,92 @@ export class VersoCombatService {
     };
     
     return versoState;
+  }
+
+  static async activateSoundOfSilence(
+    characterId: string = 'verso',
+    sessionId: string
+  ): Promise<void> {
+    const state = await this.getVersoState(characterId);
+    const session = await FirestoreService.getBattleSession(sessionId);
+    
+    if (!session) throw new Error('Battle session not found!');
+
+    // Check cooldown
+    const currentRound = session.combatState?.round || 1;
+    const lastUsedRound = state.soundOfSilenceLastUsedRound || 0;
+    const roundsSinceLastUse = currentRound - lastUsedRound;
+
+    if (roundsSinceLastUse < 5 && lastUsedRound > 0) {
+      throw new Error(`Sound of Silence on cooldown! ${5 - roundsSinceLastUse} rounds remaining.`);
+    }
+
+    // Apply "mad" status to all living enemies
+    const updates: any = {};
+    const enemyTokens = Object.entries(session.tokens || {}).filter(
+      ([_, token]: [string, any]) => token.type === 'enemy' && (token.hp || 0) > 0
+    );
+
+    if (enemyTokens.length === 0) {
+      throw new Error('No enemies to affect!');
+    }
+
+    enemyTokens.forEach(([tokenId, token]: [string, any]) => {
+      updates[`tokens.${tokenId}.statusEffects.mad`] = {
+        turnsRemaining: 1,
+        appliedBy: 'Sound of Silence',
+        appliedOnRound: currentRound,
+        source: 'Verso',
+        clearsOnVersoTurn: true
+      };
+    });
+
+    // Update session
+    const sessionRef = doc(db, 'battleSessions', sessionId);
+    await updateDoc(sessionRef, {
+      ...updates,
+      updatedAt: serverTimestamp()
+    });
+
+    // Update Verso's state
+    const characterRef = doc(db, 'characters', characterId);
+    await updateDoc(characterRef, {
+      'combatState.versoState.soundOfSilenceLastUsedRound': currentRound,
+      updatedAt: serverTimestamp()
+    });
+
+    console.log(`🔇 Sound of Silence activated! ${enemyTokens.length} enemies are now mad!`);
+  }
+
+  static async clearMadStatusEffects(sessionId: string): Promise<void> {
+    const session = await FirestoreService.getBattleSession(sessionId);
+    if (!session?.tokens) return;
+
+    const updates: any = {};
+    let hasUpdates = false;
+
+    Object.entries(session.tokens).forEach(([tokenId, token]) => {
+      if (token.statusEffects?.mad) {
+        updates[`tokens.${tokenId}.statusEffects.mad`] = null;
+        hasUpdates = true;
+        console.log(`🧠 Cleared mad status from ${token.name}`);
+      }
+    });
+
+    if (hasUpdates) {
+      const { deleteField } = await import('firebase/firestore');
+      const actualUpdates: any = {};
+      
+      Object.entries(updates).forEach(([key, _]) => {
+        actualUpdates[key] = deleteField();
+      });
+
+      const sessionRef = doc(db, 'battleSessions', sessionId);
+      await updateDoc(sessionRef, {
+        ...actualUpdates,
+        updatedAt: serverTimestamp()
+      });
+    }
   }
 
   /**
@@ -261,7 +348,11 @@ export class VersoCombatService {
       'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset for new turn
       updatedAt: serverTimestamp()
     });
-    
+
+    if (sessionId) {
+      await this.clearMadStatusEffects(sessionId);
+    }
+      
     console.log(`⏳ New turn started for Verso`);
     console.log(`   - Modulation cooldown: ${newCooldown} turns remaining`);
     console.log(`   - Modulation and Perfect Pitch usage reset`);
@@ -288,6 +379,7 @@ export class VersoCombatService {
       'combatState.versoState.songOfAliciaActive': false,
       'combatState.versoState.hasUsedModulationThisTurn': false,  // NEW: Reset
       'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset
+      'combatState.versoState.soundOfSilenceLastUsedRound': 0,
       // Don't reset Perfect Pitch charges - only long rest does that
       updatedAt: serverTimestamp()
     });
@@ -308,6 +400,7 @@ export class VersoCombatService {
       'combatState.versoState.songOfAliciaActive': false,
       'combatState.versoState.hasUsedModulationThisTurn': false,  // NEW: Reset
       'combatState.versoState.hasUsedPerfectPitchThisTurn': false, // NEW: Reset
+      'combatState.versoState.soundOfSilenceLastUsedRound': 0,
       updatedAt: serverTimestamp()
     });
     
