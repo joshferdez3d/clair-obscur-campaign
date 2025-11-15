@@ -749,9 +749,12 @@ useEffect(() => {
                 {/* Ultimate - Song of Alicia */}
                 <button
                   onClick={handleSoundOfSilence}
-                  disabled={!isMyTurn || !combatActive || 
-                    (soundOfSilenceLastUsedRound && 
-                     (session?.combatState?.round || 1) - soundOfSilenceLastUsedRound < 5)}
+                  disabled={
+                    !isMyTurn || 
+                    !combatActive || 
+                    ((soundOfSilenceLastUsedRound ?? 0) > 0 && 
+                     (session?.combatState?.round || 1) - (soundOfSilenceLastUsedRound ?? 0) < 5)
+                  }
                   className={`w-full ${
                     !isMyTurn || !combatActive || 
                     (soundOfSilenceLastUsedRound && 

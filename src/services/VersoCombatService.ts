@@ -336,7 +336,7 @@ export class VersoCombatService {
   /**
    * UPDATED: Reset turn-based flags AND decrease cooldowns at turn start
    */
-  static async startNewTurn(characterId: string = 'verso'): Promise<void> {
+  static async startNewTurn(characterId: string = 'verso', sessionId?: string): Promise<void> {
     const state = await this.getVersoState(characterId);
     
     const newCooldown = Math.max(0, state.modulationCooldown - 1);

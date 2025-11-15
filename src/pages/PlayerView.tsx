@@ -59,7 +59,7 @@ export function PlayerView() {
     songOfAliciaUsed: false,
     hasUsedModulationThisTurn: false,     // NEW
     hasUsedPerfectPitchThisTurn: false,
-    soundOfSilenceLastUsedRound = 0,
+    soundOfSilenceLastUsedRound: 0
   });
 
   const {

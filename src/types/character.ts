@@ -133,13 +133,7 @@ export interface CharacterDoc {
     chargedFateCard: 'explosive' | 'switch' | 'vanish' | null;
     afterimageStacks: number;
     phantomStrikeAvailable: boolean;
-    versoState?: {                           
-      activeNotes: Array<'C' | 'D' | 'E' | 'F' | 'G' | 'A' | 'B'>;
-      perfectPitchCharges: number;
-      modulationCooldown: number;
-      songOfAliciaActive: boolean;
-      songOfAliciaUsed: boolean;
-    };         
+    versoState?: VersoState;     
     bonusActionCooldown: number;
     hasActedThisTurn: boolean;
     lastCombatRound: number;
@@ -217,6 +211,8 @@ export class CombatStateHelpers {
         songOfAliciaUsed: false,
         hasUsedModulationThisTurn: false,
         hasUsedPerfectPitchThisTurn: false,
+        soundOfSilenceLastUsedRound: 0,  // ADD THIS LINE
+
       },
 
       bonusActionCooldown: 0,
